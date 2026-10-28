@@ -1,0 +1,26 @@
+{
+  "name": "srijan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Srijan — creator-economy marketplace prototype (Northeast India launch)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "reset-data": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('Demo data cleared — it will be re-seeded on next request.')\""
+  },
+  "dependencies": {
+    "next": "^16.4.3",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.8.3",
+    "vitest": "^5.0.5"
+  }
+}

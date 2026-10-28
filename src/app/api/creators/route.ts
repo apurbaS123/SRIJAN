@@ -1,0 +1,37 @@
+import type { NextRequest } from "next/server";
+import { api, readJson, setSession } from "@/lib/server/api";
+import { creatorPublic } from "@/lib/domain/views";
+import { signUpCreator, type SignupInput } from "@/lib/domain/creators";
+import type { ServiceKey } from "@/lib/domain/types";
+
+/** Public directory: ?service=videography&city=guwahati&available=1 */
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams;
+  const service = q.get("service") as ServiceKey | null;
+  const city = q.get("city");
+  const availableOnly = q.get("available") === "1";
+  const text = (q.get("q") ?? "").trim().toLowerCase();
+  return api(({ db }) =>
+    db.creators
+      .filter((c) => c.verification === "verified")
+      .filter((c) => !service || c.services.some((s) => s.key === service))
+      .filter((c) => !city || c.cityId === city)
+      .filter((c) => !availableOnly || c.available)
+      .filter((c) => !text || `${c.name} ${c.bio} ${c.services.map((s) => s.title).join(" ")}`.toLowerCase().includes(text))
+      .map(creatorPublic)
+      .sort((a, b) => Number(b.available) - Number(a.available) || (b.rating ?? 0) - (a.rating ?? 0)),
+  );
+}
+
+/** Creator sign-up. Signs the new creator in. */
+export async function POST(req: Request) {
+  const input = await readJson<SignupInput>(req);
+  let newUserId: string | null = null;
+  const res = await api(({ db, now }) => {
+    const { user, creator } = signUpCreator(db, input, now);
+    newUserId = user.id;
+    return { userId: user.id, creatorId: creator.id };
+  });
+  if (res.status === 200 && newUserId) setSession(res, newUserId);
+  return res;
+}
