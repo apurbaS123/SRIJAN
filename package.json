@@ -12,14 +12,17 @@
     "reset-data": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('Demo data cleared — it will be re-seeded on next request.')\""
   },
   "dependencies": {
+    "motion": "^14.7.1",
     "next": "^16.4.3",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "three": "^0.169.0"
   },
   "devDependencies": {
     "@types/node": "22.15.3",
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
+    "@types/three": "^0.169.0",
     "typescript": "5.8.3",
     "vitest": "^5.0.5"
   }

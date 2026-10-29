@@ -42,6 +42,9 @@ export function Header() {
     router.push("/");
   }
 
+  // The home page draws its own nav on the glass hero.
+  if (pathname === "/") return null;
+
   return (
     <>
       <div className="demo-banner">

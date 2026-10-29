@@ -50,7 +50,7 @@
    Reset & Base
    ============================================================ */
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; overflow-x: clip; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -58,6 +58,30 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+
+  /* -- Background image -- */
+  background-image: url('/bg3.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  position: relative;
+}
+
+/* Semi-transparent overlay so content stays readable */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* Ensure all body children sit above the overlay */
+body > * {
+  position: relative;
+  z-index: 1;
 }
 a { color: var(--violet); }
 a:hover { color: var(--violet-hot); }
@@ -230,14 +254,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: transform 0.5s;
 }
 .btn-accent:hover::before { transform: translateX(100%); }
-.btn-accent:hover { filter: brightness(1.08) saturate(1.15); color: #fff; }
+.btn-accent:hover { background: var(--grad-accent); filter: brightness(1.08) saturate(1.15); color: #fff; }
 
 .btn-violet {
   background: var(--grad-primary);
   border-color: transparent;
   color: #fff;
 }
-.btn-violet:hover { filter: brightness(1.1); color: #fff; }
+.btn-violet:hover { background: var(--grad-primary); filter: brightness(1.1); color: #fff; }
 
 .btn-green { background: var(--green); border-color: var(--green); color: #fff; }
 .btn-green:hover { background: var(--green-ink); color: #fff; }
@@ -487,3 +511,109 @@ tr.alert td { background: #fdf4ff; }
    Selection colour
    ============================================================ */
 ::selection { background: rgba(124, 58, 237, 0.22); color: var(--violet-ink); }
+
+/* ============================================================
+   Glass hero (home) — smoked-glass shards, see GlassHero.tsx
+   ============================================================ */
+.glass-hero {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  min-height: 520px;
+  overflow: hidden;
+  background: #06030b;
+  color: #fff;
+  isolation: isolate;
+  touch-action: pan-y;
+}
+.gh-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.gh-static .gh-canvas { display: none; }
+
+/* Transparent, selectable copy of the printed text, mapped onto the slab */
+.gh-layer { position: absolute; left: 0; top: 0; z-index: 2; transform-origin: 0 0; }
+.gh-layer > * { margin: 0; }
+.gh-layer h1 { font-size: inherit; background: none; -webkit-text-fill-color: initial; }
+.gh-item {
+  position: absolute;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  white-space: nowrap;
+  text-align: left;
+  text-decoration: none;
+  cursor: text;
+}
+a.gh-item, button.gh-item { cursor: pointer; }
+.gh-pill { text-align: center; transition: background 0.18s cubic-bezier(0.4, 0, 0.2, 1); }
+.gh-item:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 4px; border-radius: 8px; }
+.gh-live .gh-layer ::selection { background: rgba(159, 30, 255, 0.45); color: transparent; -webkit-text-fill-color: transparent; }
+.gh-static .gh-layer ::selection { background: rgba(159, 30, 255, 0.45); color: #fff; }
+
+/* Static fallback (reduced motion / no WebGL) */
+.gh-static-block { position: absolute; z-index: 1; transition: opacity 0.25s ease; }
+.gh-static-slab {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(42, 30, 58, 0.94), rgba(16, 10, 24, 0.97));
+  border: 1px solid rgba(196, 181, 253, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 60px var(--violet-glow);
+}
+.gh-static .gh-layer { transition: opacity 0.25s ease; }
+.gh-static[data-view="defs"] .gh-layer,
+.gh-static[data-view="defs"] .gh-static-block { opacity: 0; }
+
+/* Definitions view */
+.gh-defs { position: absolute; inset: 0; z-index: 3; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+.glass-hero[data-view="defs"] .gh-defs { opacity: 1; pointer-events: auto; transition: opacity 0.4s ease 0.28s; }
+.gh-defs-col { position: absolute; left: 32.4%; width: 33.9%; top: calc(35.9% - max(1.36vw, 20px)); }
+.gh-defs h2 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: max(1.36vw, 20px);
+  line-height: 1.2;
+  letter-spacing: -0.022em;
+  color: #fff;
+  background: none;
+  -webkit-text-fill-color: #fff;
+  margin: 0 0 max(1.05vw, 14px);
+}
+.gh-defs p { font-size: max(0.73vw, 13px); line-height: 1.72; color: rgba(245, 240, 255, 0.6); margin: 0 0 max(1.05vw, 12px); }
+.gh-defs b { color: #fff; font-weight: 600; }
+
+/* "← Back" — the label sits on a WebGL glass sliver */
+.gh-back {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: #fff;
+  font-family: var(--body);
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, color 0.15s;
+}
+.glass-hero[data-view="defs"] .gh-back { opacity: 1; pointer-events: auto; transition: opacity 0.3s ease 0.45s, color 0.15s; }
+.gh-back:hover, .gh-back:focus-visible { color: #c4b5fd; }
+.gh-back:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+.gh-static .gh-back {
+  background: linear-gradient(160deg, rgba(42, 30, 58, 0.95), rgba(16, 10, 24, 0.95));
+  border: 1px solid rgba(196, 181, 253, 0.25);
+  transform: translate(-50%, -50%) rotate(-6deg);
+}
+
+@media (max-width: 899px) {
+  .gh-defs-col { left: 8%; width: 84%; top: 30%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gh-defs, .gh-back, .gh-layer, .gh-static-block,
+  .glass-hero[data-view="defs"] .gh-defs,
+  .glass-hero[data-view="defs"] .gh-back { transition: none; }
+}
