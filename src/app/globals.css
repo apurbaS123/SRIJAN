@@ -59,12 +59,6 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 
-  /* -- Background image -- */
-  background-image: url('/bg3.jpeg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
   position: relative;
 }
 
@@ -74,7 +68,7 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(229, 203, 203, 0.05);
   pointer-events: none;
 }
 
@@ -82,6 +76,19 @@ body::before {
 body > * {
   position: relative;
   z-index: 1;
+}
+
+/* Background video */
+.bg-video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 1;
+  filter: brightness(0.4);
 }
 a { color: var(--violet); }
 a:hover { color: var(--violet-hot); }
@@ -112,7 +119,31 @@ button, input, select, textarea { font: inherit; color: inherit; }
    ============================================================ */
 .container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
 .narrow { max-width: 640px; }
-.page { padding: 24px 0 64px; display: flex; flex-direction: column; gap: 20px; }
+.page {
+  padding: 24px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+
+  /* Glassmorphism */
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* Remove glass effect on the hero (home) page */
+.page-no-glass {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 24px 0 64px;
+}
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack-lg { display: flex; flex-direction: column; gap: 20px; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

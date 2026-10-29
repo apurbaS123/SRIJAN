@@ -14,7 +14,7 @@ export default function Home() {
   return (
     <>
       <GlassHero fromPrice={from} />
-      <div className="container page">
+      <div className="container page page-no-glass">
         <section className="stack">
           <div className="row between">
             <h2>Hire by service</h2>

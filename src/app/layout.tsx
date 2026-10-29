@@ -23,6 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        {/* Background video */}
+        <video className="bg-video" autoPlay muted loop playsInline>
+          <source src="/bg-video.mp4" type="video/mp4" />
+        </video>
         <SessionProvider>
           <Header />
           <main>{children}</main>
