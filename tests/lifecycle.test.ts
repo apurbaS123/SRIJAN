@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "@/lib/domain/seed";
+import { seedDb } from "./fixtures/seed";
 import { approve, checkIn, createBooking, deliver, finishShoot, requestRevision } from "@/lib/domain/bookings";
 import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";

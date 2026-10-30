@@ -221,6 +221,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   -webkit-text-fill-color: #fff;
 }
 .card-dark .muted { color: rgba(255,255,255,0.7); }
+/* Chips and buttons keep their own text colour on the white-text card */
+.card-dark .chip, .card-dark .btn { -webkit-text-fill-color: currentColor; }
 .card-dark h1, .card-dark h2, .card-dark h3 {
   background: none;
   -webkit-background-clip: unset;

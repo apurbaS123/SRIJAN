@@ -48,7 +48,7 @@ export function Header() {
   return (
     <>
       <div className="demo-banner">
-        <b>Prototype</b> · payments, KYC and notifications are simulated · <Link href="/login" style={{ color: "#fff" }}>switch demo user</Link>
+        <b>Prototype</b> · payments, KYC and notifications are simulated
       </div>
       <header className="header">
         <div className="container header-inner">

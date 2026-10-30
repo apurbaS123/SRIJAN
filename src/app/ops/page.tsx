@@ -9,7 +9,6 @@ import { countdown, inr, lakh, time, when } from "@/lib/client/format";
 interface Overview {
   kpis: { shootsToday: number; liveNow: number; searching: number; needsOps: number; pipelineValue: number; revenueMonth: number; pendingVerification: number };
   money: { month: string; shootGmv: number; platformFee: number; campaignBilled: number; campaignCommission: number; gstCollected: number; refunds: number; queuedPayouts: { count: number; total: number } };
-  clockOffsetMin: number;
   dispatch: (BookingView & { candidates: { id: string; name: string; available: boolean; km: number }[] })[];
   pendingCreators: CreatorPublic[];
 }
@@ -98,25 +97,8 @@ function Dashboard() {
     <div className="container page" style={{ maxWidth: 1280 }}>
       <div className="row between">
         <div className="stack" style={{ gap: 2 }}>
-          <span className="small muted">{when(now)} IST{data.clockOffsetMin ? ` · demo clock +${data.clockOffsetMin} min` : ""}</span>
+          <span className="small muted">{when(now)} IST</span>
           <h1>Dispatch</h1>
-        </div>
-        <div className="row">
-          <span className="small muted">Demo time travel:</span>
-          {[
-            [1, "+1 min"],
-            [5, "+5 min"],
-            [60, "+1 h"],
-            [60 * 24, "+1 day"],
-            [60 * 48, "+2 days"],
-          ].map(([min, label]) => (
-            <button key={label} className="btn btn-sm btn-ghost" disabled={act.busy} onClick={() => admin({ action: "advance_clock", minutes: min })}>
-              {label}
-            </button>
-          ))}
-          <button className="btn btn-sm btn-danger" disabled={act.busy} onClick={() => confirm("Reset all demo data?") && admin({ action: "reset_demo" })}>
-            Reset demo data
-          </button>
         </div>
       </div>
       <ErrorNote error={act.error} />

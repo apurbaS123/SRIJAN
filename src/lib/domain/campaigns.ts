@@ -1,7 +1,9 @@
 // Managed influencer campaigns: brand books a call → ops runs the deal → creators paid → Srijan keeps 30–35%.
 import { CAMPAIGN_COMMISSION, CAMPAIGN_STAGES } from "./config";
 import type { Campaign, CampaignStage, DB } from "./types";
-import { assert, newId, nextCode, parseIstLocal, rupees } from "./util";
+import { assert, cleanText, newId, nextCode, parseIstLocal, rupees } from "./util";
+
+const CALL_MODES: Campaign["callMode"][] = ["video", "phone", "office"];
 
 export interface NewCampaignInput {
   brandName: string;
@@ -16,25 +18,33 @@ export interface NewCampaignInput {
 }
 
 export function createCampaign(db: DB, input: NewCampaignInput, userId: string | undefined, now: number) {
-  assert(input.brandName?.trim(), "Enter your brand or company name");
-  assert(input.contactName?.trim(), "Enter your name");
-  assert(/^\S+@\S+\.\S+$/.test(input.email ?? ""), "Enter a valid work email");
-  assert((input.phone ?? "").replace(/\D/g, "").length >= 10, "Enter a 10-digit phone number");
-  const callAt = parseIstLocal(input.callAt);
+  const brandName = cleanText(input.brandName, 100, "your brand or company name");
+  const contactName = cleanText(input.contactName, 80, "your name");
+  const email = cleanText(input.email, 200, "a valid work email");
+  assert(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Enter a valid work email");
+  const phone = cleanText(input.phone, 20, "a 10-digit phone number");
+  assert(/^[+\d\s()-]+$/.test(phone) && phone.replace(/\D/g, "").length >= 10, "Enter a 10-digit phone number");
+  const callAt = parseIstLocal(String(input.callAt ?? ""));
   assert(!Number.isNaN(callAt) && callAt > now, "Pick a call time in the future");
+  assert(callAt <= now + 90 * 24 * 60 * 60_000, "Pick a call time within the next 90 days");
+  const callMode = input.callMode ?? "video";
+  assert(CALL_MODES.includes(callMode), "Pick how you'd like to meet");
+  const regionList = Array.isArray(input.regions) ? input.regions : [];
+  assert(regionList.length <= 10, "Pick at most 10 regions");
+  const regions = regionList.map((r) => cleanText(r, 40, "a region")).filter(Boolean);
   const c: Campaign = {
     id: newId("cmp"),
     code: nextCode(db, "CMP"),
     userId,
-    brandName: input.brandName.trim(),
-    contactName: input.contactName.trim(),
-    email: input.email.trim(),
-    phone: input.phone.trim(),
-    goal: input.goal || "Brand awareness",
-    regions: input.regions?.length ? input.regions : ["Assam"],
-    budgetRange: input.budgetRange || "Not sure yet",
+    brandName,
+    contactName,
+    email,
+    phone,
+    goal: cleanText(input.goal, 100, "the goal", true) || "Brand awareness",
+    regions: regions.length ? regions : ["Assam"],
+    budgetRange: cleanText(input.budgetRange, 60, "the budget", true) || "Not sure yet",
     callAt,
-    callMode: input.callMode ?? "video",
+    callMode,
     stage: "call_booked",
     budget: null,
     commissionRate: CAMPAIGN_COMMISSION.default,
@@ -75,7 +85,7 @@ export function updateCampaign(db: DB, id: string, patch: CampaignUpdate) {
   const c = get(db, id);
   assert(c.stage !== "closed", "This campaign is closed");
   if (patch.budget !== undefined) {
-    assert(patch.budget === null || (Number(patch.budget) >= 10000), "Budget must be at least ₹10,000");
+    assert(patch.budget === null || (Number(patch.budget) >= 10000 && Number(patch.budget) <= 1_000_000_000), "Budget must be between ₹10,000 and ₹100 crore");
     c.budget = patch.budget === null ? null : rupees(Number(patch.budget));
   }
   if (patch.commissionRate !== undefined) {
@@ -86,7 +96,7 @@ export function updateCampaign(db: DB, id: string, patch: CampaignUpdate) {
     );
     c.commissionRate = Math.round(r * 1000) / 1000;
   }
-  if (patch.notes !== undefined) c.notes = String(patch.notes);
+  if (patch.notes !== undefined) c.notes = cleanText(patch.notes, 5000, "notes", true);
   if (patch.advancePaid !== undefined) c.advancePaid = !!patch.advancePaid;
   if (patch.balancePaid !== undefined) c.balancePaid = !!patch.balancePaid;
   if (patch.stage !== undefined) {
@@ -108,12 +118,12 @@ export function inviteCreator(db: DB, id: string, creatorId: string, deliverable
   const creator = db.creators.find((x) => x.id === creatorId);
   assert(creator && creator.verification === "verified", "Pick a verified creator");
   assert(!c.creators.some((x) => x.creatorId === creatorId && x.status !== "declined"), `${creator.name} is already on this campaign`);
-  assert(deliverables?.trim(), "Describe the deliverables, e.g. 1 reel + 3 stories");
+  const what = cleanText(deliverables, 500, "the deliverables, e.g. 1 reel + 3 stories");
   const f = rupees(Number(fee));
   assert(f >= 500, "Fee must be at least ₹500");
   const m = campaignMath(c);
   assert(f <= m.remaining, `Only ₹${m.remaining.toLocaleString("en-IN")} left in the creator pool`);
-  c.creators.push({ creatorId, deliverables: deliverables.trim(), fee: f, status: "invited", invitedAt: now });
+  c.creators.push({ creatorId, deliverables: what, fee: f, status: "invited", invitedAt: now });
   return c;
 }
 

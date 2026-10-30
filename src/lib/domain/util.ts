@@ -6,6 +6,8 @@ export class DomainError extends Error {
   constructor(
     message: string,
     public status = 400,
+    /** Save the changes made so far (e.g. a failed-attempt counter) instead of discarding them. */
+    public keepChanges = false,
   ) {
     super(message);
   }
@@ -15,10 +17,18 @@ export function assert(cond: unknown, message: string, status = 400): asserts co
   if (!cond) throw new DomainError(message, status);
 }
 
-let counter = 0;
+/** Unguessable id, e.g. bkg_3f9c1a7e2b4d4e0f9a1c. */
 export function newId(prefix: string) {
-  counter = (counter + 1) % 1_000_000;
-  return `${prefix}_${Date.now().toString(36)}${counter.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+}
+
+/** Uniform random integer in [0, max) from a secure source. */
+function randomInt(max: number) {
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(0x1_0000_0000 / max) * max;
+  do crypto.getRandomValues(buf);
+  while (buf[0] >= limit);
+  return buf[0] % max;
 }
 
 /** Human-readable sequential code, e.g. SR-2051 or CMP-104. */
@@ -61,6 +71,28 @@ export function istMonth(ms: number) {
   return istDay(ms).slice(0, 7);
 }
 
-export function randomOtp() {
-  return String(Math.floor(1000 + Math.random() * 9000));
+export function randomOtp(digits = 4) {
+  const min = 10 ** (digits - 1);
+  return String(min + randomInt(9 * min));
+}
+
+/** Trimmed text, required unless `optional`, at most `max` characters. */
+export function cleanText(value: unknown, max: number, label: string, optional = false): string {
+  const v = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+  if (!optional) assert(v.length > 0, `Enter ${label}`);
+  assert(v.length <= max, `Keep ${label} under ${max} characters`);
+  return v;
+}
+
+/** An http(s) link of reasonable length, or undefined when empty and optional. */
+export function cleanUrl(value: unknown, label: string, optional = false): string | undefined {
+  const v = cleanText(value, 500, label, optional);
+  if (!v) return undefined;
+  let ok = false;
+  try {
+    const u = new URL(v);
+    ok = u.protocol === "https:" || u.protocol === "http:";
+  } catch {}
+  assert(ok, `Paste a full link for ${label}, starting with https://`);
+  return v;
 }

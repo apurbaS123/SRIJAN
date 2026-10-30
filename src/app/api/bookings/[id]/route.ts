@@ -2,7 +2,7 @@ import { api, readJson } from "@/lib/server/api";
 import { bookingView } from "@/lib/domain/views";
 import { approve, cancelByClient, checkIn, deliver, finishShoot, refund, requestRevision } from "@/lib/domain/bookings";
 import { manualAssign } from "@/lib/domain/dispatch";
-import { DomainError, assert } from "@/lib/domain/util";
+import { DomainError, assert, cleanText } from "@/lib/domain/util";
 import type { Booking, DB, User } from "@/lib/domain/types";
 
 function canSee(b: Booking | undefined, user: User): b is Booking {
@@ -72,7 +72,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           break;
         case "refund":
           as("ops");
-          refund(db, b, body.reason?.trim() || "refunded by Srijan team", now);
+          refund(db, b, cleanText(body.reason, 200, "the reason", true) || "refunded by Srijan team", now);
           break;
         default:
           throw new DomainError("Unknown action");

@@ -114,9 +114,6 @@ function Job() {
                   <button className="btn btn-accent" disabled={act.busy || otp.length !== 4} onClick={checkInWithGps}>
                     Check in with my GPS
                   </button>
-                  <button className="btn btn-ghost btn-sm" disabled={act.busy || otp.length !== 4} onClick={() => post({ action: "checkin", otp, lat: b.lat, lng: b.lng })} title="Demo only — sends the booking’s own location">
-                    Demo: I’m at the address
-                  </button>
                 </div>
               </>
             )}

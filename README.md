@@ -18,21 +18,30 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `node scripts/smoke.mjs` | End-to-end check of every flow against a running server (resets demo data; set `BASE` if not on port 3000) |
-| `npm run reset-data` | Wipe demo data (re-seeded on next request) |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (80 checks). Runs its own server on a free port with a throwaway data file and WhatsApp off, so it never touches your data or sends messages |
+| `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
 Data is stored in `.data/db.json`. Delete it any time to start fresh.
 
-## Try the full flow (10 minutes)
+## Sign-in and roles
 
-1. Open **/login** and sign in as **Priya Sharma** (client). Book a Quick Reel in Zoo Road, Guwahati.
-2. In a second browser (or private window), sign in as **Ankita Baruah** (creator). The job alert appears within 2 seconds with a 5-minute countdown. Accept it.
-3. Back as Priya: the booking shows Ankita and a 4-digit start code.
-4. As Ankita: open the job, type the code, tap **Demo: I'm at the address**, finish the shoot, paste any video link and deliver.
-5. As Priya: approve (or ask for the one free revision). Ankita's wallet gets 80%.
-6. Sign in as **Srijan Ops**: watch live dispatch, assign or refund bookings nobody accepted, move campaigns through the pipeline, approve new creators and run payouts. Use the **time travel** buttons (+5 min, +1 day…) to test timers without waiting.
+Everyone signs in at **/login** with a 6-digit code sent to their WhatsApp. The account decides what they can open:
 
-To see the "nobody accepted" path, book in **Silchar** (no creators there yet) and press **+5 min** on the ops dashboard.
+| Account | How it's created | Lands on |
+| --- | --- | --- |
+| Srijan team (ops) | Any number listed in `SRIJAN_OPS_PHONES`. Checked on every request, so removing a number takes away access at once. | `/ops` |
+| Creator | Signing up at **/join** (verified on WhatsApp) | `/creator` |
+| Client / brand | Signing in with a new number at **/login**, or booking a strategy call at **/brands** (verified on WhatsApp) | `/bookings` |
+
+Without WhatsApp set up, `npm run dev` prints each sign-in code in the server log. In production, sign-in needs the WhatsApp settings below.
+
+## Try the full flow
+
+1. Put your own number in `SRIJAN_OPS_PHONES` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
+2. In a private window, sign up a creator at **/join** with a second number, then approve them as ops under **Creators**.
+3. In another window, sign in at **/login** with a third number (a client account is created) and book a shoot. The creator gets the job alert within 2 seconds with a 5-minute countdown.
+4. As the creator: accept, open the job, type the client's 4-digit start code, check in with GPS at the address, finish the shoot, paste a video link and deliver.
+5. As the client: approve (or ask for the one free revision). The creator's wallet gets 80%.
 
 ## How dispatch works
 
@@ -75,7 +84,6 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 
 | Prototype | Replace with |
 | --- | --- |
-| Demo account picker | Phone OTP login (e.g. Firebase Auth or MSG91) |
 | JSON file storage | PostgreSQL — the arrays in `types.ts` map 1:1 to tables; swap `loadDb/saveDb` in `src/lib/server/store.ts` |
 | Simulated payment | Razorpay or Cashfree with split settlements / escrow, so client money is held until approval |
 | Creator polling every 2 s | Push notifications (FCM) **plus SMS or auto-call fallback after 60 s**, so creators don't miss alerts |
@@ -86,3 +94,36 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 | Single process lock | Database transactions (the "first to accept" check) |
 
 Prices are suggested starting points, not market data — adjust them in `config.ts` after talking to creators and clients.
+
+## WhatsApp booking alerts
+
+Every new shoot booking (package, time, address, client contact, brief, amount paid, start code) and brand campaign request (brand, contact, call time, goal, regions, budget) is sent to your WhatsApp via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started). Add to `.env.local`:
+
+```
+WHATSAPP_TOKEN=...              # permanent System User access token
+WHATSAPP_PHONE_NUMBER_ID=...    # the sending business number's ID (WhatsApp > API Setup)
+WHATSAPP_NOTIFY_TO=919876543210 # your number with country code; comma-separate several
+# Optional, recommended: an approved Utility template with one body variable {{1}}
+WHATSAPP_TEMPLATE=new_booking
+WHATSAPP_TEMPLATE_LANG=en
+```
+
+Without `WHATSAPP_TEMPLATE`, alerts go as plain text, which WhatsApp only delivers if your number has messaged the business number in the last 24 hours. With no config, alerts are skipped. Failures are logged and never block a booking.
+
+## Production setup
+
+Set these on your host (Vercel → Settings → Environment Variables, or the server's environment), in addition to the WhatsApp alert settings above:
+
+| Variable | What it is |
+| --- | --- |
+| `SESSION_SECRET` | **Required.** Random string, 32+ characters, used to sign login cookies. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Changing it signs everyone out. |
+| `WHATSAPP_OTP_TEMPLATE` | **Required for sign-in.** Name of an approved WhatsApp *Authentication* template (copy-code button). Sign-in codes are sent with it. |
+| `SRIJAN_OPS_PHONES` | Comma-separated mobile numbers of the Srijan team. Only these numbers get ops (admin) access. |
+| `SRIJAN_DATA_FILE` | Where the JSON database is stored (default `.data/db.json`). Must be on a persistent disk. |
+
+Notes:
+
+- The app starts with an empty database. Sign in once with a number from `SRIJAN_OPS_PHONES` to get the first ops account.
+- Rate limits are kept in memory, per server process.
+- The JSON-file database needs a single long-running server with a persistent disk (a VPS, Railway, Render with a disk). It will lose data on serverless hosts such as Vercel. Move to Postgres before scaling out.
+- Payments are still mocked: bookings are marked paid without charging. Connect Razorpay/Cashfree before taking real bookings.

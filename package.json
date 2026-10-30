@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "reset-data": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('Demo data cleared — it will be re-seeded on next request.')\""
+    "smoke": "next build && node scripts/smoke.mjs",
+    "reset-data": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('Local data cleared — the app starts empty on the next request.')\""
   },
   "dependencies": {
     "motion": "^14.7.1",

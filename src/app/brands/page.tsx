@@ -4,6 +4,7 @@ import { call, serverNow, useAction } from "@/lib/client/api";
 import { ErrorNote, Loading } from "@/components/ui";
 import { when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
+import Link from "next/link";
 
 const GOALS = ["Product launch", "Brand awareness", "Store footfall", "Online sales", "App installs", "Event promotion"];
 const REGIONS = ["Assam", "Meghalaya", "Arunachal Pradesh", "Nagaland", "Manipur", "Mizoram", "Tripura", "Sikkim", "All 8 NE states", "Pan-India"];
@@ -21,7 +22,8 @@ function nextWorkdays(n: number) {
 }
 
 export default function BrandsPage() {
-  const { session } = useSession();
+  const { session, refresh } = useSession();
+  const signedIn = !!session?.user;
   const days = nextWorkdays(5);
   const [form, setForm] = useState({
     brandName: "",
@@ -36,10 +38,16 @@ export default function BrandsPage() {
     callMode: "video" as "video" | "phone" | "office",
   });
   const [done, setDone] = useState<{ code: string; callAt: number } | null>(null);
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const { busy, error, run } = useAction();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const set =<K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function sendCode() {
+    if (await run(() => call("/api/session/otp", { phone: form.phone }))) setOtpSent(true);
+  }
 
   async function submit() {
     const r = await run(() =>
@@ -53,9 +61,13 @@ export default function BrandsPage() {
         budgetRange: form.budgetRange,
         callAt: `${form.day}T${form.slot}`,
         callMode: form.callMode,
+        ...(signedIn ? {} : { code: otp }),
       }),
     );
-    if (r) setDone(r);
+    if (r) {
+      setDone(r);
+      if (!signedIn) void refresh();
+    }
   }
 
   // Dates depend on the current time, so render only in the browser.
@@ -70,6 +82,9 @@ export default function BrandsPage() {
             Your campaign manager will call you on <b>{when(done.callAt)}</b>. Reference <b>{done.code}</b>.
           </p>
           <p className="muted small">What happens next: proposal and creator shortlist within 3 working days → sign online and pay 50% → approve every post → results report.</p>
+          <p className="small">
+            Follow your request any time in <Link href="/bookings">My bookings</Link>.
+          </p>
         </div>
       </div>
     );
@@ -99,9 +114,29 @@ export default function BrandsPage() {
           </div>
           <div className="field grow">
             <label htmlFor="phone">WhatsApp number</label>
-            <input id="phone" className="input" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+            {signedIn ? (
+              <input id="phone" className="input" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+            ) : (
+              <div className="row">
+                <input id="phone" className="input grow" type="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => { set("phone", e.target.value); setOtpSent(false); setOtp(""); }} />
+                <button className="btn btn-sm" disabled={busy || !form.phone} onClick={sendCode}>
+                  {otpSent ? "Resend code" : "Send code"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
+        {!signedIn && otpSent && (
+          <div className="field">
+            <label htmlFor="otp">Code sent to your WhatsApp</label>
+            <input id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} />
+          </div>
+        )}
+        {!signedIn && (
+          <p className="small muted">
+            We verify your number on WhatsApp and create your brand account with it. Already have one? <Link href="/login?next=/brands">Sign in</Link>.
+          </p>
+        )}
       </section>
 
       <section className="card stack">
@@ -161,7 +196,7 @@ export default function BrandsPage() {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-violet btn-lg btn-block" disabled={busy} onClick={submit}>
+      <button className="btn btn-violet btn-lg btn-block" disabled={busy || (!signedIn && !otp)} onClick={submit}>
         Book strategy call
       </button>
     </div>

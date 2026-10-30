@@ -111,7 +111,7 @@ export const COPY = {
     "Verified videographers, editors and influencers across the Northeast.",
     "Same-day shoots, fixed prices, paid safely through Srijan.",
   ],
-  cta: { label: "Book a shoot", href: "/book" },
+  cta: { label: "Join as creator", href: "/join" },
   link: "How it works →",
   footL: "© Srijan · Made in the Northeast",
   footR: "Prototype · payments & KYC simulated",

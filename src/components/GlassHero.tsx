@@ -10,7 +10,6 @@ const NAV_LINKS = [
   { label: "Explore", href: "/creators" },
   { label: "Book a shoot", href: "/book" },
   { label: "For brands", href: "/brands" },
-  { label: "Join as creator", href: "/join" },
 ];
 
 const ACCOUNT = {

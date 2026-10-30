@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Difference between server time (incl. demo time travel) and this device. */
+/** Difference between server time and this device. */
 let skew = 0;
 export function serverNow() {
   return Date.now() + skew;

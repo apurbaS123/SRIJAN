@@ -1,7 +1,7 @@
-// Demo data so every screen has something to show. Names are fictional.
-import { CREATOR_SHARE, DAY, GST_RATE, HOUR, findZone } from "./config";
-import type { Campaign, Creator, CreatorService, DB, User } from "./types";
-import { rupees } from "./util";
+// Test fixture: a small fictional marketplace for the unit tests. Not used by the app.
+import { CREATOR_SHARE, DAY, GST_RATE, HOUR, findZone } from "@/lib/domain/config";
+import type { Campaign, Creator, CreatorService, DB, User } from "@/lib/domain/types";
+import { rupees } from "@/lib/domain/util";
 
 const svc = {
   shoot: (price = 2500): CreatorService => ({ key: "videography", title: "1-day shoot", description: "On-location shoot and edit, delivered within 24 hours at Srijan’s fixed package price.", price }),
@@ -50,19 +50,19 @@ const CREATORS: CreatorSeed[] = [
 ];
 
 export function seedDb(now: number): DB {
-  const db: DB = { version: 1, clockOffsetMs: 0, seq: 2040, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [] };
+  const db: DB = { version: 1, seq: 2040, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [] };
 
   const users: User[] = [
-    { id: "u_priya", role: "client", name: "Priya Sharma", phone: "+91 98540 12345", email: "priya@cafebrahma.in", demoNote: "Café owner booking a same-day shoot", createdAt: now },
-    { id: "u_rohan", role: "client", name: "Rohan Hazarika", phone: "+91 98540 67890", email: "rohan@brahmaputratea.in", demoNote: "Brand manager planning campaigns", createdAt: now },
-    { id: "u_ops", role: "ops", name: "Srijan Ops", email: "ops@srijan.app", demoNote: "Your team: dispatch, campaigns, payouts", createdAt: now },
+    { id: "u_priya", role: "client", name: "Priya Sharma", phone: "+91 98540 12345", email: "priya@cafebrahma.in", createdAt: now },
+    { id: "u_rohan", role: "client", name: "Rohan Hazarika", phone: "+91 98540 67890", email: "rohan@brahmaputratea.in", createdAt: now },
+    { id: "u_ops", role: "ops", name: "Srijan Ops", email: "ops@srijan.app", createdAt: now },
   ];
   db.users.push(...users);
 
   for (const s of CREATORS) {
     const place = findZone(s.cityId, s.zoneId)!;
     const userId = `u_${s.id.slice(3)}`;
-    db.users.push({ id: userId, role: "creator", name: s.name, phone: s.phone, creatorId: s.id, demoNote: `${place.zone.name}, ${place.city.name} · ${s.services.map((x) => x.title).join(", ")}`, createdAt: now });
+    db.users.push({ id: userId, role: "creator", name: s.name, phone: s.phone, creatorId: s.id, createdAt: now });
     db.creators.push({
       id: s.id,
       userId,
