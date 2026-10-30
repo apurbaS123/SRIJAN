@@ -1,14 +1,16 @@
 // Storage. Every request loads the whole marketplace, applies time-based rules, runs the
 // change and saves, one request at a time so two creators can't both win the same job.
 //
-// - With DATABASE_URL or POSTGRES_URL (set by the Vercel ↔ Supabase integration): one row in
-//   Postgres, locked for the length of each request, so it is safe across many server copies.
+// - With DATABASE_URL or POSTGRES_URL (set by the Vercel ↔ Supabase integration): Postgres, one
+//   table per kind of record (see ./pg.ts), locked for the length of each request, so it is safe
+//   across many server copies.
 // - Otherwise: a JSON file (local development, tests). Needs one server with a persistent disk.
 //
 // The domain code in src/lib/domain doesn't care which one is used.
 import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
+import { ensureSchema as pgEnsureSchema, load as pgLoad, save as pgSave } from "./pg";
 import type { DB } from "@/lib/domain/types";
 import { tickAll } from "@/lib/domain/views";
 import { DomainError } from "@/lib/domain/util";
@@ -66,36 +68,20 @@ function client() {
   return sql;
 }
 
-/**
- * Creates the table on first use. It lives in its own schema, not `public`, so Supabase's
- * public REST API can't reach it; row level security with no policies is a second lock.
- */
-function ensureTable() {
-  ready ??= client()
-    .begin(async (tx) => {
-      await tx`create schema if not exists srijan`;
-      await tx`create table if not exists srijan.state (id int primary key, data jsonb not null, updated_at timestamptz not null default now())`;
-      await tx`alter table srijan.state enable row level security`;
-      await tx`insert into srijan.state (id, data) values (1, ${JSON.stringify(initialDb())}::jsonb) on conflict (id) do nothing`;
-    })
-    .then(() => undefined)
-    .catch((e) => {
-      ready = undefined;
-      throw e;
-    });
+function ensureSchema() {
+  ready ??= pgEnsureSchema(client(), initialDb).catch((e) => {
+    ready = undefined;
+    throw e;
+  });
   return ready;
 }
 
 async function withPostgres<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
-  await ensureTable();
+  await ensureSchema();
   return client().begin(async (tx) => {
-    // `for update` holds every other request until this one commits.
-    const [row] = await tx`select data from srijan.state where id = 1 for update`;
-    const data = row!.data as DB | string;
-    const db = typeof data === "string" ? (JSON.parse(data) as DB) : data;
-    return runAndSave(db, async (next) => {
-      await tx`update srijan.state set data = ${JSON.stringify(next)}::jsonb, updated_at = now() where id = 1`;
-    }, fn);
+    // Locks srijan.meta: every other request waits until this one commits.
+    const { db, snapshot, meta } = await pgLoad(tx);
+    return runAndSave(db, (next) => pgSave(tx, snapshot, next, meta), fn);
   }) as Promise<Outcome<T>>;
 }
 

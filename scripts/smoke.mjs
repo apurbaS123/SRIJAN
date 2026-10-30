@@ -4,10 +4,14 @@
 //
 // The script starts its own `next start` on a free port with a throwaway data file, a test
 // session secret, and email and WhatsApp switched off, so it never touches your real data or
-// sends messages. It signs everyone in through the real email-code flow. Two things it does from outside, by
-// editing the throwaway data file between requests (the server reads it on every request):
+// sends messages. It signs everyone in through the real email-code flow. Two things it does from
+// outside, by editing the throwaway store between requests (the server reads it on every request):
 //   - puts a known sign-in code in place of the email
 //   - moves every stored time back to fast-forward the 5-minute dispatch timers
+//
+// To test the Postgres store instead of the JSON file, point it at a throwaway local database:
+//   SMOKE_DATABASE_URL=postgres://postgres:pw@localhost:5432/postgres npm run smoke
+// It wipes the `srijan` schema there first, so it only accepts localhost / 127.0.0.1.
 
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
@@ -15,6 +19,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import postgres from "postgres";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SECRET = "smoke-test-session-secret-0123456789abcdef";
@@ -24,6 +29,8 @@ const MIN = 60_000;
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "srijan-smoke-"));
 const DATA_FILE = path.join(tmpDir, "db.json");
+const SMOKE_DB = process.env.SMOKE_DATABASE_URL || "";
+let sql;
 let server;
 let serverLog = "";
 let BASE = "";
@@ -60,8 +67,8 @@ async function startServer() {
       ...process.env,
       SESSION_SECRET: SECRET,
       SRIJAN_DATA_FILE: DATA_FILE,
-      // Never use a real database, even if one is configured.
-      DATABASE_URL: "",
+      // Never use a real database, even if one is configured: only the throwaway one, if given.
+      DATABASE_URL: SMOKE_DB,
       POSTGRES_URL: "",
       SRIJAN_OPS_EMAILS: OPS_EMAIL,
       // Empty values win over .env.local, so no email or WhatsApp message is ever sent.
@@ -87,7 +94,19 @@ async function startServer() {
   throw new Error("The server didn't start within 60 seconds");
 }
 
-// ── Throwaway data file ───────────────────────────────────────────────────────
+// ── Throwaway store (JSON file, or the local test database) ─────────────────
+
+const PG_TABLES = ["users", "creators", "bookings", "offers", "ledger", "campaigns", "sign_in_codes"];
+
+async function connectTestDb() {
+  if (!SMOKE_DB) return;
+  const u = new URL(SMOKE_DB);
+  if (!["localhost", "127.0.0.1"].includes(u.hostname)) {
+    throw new Error("SMOKE_DATABASE_URL must be a local throwaway database (localhost): the smoke test wipes it");
+  }
+  sql = postgres(SMOKE_DB, { ssl: false, onnotice: false, max: 1 });
+  await sql`drop schema if exists srijan cascade`;
+}
 
 const readDb = () => JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
 function writeDb(db) {
@@ -100,25 +119,37 @@ function writeDb(db) {
 const codes = new Map();
 
 /** Stores a sign-in code for `email` exactly as the server would after emailing it. */
-function issueCode(email, code = String(100000 + Math.floor(Math.random() * 900000))) {
-  const db = readDb();
+async function issueCode(email, code = String(100000 + Math.floor(Math.random() * 900000))) {
   const now = Date.now();
   const codeHash = createHmac("sha256", SECRET).update(`otp:${email}:${code}`).digest("hex");
-  db.otps = [...(db.otps ?? []).filter((o) => o.email !== email), { email, codeHash, sentAt: now, expiresAt: now + 10 * MIN, attempts: 0 }];
-  writeDb(db);
+  const otp = { email, codeHash, sentAt: now, expiresAt: now + 10 * MIN, attempts: 0 };
+  if (sql) {
+    await sql`delete from srijan.sign_in_codes where email = ${email}`;
+    await sql`insert into srijan.sign_in_codes (id, data) values (${codeHash}, ${JSON.stringify(otp)}::text::jsonb)`;
+  } else {
+    const db = readDb();
+    db.otps = [...(db.otps ?? []).filter((o) => o.email !== email), otp];
+    writeDb(db);
+  }
   codes.set(email, code);
   return code;
 }
 
 /** Fast-forwards the marketplace by moving every stored timestamp into the past. */
-function advance(minutes) {
+async function advance(minutes) {
   const shift = (v) => {
     if (typeof v === "number" && v > 1e12 && v < 1e13) return v - minutes * MIN;
     if (Array.isArray(v)) return v.map(shift);
     if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shift(x)]));
     return v;
   };
-  writeDb(shift(readDb()));
+  if (!sql) return writeDb(shift(readDb()));
+  for (const t of PG_TABLES) {
+    for (const row of await sql.unsafe(`select id, data from srijan.${t}`)) {
+      const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      await sql.unsafe(`update srijan.${t} set data = $1::text::jsonb where id = $2`, [JSON.stringify(shift(data)), row.id]);
+    }
+  }
 }
 
 // ── People ────────────────────────────────────────────────────────────────────
@@ -151,7 +182,7 @@ class Agent {
   }
   /** Signs in at /login with an email code; new addresses give their name and phone. Returns the role. */
   async signIn() {
-    let r = await this.req("/api/session", { email: this.email, code: issueCode(this.email) });
+    let r = await this.req("/api/session", { email: this.email, code: await issueCode(this.email) });
     this.newRole = r.data?.newRole;
     if (r.data?.needsName) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), name: this.name, phone: this.phone });
     ok(r.ok, `${this.name} signs in with an email code`);
@@ -160,7 +191,7 @@ class Agent {
   /** Signs up at /join with an email code. Returns the new creator's id. */
   async joinAsCreator(cityId, zoneId) {
     const r = await this.req("/api/creators", {
-      code: issueCode(this.email),
+      code: await issueCode(this.email),
       email: this.email,
       name: this.name,
       phone: this.phone,
@@ -191,8 +222,9 @@ function slotFrom(serverNow) {
 // ── The run ───────────────────────────────────────────────────────────────────
 
 async function run() {
+  await connectTestDb();
   await startServer();
-  console.log(`Server running at ${BASE} with a throwaway data file\n`);
+  console.log(`Server running at ${BASE} with ${sql ? "the local test database (Postgres)" : "a throwaway data file"}\n`);
 
   // --- Sign-in and roles --------------------------------------------------------
   const ops = new Agent("Srijan Ops", OPS_EMAIL, "9000000001");
@@ -206,7 +238,7 @@ async function run() {
   ok(r.status === 503, "with email off, the production server refuses to send codes");
   r = await priya.req("/api/session", { userId: "u_ops" });
   ok(!r.ok, "the old one-click demo sign-in is gone");
-  issueCode(priya.email, "111111");
+  await issueCode(priya.email, "111111");
   r = await priya.req("/api/session", { email: priya.email, code: "222222" });
   ok(r.status === 400 && /wrong/.test(r.error), "a wrong email code is refused");
   r = await priya.req("/api/session", { phone: priya.phone, code: "111111" });
@@ -308,7 +340,7 @@ async function run() {
   });
   const b2 = r.data;
   ok(b2.dispatch.notified === 0 && b2.dispatch.widened, "Silchar: nobody nearby, search widened straight away");
-  advance(6);
+  await advance(6);
   r = await priya.req(`/api/bookings/${b2.id}`);
   ok(r.data.status === "needs_ops", "after 5 minutes the booking goes to ops");
   r = await ops.req("/api/admin");
@@ -334,7 +366,7 @@ async function run() {
   r = await nilakshi.req(`/api/offers/${r.data[0].id}`, { action: "decline" });
   r = await priya.req(`/api/bookings/${b3.id}`);
   ok(r.data.dispatch.phase === "broadcast", "after decline everyone nearby is alerted");
-  advance(6);
+  await advance(6);
   r = await ops.req(`/api/bookings/${b3.id}`, { action: "assign", creatorId: cr.nilakshi });
   ok(r.data.status === "assigned", "ops assigns by hand after the window");
 
@@ -353,7 +385,7 @@ async function run() {
   };
   r = await brand.req("/api/campaigns", campaign);
   ok(r.status === 400, "a brand can’t book a call without verifying their email");
-  r = await brand.req("/api/campaigns", { ...campaign, code: issueCode(brand.email) });
+  r = await brand.req("/api/campaigns", { ...campaign, code: await issueCode(brand.email) });
   ok(r.ok, "brand books a strategy call with an email code");
   const cid = r.data.id;
   r = await brand.req("/api/session");
@@ -401,6 +433,7 @@ try {
   if (serverLog.trim()) console.error(`\nServer output:\n${serverLog.trim().split("\n").slice(-30).join("\n")}`);
 } finally {
   server?.kill();
+  await sql?.end({ timeout: 5 });
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);

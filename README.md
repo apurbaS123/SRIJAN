@@ -18,7 +18,8 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (81 checks). Runs its own server on a free port with a throwaway data file and email and WhatsApp off, so it never touches your data or sends messages |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (83 checks). Runs its own server on a free port with a throwaway data file and email and WhatsApp off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
+| `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
 Data is stored in `.data/db.json`. Delete it any time to start fresh.
@@ -84,7 +85,7 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 
 | Prototype | Replace with |
 | --- | --- |
-| Whole marketplace in one Postgres row | Real tables (the arrays in `types.ts` map 1:1) once traffic grows, so requests stop waiting on one lock |
+| Every request loads all records and takes one lock | Queries that read only what a request needs, so requests stop waiting on each other as traffic grows |
 | Simulated payment | Razorpay or Cashfree with split settlements / escrow, so client money is held until approval |
 | Creator polling every 2 s | Push notifications (FCM) **plus SMS or auto-call fallback after 60 s**, so creators don't miss alerts |
 | Zone centre points | Google Maps / Ola Maps geocoding and live location |
@@ -121,7 +122,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `EMAIL_FROM` | **Required for sign-in.** The address codes come from. It must be a sender verified in Brevo (Senders, Domains & Dedicated IPs); verifying your domain keeps codes out of spam. |
 | `EMAIL_FROM_NAME` | Optional sender name shown in the inbox (default `Srijan`). |
 | `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access. |
-| `POSTGRES_URL` or `DATABASE_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its table (`srijan.state`) on first use. |
+| `POSTGRES_URL` or `DATABASE_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `SRIJAN_DATA_FILE` | Only without Postgres: where the JSON file is stored (default `.data/db.json`). Must be on a persistent disk. |
 
 Notes:
@@ -129,4 +130,6 @@ Notes:
 - The app starts with an empty database. Sign in once with an address from `SRIJAN_OPS_EMAILS` to get the first ops account.
 - Rate limits are kept in memory, per server process.
 - With `POSTGRES_URL` set (e.g. Vercel + Supabase), data lives in Postgres and each request locks it while it runs, so it is safe on serverless hosts. Without it, the app uses the JSON file, which needs a single long-running server with a persistent disk and will fail on Vercel.
+- **Postgres tables** (schema `srijan`, not exposed by Supabase's public API, row level security on): `users`, `creators`, `bookings`, `offers`, `ledger`, `campaigns`, `sign_in_codes` and `meta`. Each row keeps the full record in `data` (jsonb), which is what the app reads and writes; the other columns (name, email, status, totals, dates…) are generated from it by Postgres for browsing and SQL, and can't drift. In Supabase: Table Editor → schema `srijan`. Defined in `src/lib/server/pg.ts`.
+- Data from the earlier single-row store (`srijan.state`) is copied into the tables automatically on first run. `srijan.state` is left untouched as a backup; drop it once you're happy (`drop table srijan.state;`).
 - Payments are still mocked: bookings are marked paid without charging. Connect Razorpay/Cashfree before taking real bookings.
