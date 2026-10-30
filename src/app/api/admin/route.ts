@@ -3,9 +3,7 @@ import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
 import { setVerification } from "@/lib/domain/creators";
 import { runPayouts } from "@/lib/domain/wallet";
 import { canTakeShoots, isCreatorBusy } from "@/lib/domain/dispatch";
-import { haversineKm, DomainError, assert } from "@/lib/domain/util";
-import { seedDb } from "@/lib/domain/seed";
-import { MIN } from "@/lib/domain/config";
+import { haversineKm, DomainError } from "@/lib/domain/util";
 
 const ACTIVE = ["searching", "needs_ops", "assigned", "shooting", "editing", "delivered", "revision_requested"];
 
@@ -18,7 +16,6 @@ export async function GET() {
         .sort((a, b) => Number(b.status === "needs_ops") - Number(a.status === "needs_ops") || a.scheduledAt - b.scheduledAt);
       return {
         ...opsOverview(db, now),
-        clockOffsetMin: Math.round(db.clockOffsetMs / MIN),
         dispatch: active.map((b) => ({
           ...bookingView(db, b, viewer),
           // Who ops could assign by hand, nearest first.
@@ -40,10 +37,8 @@ export async function GET() {
 }
 
 type Action =
-  | { action: "verify"; creatorId: string; decision: "verified" | "rejected" }
-  | { action: "advance_clock"; minutes: number }
-  | { action: "payout_run" }
-  | { action: "reset_demo" };
+  | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean }
+  | { action: "payout_run" };
 
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
@@ -51,20 +46,9 @@ export async function POST(req: Request) {
     ({ db }) => {
       switch (body.action) {
         case "verify":
-          return setVerification(db, body.creatorId, body.decision);
-        case "advance_clock": {
-          const m = Number(body.minutes);
-          assert(m > 0 && m <= 60 * 24 * 7, "Advance between 1 minute and 7 days");
-          db.clockOffsetMs += m * MIN;
-          return { clockOffsetMin: Math.round(db.clockOffsetMs / MIN) };
-        }
+          return setVerification(db, body.creatorId, body.decision, body.kycChecked === true);
         case "payout_run":
           return runPayouts(db);
-        case "reset_demo": {
-          const fresh = seedDb(Date.now());
-          Object.assign(db, fresh);
-          return { reset: true };
-        }
         default:
           throw new DomainError("Unknown action");
       }

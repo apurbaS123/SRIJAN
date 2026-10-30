@@ -1,6 +1,6 @@
 import { SERVICES, findZone } from "./config";
 import type { Creator, CreatorService, DB, ServiceKey, User } from "./types";
-import { assert, newId } from "./util";
+import { assert, cleanText, newId } from "./util";
 
 const DEFAULT_SERVICE: Record<ServiceKey, { title: string; description: string }> = {
   videography: { title: "1-day shoot", description: "On-location shoot and edit, delivered within 24 hours at Srijan’s fixed package price." },
@@ -27,48 +27,65 @@ export interface SignupInput {
   onDemand?: boolean;
   maxTravelKm?: number;
   upiId?: string;
-  aadhaarDone?: boolean;
-  panDone?: boolean;
 }
 
-export function signUpCreator(db: DB, input: SignupInput, now: number) {
-  assert(input.name?.trim().length >= 2, "Enter your name");
-  const phoneDigits = (input.phone ?? "").replace(/\D/g, "");
-  assert(phoneDigits.length >= 10, "Enter a 10-digit mobile number");
-  assert(!db.users.some((u) => (u.phone ?? "").replace(/\D/g, "").endsWith(phoneDigits.slice(-10))), "This number is already registered");
+const UPI_RE = /^[\w.\-]{2,64}@[a-zA-Z]{2,32}$/;
+
+function cleanList(v: unknown, maxItems: number, maxLen: number, label: string) {
+  const list = Array.isArray(v) ? v : [];
+  assert(list.length <= maxItems, `Pick at most ${maxItems} ${label}`);
+  return list.map((x) => cleanText(x, maxLen, label)).filter(Boolean);
+}
+
+/** `phone` must already be verified by the caller (sign-in code). */
+export function signUpCreator(db: DB, input: SignupInput, phone: string, now: number) {
+  const name = cleanText(input.name, 80, "your name");
+  assert(name.length >= 2, "Enter your name");
+  assert(!db.users.some((u) => (u.phone ?? "").replace(/\D/g, "").endsWith(phone)), "This number is already registered — sign in instead");
   const place = findZone(input.cityId, input.zoneId);
   assert(place, "Pick your city and area");
-  const keys = Array.from(new Set((input.services ?? []).map((s) => s.key))).filter((k) => SERVICES.some((s) => s.key === k));
+  const given = Array.isArray(input.services) ? input.services : [];
+  const keys = Array.from(new Set(given.map((s) => s?.key))).filter((k): k is ServiceKey => SERVICES.some((s) => s.key === k));
   assert(keys.length > 0, "Pick at least one service you offer");
   const services: CreatorService[] = keys.map((key) => {
-    const given = input.services.find((s) => s.key === key);
-    const price = key === "videography" || key === "influencer" ? null : given?.price ? Math.round(Number(given.price)) : null;
+    const raw = Number(given.find((s) => s?.key === key)?.price);
+    const price = key === "videography" || key === "influencer" || !(raw > 0) ? null : Math.round(raw);
+    if (price !== null) assert(price <= 1_000_000, "Service prices must be under ₹10,00,000");
     return { key, ...DEFAULT_SERVICE[key], price: key === "videography" ? 2500 : price };
   });
-  if (input.upiId) assert(/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(input.upiId.trim()), "UPI ID looks wrong, e.g. name@okaxis");
+  const upiId = cleanText(input.upiId, 100, "your UPI ID", true);
+  if (upiId) assert(UPI_RE.test(upiId), "UPI ID looks wrong, e.g. name@okaxis");
+  const instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
+  if (instagram) assert(/^@?[\w.]{1,30}$/.test(instagram), "Enter just your Instagram handle, e.g. @yourname");
+  const followers = Math.round(Number(input.followers) || 0);
+  assert(followers >= 0 && followers <= 1_000_000_000, "Follower count looks wrong");
+  const bio = cleanText(input.bio, 1000, "your bio", true);
+  const gear = cleanList(input.gear, 20, 60, "gear items");
+  const languages = cleanList(input.languages, 10, 30, "languages");
 
   const creatorId = newId("cr");
-  const user: User = { id: newId("u"), role: "creator", name: input.name.trim(), phone: input.phone.trim(), creatorId, createdAt: now };
+  const user: User = { id: newId("u"), role: "creator", name, phone: `+91 ${phone}`, creatorId, createdAt: now };
   const creator: Creator = {
     id: creatorId,
     userId: user.id,
     name: user.name,
-    bio: input.bio?.trim() || "",
+    bio,
     cityId: place.city.id,
     zoneId: place.zone.id,
     lat: place.zone.lat,
     lng: place.zone.lng,
-    languages: input.languages?.length ? input.languages : ["Assamese", "Hindi", "English"],
+    languages: languages.length ? languages : ["Assamese", "Hindi", "English"],
     services,
-    gear: input.gear ?? [],
-    instagram: input.instagram?.trim() || undefined,
-    followers: input.followers ? Math.round(Number(input.followers)) : undefined,
+    gear,
+    instagram: instagram || undefined,
+    followers: followers || undefined,
     onDemand: !!input.onDemand && keys.includes("videography"),
     available: false,
     maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : 10,
     verification: "pending",
-    kyc: { aadhaar: !!input.aadhaarDone, pan: !!input.panDone },
-    upiId: input.upiId?.trim() || undefined,
+    // Set by the Srijan team after they check the documents — never self-declared.
+    kyc: { aadhaar: false, pan: false },
+    upiId: upiId || undefined,
     ratingSum: 0,
     ratingCount: 0,
     jobsDone: 0,
@@ -105,21 +122,30 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
     c.maxTravelKm = Number(patch.maxTravelKm);
   }
   if (patch.upiId !== undefined) {
-    assert(/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(patch.upiId.trim()), "UPI ID looks wrong, e.g. name@okaxis");
-    c.upiId = patch.upiId.trim();
+    const upi = cleanText(patch.upiId, 100, "your UPI ID");
+    assert(UPI_RE.test(upi), "UPI ID looks wrong, e.g. name@okaxis");
+    c.upiId = upi;
   }
-  if (typeof patch.lat === "number" && typeof patch.lng === "number") {
-    c.lat = patch.lat;
-    c.lng = patch.lng;
+  if (patch.lat !== undefined || patch.lng !== undefined) {
+    const lat = Number(patch.lat);
+    const lng = Number(patch.lng);
+    assert(Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180, "Location looks wrong");
+    c.lat = lat;
+    c.lng = lng;
   }
   return c;
 }
 
-export function setVerification(db: DB, creatorId: string, decision: "verified" | "rejected") {
+/** Ops approves (after checking Aadhaar and PAN themselves) or rejects a new creator. */
+export function setVerification(db: DB, creatorId: string, decision: "verified" | "rejected", kycChecked = false) {
   const c = db.creators.find((x) => x.id === creatorId);
   assert(c, "Creator not found", 404);
   assert(c.verification === "pending", "Already reviewed");
-  if (decision === "verified") assert(c.kyc.aadhaar && c.kyc.pan, "Aadhaar and PAN checks must be complete before approval");
+  assert(decision === "verified" || decision === "rejected", "Unknown decision");
+  if (decision === "verified") {
+    assert(kycChecked, "Confirm you have checked their Aadhaar and PAN before approving");
+    c.kyc = { aadhaar: true, pan: true };
+  }
   c.verification = decision;
   return c;
 }

@@ -7,7 +7,6 @@ import type { Role } from "@/lib/domain/types";
 export interface SessionData {
   user: { id: string; role: Role; name: string; phone?: string; email?: string } | null;
   creator?: (CreatorPublic & { upiId?: string; kyc: { aadhaar: boolean; pan: boolean } }) | null;
-  demoUsers: { id: string; role: Role; name: string; note: string }[];
 }
 
 const Ctx = createContext<{ session?: SessionData; loading: boolean; refresh: () => Promise<void> }>({

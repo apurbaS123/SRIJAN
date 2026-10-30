@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useSession } from "./Session";
 import type { Role } from "@/lib/domain/types";
@@ -9,18 +10,22 @@ import { initials, inr } from "@/lib/client/format";
 /** Shows children only to the given roles; otherwise a sign-in prompt. */
 export function Guard({ role, children }: { role: Role | Role[]; children: ReactNode }) {
   const { session, loading } = useSession();
+  const pathname = usePathname();
   const roles = Array.isArray(role) ? role : [role];
   if (loading && !session) return <Loading />;
   if (!session?.user || !roles.includes(session.user.role)) {
-    const who = roles.map((r) => (r === "client" ? "a client" : r === "creator" ? "a creator" : "the ops team")).join(" or ");
+    const who = roles.map((r) => (r === "client" ? "a client or brand" : r === "creator" ? "a creator" : "the Srijan team")).join(" or ");
+    const next = `?next=${encodeURIComponent(pathname)}`;
     return (
       <div className="container narrow page">
         <div className="card stack">
           <h2>Sign in as {who}</h2>
-          <p className="muted">This page is for {who}. Pick a demo account to continue.</p>
+          <p className="muted">
+            {session?.user ? `You’re signed in as ${session.user.name}, whose account can’t open this page.` : `This page is for ${who}. Sign in with your WhatsApp number to continue.`}
+          </p>
           <div>
-            <Link href="/login" className="btn btn-primary">
-              Choose demo account
+            <Link href={`/login${next}`} className="btn btn-primary">
+              {session?.user ? "Switch account" : "Sign in"}
             </Link>
           </div>
         </div>

@@ -21,8 +21,6 @@ export interface User {
   phone?: string;
   /** Set when role === "creator". */
   creatorId?: string;
-  /** Short line shown on the demo sign-in screen. */
-  demoNote?: string;
   createdAt: number;
 }
 
@@ -136,6 +134,8 @@ export interface Booking {
   /** Percent cut from the creator's payout for late delivery. */
   latePenaltyPct?: number;
   refundedAt?: number;
+  /** Wrong start codes entered by the creator; check-in locks after a few. */
+  checkInFailures?: number;
   events: BookingEvent[];
 }
 
@@ -220,10 +220,18 @@ export interface Campaign {
   settledAt?: number;
 }
 
+/** A one-time sign-in code sent to a phone. Only a hash of the code is stored. */
+export interface OtpChallenge {
+  /** 10-digit Indian mobile number. */
+  phone: string;
+  codeHash: string;
+  sentAt: number;
+  expiresAt: number;
+  attempts: number;
+}
+
 export interface DB {
   version: 1;
-  /** Demo time travel: added to the real clock everywhere. */
-  clockOffsetMs: number;
   seq: number;
   users: User[];
   creators: Creator[];
@@ -231,4 +239,5 @@ export interface DB {
   offers: Offer[];
   ledger: LedgerEntry[];
   campaigns: Campaign[];
+  otps?: OtpChallenge[];
 }

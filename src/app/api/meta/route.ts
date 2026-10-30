@@ -28,6 +28,6 @@ export async function GET() {
       campaignCommission: CAMPAIGN_COMMISSION,
       payout: PAYOUT,
     },
-    // No serverNow here: it comes from data routes, which include the demo clock.
+    // No serverNow here: it comes from data routes.
   });
 }

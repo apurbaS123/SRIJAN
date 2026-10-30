@@ -14,7 +14,10 @@ import {
 } from "./config";
 import { cancelSearch, startDispatch, tickDispatch } from "./dispatch";
 import type { Booking, DB } from "./types";
-import { assert, haversineKm, istHour, newId, nextCode, parseIstLocal, randomOtp, rupees } from "./util";
+import { DomainError, assert, cleanText, cleanUrl, haversineKm, istHour, newId, nextCode, parseIstLocal, randomOtp, rupees } from "./util";
+
+const ASPECTS: Booking["aspect"][] = ["9:16", "16:9", "1:1"];
+const MAX_CHECKIN_FAILURES = 5;
 
 function log(b: Booking, at: number, text: string) {
   b.events.push({ at, text });
@@ -45,9 +48,14 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
   const q = quote(input.packageId);
   const place = findZone(input.cityId, input.zoneId);
   assert(place, "Pick a city and area");
-  assert(input.address?.trim().length >= 5, "Enter the full shoot address");
-  assert(input.brief?.trim().length >= 10, "Tell the creator what the video should show (at least 10 characters)");
-  const scheduledAt = parseIstLocal(input.scheduledAt);
+  const address = cleanText(input.address, 300, "the shoot address");
+  assert(address.length >= 5, "Enter the full shoot address");
+  const brief = cleanText(input.brief, 2000, "the brief");
+  assert(brief.length >= 10, "Tell the creator what the video should show (at least 10 characters)");
+  const referenceUrl = cleanUrl(input.referenceUrl, "the reference video", true);
+  const aspect = input.aspect ?? "9:16";
+  assert(ASPECTS.includes(aspect), "Pick a video format");
+  const scheduledAt = parseIstLocal(String(input.scheduledAt ?? ""));
   assert(!Number.isNaN(scheduledAt), "Pick a date and time");
   assert(scheduledAt >= now + DISPATCH.minNoticeMs - 60_000, "Shoots need at least 2 hours’ notice");
   const h = istHour(scheduledAt);
@@ -55,8 +63,9 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     h >= DISPATCH.firstStartHour && h <= DISPATCH.lastStartHour,
     `Shoots can start between ${DISPATCH.firstStartHour}:00 and ${DISPATCH.lastStartHour}:00`,
   );
+  assert(scheduledAt <= now + 90 * 24 * 60 * 60_000, "Shoots can be booked up to 90 days ahead");
   if (input.requestedCreatorId) {
-    assert(db.creators.some((c) => c.id === input.requestedCreatorId), "Creator not found");
+    assert(db.creators.some((c) => c.id === input.requestedCreatorId && c.verification === "verified"), "Creator not found");
   }
 
   const b: Booking = {
@@ -67,15 +76,15 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     price: q.price,
     gst: q.gst,
     total: q.total,
-    address: input.address.trim(),
+    address,
     cityId: place.city.id,
     zoneId: place.zone.id,
     lat: place.zone.lat,
     lng: place.zone.lng,
     scheduledAt,
-    brief: input.brief.trim(),
-    aspect: input.aspect ?? "9:16",
-    referenceUrl: input.referenceUrl?.trim() || undefined,
+    brief,
+    aspect,
+    referenceUrl,
     requestedCreatorId: input.requestedCreatorId || undefined,
     status: "searching",
     otp: randomOtp(),
@@ -102,7 +111,13 @@ function getForCreator(db: DB, bookingId: string, creatorId: string) {
 export function checkIn(db: DB, bookingId: string, creatorId: string, otp: string, at: { lat: number; lng: number }, now: number) {
   const b = getForCreator(db, bookingId, creatorId);
   assert(b.status === "assigned", "This job is not waiting for check-in");
-  assert(String(otp).trim() === b.otp, "That start code is wrong — ask the client for the code shown in their app");
+  assert((b.checkInFailures ?? 0) < MAX_CHECKIN_FAILURES, "Check-in is locked after too many wrong codes — contact the Srijan team", 429);
+  if (String(otp ?? "").trim() !== b.otp) {
+    b.checkInFailures = (b.checkInFailures ?? 0) + 1;
+    if (b.checkInFailures === MAX_CHECKIN_FAILURES) log(b, now, "Check-in locked after too many wrong start codes");
+    throw new DomainError("That start code is wrong — ask the client for the code shown in their app", 400, true);
+  }
+  assert(Number.isFinite(at.lat) && Number.isFinite(at.lng), "Turn on location to check in");
   const distKm = haversineKm(at, b);
   assert(
     distKm <= CHECKIN_RADIUS_KM,
@@ -137,9 +152,9 @@ export function latePenaltyPct(dueAt: number, deliveredAt: number) {
 export function deliver(db: DB, bookingId: string, creatorId: string, videoUrl: string, now: number) {
   const b = getForCreator(db, bookingId, creatorId);
   assert(b.status === "editing" || b.status === "revision_requested", "Nothing to deliver right now");
-  assert(/^https?:\/\/\S+$/.test(videoUrl?.trim() ?? ""), "Paste a link to the video (Google Drive, YouTube unlisted, etc.)");
+  const url = cleanUrl(videoUrl, "the video (Google Drive, YouTube unlisted, etc.)")!;
   const revision = b.status === "revision_requested";
-  b.videoUrl = videoUrl.trim();
+  b.videoUrl = url;
   b.deliveredAt = now;
   b.status = "delivered";
   if (!b.firstDeliveredAt) {
@@ -185,7 +200,7 @@ export function approve(db: DB, bookingId: string, clientId: string, rating: num
   b.status = "completed";
   b.approvedAt = now;
   b.rating = r;
-  b.review = review?.trim() || undefined;
+  b.review = cleanText(review, 1000, "your review", true) || undefined;
   const c = db.creators.find((x) => x.id === b.creatorId);
   if (c) {
     c.ratingSum += r;
@@ -201,9 +216,10 @@ export function requestRevision(db: DB, bookingId: string, clientId: string, not
   assert(b && b.clientId === clientId, "Booking not found", 404);
   assert(b.status === "delivered", "There is no delivery to review yet");
   assert(b.revisionsUsed < FREE_REVISIONS, "You’ve used your free revision");
-  assert(note?.trim().length >= 5, "Tell the creator what to change");
+  const text = cleanText(note, 1000, "what to change");
+  assert(text.length >= 5, "Tell the creator what to change");
   b.revisionsUsed += 1;
-  b.revisionNote = note.trim();
+  b.revisionNote = text;
   b.status = "revision_requested";
   log(b, now, `Revision requested: “${b.revisionNote}”`);
   return b;

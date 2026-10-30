@@ -26,8 +26,8 @@ export default function JoinPage() {
   const [onDemand, setOnDemand] = useState(true);
   const [maxTravelKm, setMaxTravelKm] = useState(10);
   const [upiId, setUpiId] = useState("");
-  const [aadhaarDone, setAadhaar] = useState(false);
-  const [panDone, setPan] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
 
   if (!meta) return <Loading />;
   const city = meta.cities.find((c) => c.id === cityId)!;
@@ -39,11 +39,16 @@ export default function JoinPage() {
       return next;
     });
 
+  async function sendCode() {
+    if (await run(() => call("/api/session/otp", { phone }))) setCodeSent(true);
+  }
+
   async function submit() {
     const r = await run(() =>
       call("/api/creators", {
         name,
         phone,
+        code,
         cityId,
         zoneId,
         bio,
@@ -54,8 +59,6 @@ export default function JoinPage() {
         onDemand,
         maxTravelKm,
         upiId,
-        aadhaarDone,
-        panDone,
       }),
     );
     if (r) {
@@ -77,7 +80,16 @@ export default function JoinPage() {
         </div>
         <div className="field">
           <label htmlFor="phone">Mobile number</label>
-          <input id="phone" className="input" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+          <div className="row">
+            <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+            <button className="btn btn-sm" disabled={busy || !phone} onClick={sendCode}>
+              {codeSent ? "Resend code" : "Send code"}
+            </button>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="code">Code sent to your WhatsApp</label>
+          <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
         </div>
         <div className="row">
           <div className="field grow">
@@ -143,7 +155,7 @@ export default function JoinPage() {
             <span className="label" style={{ color: "#c9cbd3" }}>How far will you travel?</span>
             <div className="chips">
               {[5, 10, 15, 20, 25].map((k) => (
-                <button key={k} className="chip" style={k === maxTravelKm ? { background: "var(--orange)", borderColor: "var(--orange)" } : undefined} onClick={() => setMaxTravelKm(k)}>
+                <button key={k} className="chip" style={k === maxTravelKm ? { background: "var(--orange)", borderColor: "var(--orange)", color: "#fff" } : undefined} onClick={() => setMaxTravelKm(k)}>
                   {k} km
                 </button>
               ))}
@@ -177,15 +189,7 @@ export default function JoinPage() {
 
       <section className="card stack">
         <h2>Verify & get paid</h2>
-        <p className="small muted">In the real app these open DigiLocker and PAN verification. Here they’re simulated.</p>
-        <label className="check">
-          <input type="checkbox" checked={aadhaarDone} onChange={(e) => setAadhaar(e.target.checked)} />
-          Aadhaar e-KYC completed
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={panDone} onChange={(e) => setPan(e.target.checked)} />
-          PAN verified
-        </label>
+        <p className="small muted">After you submit, the Srijan team will contact you to check your Aadhaar and PAN before your profile goes live.</p>
         <div className="field">
           <label htmlFor="upi">UPI ID for payouts</label>
           <input id="upi" className="input" value={upiId} onChange={(e) => setUpiId(e.target.value)} placeholder="name@okaxis" />
@@ -193,10 +197,10 @@ export default function JoinPage() {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={submit}>
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code} onClick={submit}>
         Submit for verification
       </button>
-      <p className="tiny muted">The Srijan team reviews your profile before you can go online. Sign in as Srijan Ops to approve it in the demo.</p>
+      <p className="tiny muted">The Srijan team reviews your profile before you can go online.</p>
     </div>
   );
 }

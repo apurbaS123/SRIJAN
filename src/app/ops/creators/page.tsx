@@ -14,7 +14,9 @@ function Creators() {
   if (!data) return null;
 
   async function decide(creatorId: string, decision: "verified" | "rejected") {
-    const ok = await act.run(() => call("/api/admin", { action: "verify", creatorId, decision }));
+    const kycChecked = decision === "verified" && confirm("Have you checked this creator’s Aadhaar and PAN documents?");
+    if (decision === "verified" && !kycChecked) return;
+    const ok = await act.run(() => call("/api/admin", { action: "verify", creatorId, decision, kycChecked }));
     if (ok) void reload();
   }
 

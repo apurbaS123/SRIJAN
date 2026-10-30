@@ -42,11 +42,11 @@ export function Header() {
     router.push("/");
   }
 
+  // The home page draws its own nav on the glass hero.
+  if (pathname === "/") return null;
+
   return (
     <>
-      <div className="demo-banner">
-        <b>Prototype</b> · payments, KYC and notifications are simulated · <Link href="/login" style={{ color: "#fff" }}>switch demo user</Link>
-      </div>
       <header className="header">
         <div className="container header-inner">
           <Link href={role === "creator" ? "/creator" : role === "ops" ? "/ops" : "/"} className="logo">

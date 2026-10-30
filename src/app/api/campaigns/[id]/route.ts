@@ -38,7 +38,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         default:
           throw new DomainError("Unknown action");
       }
-      const c = db.campaigns.find((x) => x.id === id)!;
+      const c = db.campaigns.find((x) => x.id === id);
+      assert(c, "Campaign not found", 404);
       return campaignView(db, c, viewer);
     },
     { role: ["creator", "ops"] },
