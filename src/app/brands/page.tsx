@@ -46,7 +46,7 @@ export default function BrandsPage() {
   const set =<K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function sendCode() {
-    if (await run(() => call("/api/session/otp", { phone: form.phone }))) setOtpSent(true);
+    if (await run(() => call("/api/session/otp", { email: form.email }))) setOtpSent(true);
   }
 
   async function submit() {
@@ -110,31 +110,31 @@ export default function BrandsPage() {
         <div className="row">
           <div className="field grow">
             <label htmlFor="email">Work email</label>
-            <input id="email" className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
-          </div>
-          <div className="field grow">
-            <label htmlFor="phone">WhatsApp number</label>
             {signedIn ? (
-              <input id="phone" className="input" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+              <input id="email" className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
             ) : (
               <div className="row">
-                <input id="phone" className="input grow" type="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => { set("phone", e.target.value); setOtpSent(false); setOtp(""); }} />
-                <button className="btn btn-sm" disabled={busy || !form.phone} onClick={sendCode}>
+                <input id="email" className="input grow" type="email" autoComplete="email" placeholder="you@brand.com" value={form.email} onChange={(e) => { set("email", e.target.value); setOtpSent(false); setOtp(""); }} />
+                <button className="btn btn-sm" disabled={busy || !form.email} onClick={sendCode}>
                   {otpSent ? "Resend code" : "Send code"}
                 </button>
               </div>
             )}
           </div>
+          <div className="field grow">
+            <label htmlFor="phone">Mobile number</label>
+            <input id="phone" className="input" type="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          </div>
         </div>
         {!signedIn && otpSent && (
           <div className="field">
-            <label htmlFor="otp">Code sent to your WhatsApp</label>
+            <label htmlFor="otp">Code sent to your email</label>
             <input id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} />
           </div>
         )}
         {!signedIn && (
           <p className="small muted">
-            We verify your number on WhatsApp and create your brand account with it. Already have one? <Link href="/login?next=/brands">Sign in</Link>.
+            We email you a code to verify your address and create your brand account with it. Already have one? <Link href="/login?next=/brands">Sign in</Link>.
           </p>
         )}
       </section>

@@ -13,6 +13,8 @@ export type ServiceKey =
   | "voice_over"
   | "social_media";
 
+export type SocialPlatform = "instagram" | "youtube" | "facebook" | "other";
+
 export interface User {
   id: string;
   role: Role;
@@ -48,6 +50,8 @@ export interface Creator {
   services: CreatorService[];
   gear: string[];
   instagram?: string;
+  /** Main social media account, linked on the public profile. */
+  social?: { platform: SocialPlatform; url: string };
   followers?: number;
   /** Percent, e.g. 6.1 */
   engagementRate?: number;
@@ -222,8 +226,8 @@ export interface Campaign {
 
 /** A one-time sign-in code sent to a phone. Only a hash of the code is stored. */
 export interface OtpChallenge {
-  /** 10-digit Indian mobile number. */
-  phone: string;
+  /** Lower-cased email address the code was sent to. */
+  email: string;
   codeHash: string;
   sentAt: number;
   expiresAt: number;

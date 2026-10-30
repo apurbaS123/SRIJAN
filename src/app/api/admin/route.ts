@@ -28,7 +28,12 @@ export async function GET() {
                   .slice(0, 8)
               : [],
         })),
-        pendingCreators: db.creators.filter((c) => c.verification === "pending").map((c) => ({ ...creatorPublic(c), kyc: c.kyc, phone: db.users.find((u) => u.id === c.userId)?.phone })),
+        pendingCreators: db.creators
+          .filter((c) => c.verification === "pending")
+          .map((c) => {
+            const u = db.users.find((x) => x.id === c.userId);
+            return { ...creatorPublic(c), kyc: c.kyc, phone: u?.phone, email: u?.email };
+          }),
         creators: db.creators.filter((c) => c.verification === "verified").map(creatorPublic),
       };
     },

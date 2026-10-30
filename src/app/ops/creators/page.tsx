@@ -1,10 +1,10 @@
 "use client";
 import { call, useAction, useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
-import { Avatar, ErrorNote, Guard, Stars } from "@/components/ui";
+import { Avatar, ErrorNote, Guard, SocialLink, Stars } from "@/components/ui";
 
 interface AdminData {
-  pendingCreators: (CreatorPublic & { kyc: { aadhaar: boolean; pan: boolean }; phone?: string })[];
+  pendingCreators: (CreatorPublic & { kyc: { aadhaar: boolean; pan: boolean }; phone?: string; email?: string })[];
   creators: CreatorPublic[];
 }
 
@@ -34,13 +34,14 @@ function Creators() {
               <div className="grow stack" style={{ gap: 2 }}>
                 <b>{c.name}</b>
                 <span className="small muted">
-                  {c.area} · {c.phone}
+                  {c.area} · {c.phone}{c.email ? ` · ${c.email}` : ""}
                 </span>
               </div>
               <span className={`badge ${c.kyc.aadhaar ? "badge-green" : "badge-red"}`}>Aadhaar {c.kyc.aadhaar ? "✓" : "missing"}</span>
               <span className={`badge ${c.kyc.pan ? "badge-green" : "badge-red"}`}>PAN {c.kyc.pan ? "✓" : "missing"}</span>
             </div>
             {c.bio && <p className="small">{c.bio}</p>}
+            {c.social ? <SocialLink social={c.social} /> : <span className="small muted">No social media account linked</span>}
             <div className="chips">
               {c.services.map((s) => (
                 <span key={s.key} className="badge">

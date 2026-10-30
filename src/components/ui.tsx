@@ -6,6 +6,7 @@ import { useSession } from "./Session";
 import type { Role } from "@/lib/domain/types";
 import type { CreatorPublic } from "@/lib/domain/views";
 import { initials, inr } from "@/lib/client/format";
+import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 
 /** Shows children only to the given roles; otherwise a sign-in prompt. */
 export function Guard({ role, children }: { role: Role | Role[]; children: ReactNode }) {
@@ -22,7 +23,7 @@ export function Guard({ role, children }: { role: Role | Role[]; children: React
         <div className="card stack">
           <h2>Sign in as {who}</h2>
           <p className="muted">
-            {session?.user ? `You’re signed in as ${session.user.name}, whose account can’t open this page.` : `This page is for ${who}. Sign in with your WhatsApp number to continue.`}
+            {session?.user ? `You’re signed in as ${session.user.name}, whose account can’t open this page.` : `This page is for ${who}. Sign in with your email to continue.`}
           </p>
           <div>
             <Link href={`/login${next}`} className="btn btn-primary">
@@ -51,6 +52,17 @@ export function SessionError() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The creator's main social media account, opened in a new tab. */
+export function SocialLink({ social }: { social?: CreatorPublic["social"] }) {
+  if (!social) return null;
+  const label = SOCIAL_PLATFORMS.find((p) => p.key === social.platform)?.label ?? "Profile";
+  return (
+    <a href={social.url} target="_blank" rel="noopener noreferrer nofollow" className="small strong">
+      {label} ↗
+    </a>
   );
 }
 

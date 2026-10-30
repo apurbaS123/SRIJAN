@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { api, readJson, setSession } from "@/lib/server/api";
-import { normalizePhone } from "@/lib/server/env";
+import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
 import { campaignAlertLines, sendWhatsAppAlert } from "@/lib/server/whatsapp";
 import { limitByIp } from "@/lib/server/rateLimit";
@@ -28,7 +28,7 @@ export async function GET() {
 
 /**
  * Brand books a strategy call. Signed-in accounts just submit; everyone else verifies their
- * WhatsApp number with { code } from /api/session/otp, and is signed in to a client account
+ * work email with { code } from /api/session/otp, and is signed in to a client account
  * (created on first use) so they can follow the request.
  */
 export async function POST(req: Request) {
@@ -41,13 +41,14 @@ export async function POST(req: Request) {
   const res = await api(({ db, now, user }) => {
     let owner = user;
     if (!owner) {
-      const phone = normalizePhone(input.phone);
-      assert(phone, "Enter a valid 10-digit Indian mobile number");
-      verifyOtp(db, phone, input.code, now, false);
-      owner = db.users.find((u) => normalizePhone(u.phone) === phone);
+      const email = normalizeEmail(input.email);
+      assert(email, "Enter a valid work email");
+      verifyOtp(db, email, input.code, now, false);
+      owner = db.users.find((u) => normalizeEmail(u.email) === email);
       if (!owner) {
         const name = cleanText(input.contactName, 80, "your name");
-        const email = typeof input.email === "string" && input.email.trim() ? input.email.trim().slice(0, 200) : undefined;
+        const phone = normalizePhone(input.phone);
+        assert(phone, "Enter a valid 10-digit Indian mobile number");
         owner = { id: newId("u"), role: "client", name, email, phone: `+91 ${phone}`, createdAt: now } satisfies User;
         db.users.push(owner);
       }
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
     }
     const c = createCampaign(db, input, owner.role === "client" ? owner.id : undefined, now);
     // Use the code up only once the request is valid, so a typo elsewhere doesn't cost a new code.
-    if (!user) verifyOtp(db, normalizePhone(input.phone), input.code, now);
+    if (!user) verifyOtp(db, normalizeEmail(input.email), input.code, now);
     alert = campaignAlertLines(c);
     return { id: c.id, code: c.code, callAt: c.callAt };
   });
