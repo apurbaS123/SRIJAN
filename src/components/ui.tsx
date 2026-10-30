@@ -9,9 +9,10 @@ import { initials, inr } from "@/lib/client/format";
 
 /** Shows children only to the given roles; otherwise a sign-in prompt. */
 export function Guard({ role, children }: { role: Role | Role[]; children: ReactNode }) {
-  const { session, loading } = useSession();
+  const { session, loading, error } = useSession();
   const pathname = usePathname();
   const roles = Array.isArray(role) ? role : [role];
+  if (!session && error) return <SessionError />;
   if (loading && !session) return <Loading />;
   if (!session?.user || !roles.includes(session.user.role)) {
     const who = roles.map((r) => (r === "client" ? "a client or brand" : r === "creator" ? "a creator" : "the Srijan team")).join(" or ");
@@ -33,6 +34,24 @@ export function Guard({ role, children }: { role: Role | Role[]; children: React
     );
   }
   return <>{children}</>;
+}
+
+/** Shown when the server can't say who is signed in, instead of loading forever. */
+export function SessionError() {
+  const { error, refresh } = useSession();
+  return (
+    <div className="container narrow page">
+      <div className="card stack">
+        <h2>Can’t reach Srijan right now</h2>
+        <p className="muted">{error}</p>
+        <div>
+          <button className="btn btn-primary" onClick={() => void refresh()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function Loading({ label = "Loading…" }: { label?: string }) {

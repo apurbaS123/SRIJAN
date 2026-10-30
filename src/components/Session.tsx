@@ -9,14 +9,15 @@ export interface SessionData {
   creator?: (CreatorPublic & { upiId?: string; kyc: { aadhaar: boolean; pan: boolean } }) | null;
 }
 
-const Ctx = createContext<{ session?: SessionData; loading: boolean; refresh: () => Promise<void> }>({
+const Ctx = createContext<{ session?: SessionData; loading: boolean; error: string | null; refresh: () => Promise<void> }>({
   loading: true,
+  error: null,
   refresh: async () => {},
 });
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { data, loading, reload } = useData<SessionData>("/api/session");
-  return <Ctx.Provider value={{ session: data, loading, refresh: reload }}>{children}</Ctx.Provider>;
+  const { data, loading, error, reload } = useData<SessionData>("/api/session");
+  return <Ctx.Provider value={{ session: data, loading, error: error?.message ?? null, refresh: reload }}>{children}</Ctx.Provider>;
 }
 
 export const useSession = () => useContext(Ctx);

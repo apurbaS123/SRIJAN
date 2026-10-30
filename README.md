@@ -71,7 +71,7 @@ src/lib/domain/      Business logic — plain TypeScript, no framework, fully te
   wallet.ts          Creator balances and withdrawals
   creators.ts        Sign-up, availability, verification
   views.ts           What each role is allowed to see
-src/lib/server/      Storage (JSON file) and the API wrapper
+src/lib/server/      Storage (Postgres or JSON file) and the API wrapper
 src/app/api/         REST API used by the screens (and later the mobile app)
 src/app/             Screens: client, brand, creator (/creator) and ops (/ops)
 tests/               Unit tests
@@ -84,7 +84,7 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 
 | Prototype | Replace with |
 | --- | --- |
-| JSON file storage | PostgreSQL — the arrays in `types.ts` map 1:1 to tables; swap `loadDb/saveDb` in `src/lib/server/store.ts` |
+| Whole marketplace in one Postgres row | Real tables (the arrays in `types.ts` map 1:1) once traffic grows, so requests stop waiting on one lock |
 | Simulated payment | Razorpay or Cashfree with split settlements / escrow, so client money is held until approval |
 | Creator polling every 2 s | Push notifications (FCM) **plus SMS or auto-call fallback after 60 s**, so creators don't miss alerts |
 | Zone centre points | Google Maps / Ola Maps geocoding and live location |
@@ -119,11 +119,12 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `SESSION_SECRET` | **Required.** Random string, 32+ characters, used to sign login cookies. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Changing it signs everyone out. |
 | `WHATSAPP_OTP_TEMPLATE` | **Required for sign-in.** Name of an approved WhatsApp *Authentication* template (copy-code button). Sign-in codes are sent with it. |
 | `SRIJAN_OPS_PHONES` | Comma-separated mobile numbers of the Srijan team. Only these numbers get ops (admin) access. |
-| `SRIJAN_DATA_FILE` | Where the JSON database is stored (default `.data/db.json`). Must be on a persistent disk. |
+| `POSTGRES_URL` or `DATABASE_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its table (`srijan.state`) on first use. |
+| `SRIJAN_DATA_FILE` | Only without Postgres: where the JSON file is stored (default `.data/db.json`). Must be on a persistent disk. |
 
 Notes:
 
 - The app starts with an empty database. Sign in once with a number from `SRIJAN_OPS_PHONES` to get the first ops account.
 - Rate limits are kept in memory, per server process.
-- The JSON-file database needs a single long-running server with a persistent disk (a VPS, Railway, Render with a disk). It will lose data on serverless hosts such as Vercel. Move to Postgres before scaling out.
+- With `POSTGRES_URL` set (e.g. Vercel + Supabase), data lives in Postgres and each request locks it while it runs, so it is safe on serverless hosts. Without it, the app uses the JSON file, which needs a single long-running server with a persistent disk and will fail on Vercel.
 - Payments are still mocked: bookings are marked paid without charging. Connect Razorpay/Cashfree before taking real bookings.
