@@ -104,23 +104,3 @@ export async function sendWhatsAppAlert(lines: string[]) {
 
   await Promise.all(recipients.map((to) => send(to, content)));
 }
-
-/**
- * Sends a sign-in code using the approved Authentication template in WHATSAPP_OTP_TEMPLATE
- * (body "{{1}} is your verification code" with a copy-code button). Returns false if not sent.
- */
-export async function sendWhatsAppOtp(phone10: string, code: string) {
-  const template = process.env.WHATSAPP_OTP_TEMPLATE;
-  if (!whatsAppConfig() || !template) return false;
-  return send(`91${phone10}`, {
-    type: "template",
-    template: {
-      name: template,
-      language: { code: process.env.WHATSAPP_OTP_TEMPLATE_LANG || process.env.WHATSAPP_TEMPLATE_LANG || "en" },
-      components: [
-        { type: "body", parameters: [{ type: "text", text: code }] },
-        { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
-      ],
-    },
-  });
-}

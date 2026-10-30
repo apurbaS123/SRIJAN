@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { api, readJson, setSession } from "@/lib/server/api";
-import { isOpsPhone, normalizePhone } from "@/lib/server/env";
+import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorPublic } from "@/lib/domain/views";
@@ -20,31 +20,37 @@ export async function GET() {
 }
 
 /**
- * Sign in with { phone, code } from /api/session/otp. The role comes from the account:
- * numbers in SRIJAN_OPS_PHONES are the Srijan team (ops), creator accounts stay creators,
- * everyone else is a client (people booking shoots and brands). New numbers also send { name }.
+ * Sign in with { email, code } from /api/session/otp. The role comes from the account:
+ * addresses in SRIJAN_OPS_EMAILS are the Srijan team (ops), creator accounts stay creators,
+ * everyone else is a client (people booking shoots and brands). New addresses also send
+ * { name, phone }; the phone is a contact number for shoot day, not used to sign in.
  */
 export async function POST(req: Request) {
   const limited = await limitByIp("signin", 20, 10 * 60_000);
   if (limited) return limited;
-  const body = await readJson<{ phone?: string; code?: string; name?: string }>(req);
+  const body = await readJson<{ email?: string; code?: string; name?: string; phone?: string }>(req);
   let signedIn: string | null = null;
   const res = await api(({ db, now }) => {
-    const phone = normalizePhone(body.phone);
-    assert(phone, "Enter a valid 10-digit Indian mobile number");
-    let user = db.users.find((u) => normalizePhone(u.phone) === phone);
+    const email = normalizeEmail(body.email);
+    assert(email, "Enter a valid email address");
+    let user = db.users.find((u) => normalizeEmail(u.email) === email);
     if (!user && !body.name?.trim()) {
-      // Check the code without using it up, then ask for a name.
-      verifyOtp(db, phone, body.code, now, false);
+      // Check the code without using it up, then ask for a name and phone.
+      verifyOtp(db, email, body.code, now, false);
       return { needsName: true };
     }
-    verifyOtp(db, phone, body.code, now);
     if (!user) {
+      // Check the details before using up the code, so a typo doesn't cost a new one.
       const name = cleanText(body.name, 80, "your name");
-      user = { id: newId("u"), role: "client", name, phone: `+91 ${phone}`, createdAt: now } satisfies User;
+      const phone = normalizePhone(body.phone);
+      assert(phone, "Enter a valid 10-digit Indian mobile number");
+      verifyOtp(db, email, body.code, now);
+      user = { id: newId("u"), role: "client", name, email, phone: `+91 ${phone}`, createdAt: now } satisfies User;
       db.users.push(user);
+    } else {
+      verifyOtp(db, email, body.code, now);
     }
-    syncOpsRole(user, phone);
+    syncOpsRole(user, email);
     signedIn = user.id;
     return { id: user.id, role: user.role };
   });
@@ -56,8 +62,8 @@ export async function DELETE() {
   return setSession(NextResponse.json({ ok: true, data: { signedOut: true } }), null);
 }
 
-/** SRIJAN_OPS_PHONES decides who is on the Srijan team. Creator accounts keep their role. */
-function syncOpsRole(user: User, phone: string) {
+/** SRIJAN_OPS_EMAILS decides who is on the Srijan team. Creator accounts keep their role. */
+function syncOpsRole(user: User, email: string) {
   if (user.role === "creator") return;
-  user.role = isOpsPhone(phone) ? "ops" : "client";
+  user.role = isOpsEmail(email) ? "ops" : "client";
 }

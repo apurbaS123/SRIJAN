@@ -3,7 +3,7 @@ import { api, readJson, setSession } from "@/lib/server/api";
 import { creatorPublic } from "@/lib/domain/views";
 import { signUpCreator, type SignupInput } from "@/lib/domain/creators";
 import { assert } from "@/lib/domain/util";
-import { normalizePhone } from "@/lib/server/env";
+import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
 import { limitByIp } from "@/lib/server/rateLimit";
 import type { ServiceKey } from "@/lib/domain/types";
@@ -27,17 +27,21 @@ export async function GET(req: NextRequest) {
   );
 }
 
-/** Creator sign-up with a verified phone ({ code } from /api/session/otp). Signs the new creator in. */
+/** Creator sign-up with a verified email ({ code } from /api/session/otp). Signs the new creator in. */
 export async function POST(req: Request) {
   const limited = await limitByIp("signup", 10, 60 * 60_000);
   if (limited) return limited;
   const input = await readJson<SignupInput & { code?: string }>(req);
   let newUserId: string | null = null;
   const res = await api(({ db, now }) => {
+    const email = normalizeEmail(input.email);
+    assert(email, "Enter a valid email address");
     const phone = normalizePhone(input.phone);
     assert(phone, "Enter a valid 10-digit Indian mobile number");
-    verifyOtp(db, phone, input.code, now);
-    const { user, creator } = signUpCreator(db, input, phone, now);
+    // Check the code first without using it up, then again once the profile is valid.
+    verifyOtp(db, email, input.code, now, false);
+    const { user, creator } = signUpCreator(db, input, { email, phone }, now);
+    verifyOtp(db, email, input.code, now);
     newUserId = user.id;
     return { userId: user.id, creatorId: creator.id };
   });

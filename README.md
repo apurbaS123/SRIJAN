@@ -18,28 +18,28 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (80 checks). Runs its own server on a free port with a throwaway data file and WhatsApp off, so it never touches your data or sends messages |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (81 checks). Runs its own server on a free port with a throwaway data file and email and WhatsApp off, so it never touches your data or sends messages |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
 Data is stored in `.data/db.json`. Delete it any time to start fresh.
 
 ## Sign-in and roles
 
-Everyone signs in at **/login** with a 6-digit code sent to their WhatsApp. The account decides what they can open:
+Everyone signs in at **/login** with a 6-digit code sent to their email (through [Brevo](https://www.brevo.com)). New accounts also give a mobile number, used only so clients, creators and the team can call each other. The account decides what they can open:
 
 | Account | How it's created | Lands on |
 | --- | --- | --- |
-| Srijan team (ops) | Any number listed in `SRIJAN_OPS_PHONES`. Checked on every request, so removing a number takes away access at once. | `/ops` |
-| Creator | Signing up at **/join** (verified on WhatsApp) | `/creator` |
-| Client / brand | Signing in with a new number at **/login**, or booking a strategy call at **/brands** (verified on WhatsApp) | `/bookings` |
+| Srijan team (ops) | Any address listed in `SRIJAN_OPS_EMAILS`. Checked on every request, so removing an address takes away access at once. | `/ops` |
+| Creator | Signing up at **/join** (email verified with a code) | `/creator` |
+| Client / brand | Signing in with a new email at **/login**, or booking a strategy call at **/brands** (email verified with a code) | `/bookings` |
 
-Without WhatsApp set up, `npm run dev` prints each sign-in code in the server log. In production, sign-in needs the WhatsApp settings below.
+Without Brevo set up, `npm run dev` prints each sign-in code in the server log. In production, sign-in needs the email settings below.
 
 ## Try the full flow
 
-1. Put your own number in `SRIJAN_OPS_PHONES` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
-2. In a private window, sign up a creator at **/join** with a second number, then approve them as ops under **Creators**.
-3. In another window, sign in at **/login** with a third number (a client account is created) and book a shoot. The creator gets the job alert within 2 seconds with a 5-minute countdown.
+1. Put your own email in `SRIJAN_OPS_EMAILS` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
+2. In a private window, sign up a creator at **/join** with a second email, then approve them as ops under **Creators**.
+3. In another window, sign in at **/login** with a third email (a client account is created) and book a shoot. The creator gets the job alert within 2 seconds with a 5-minute countdown.
 4. As the creator: accept, open the job, type the client's 4-digit start code, check in with GPS at the address, finish the shoot, paste a video link and deliver.
 5. As the client: approve (or ask for the one free revision). The creator's wallet gets 80%.
 
@@ -112,19 +112,21 @@ Without `WHATSAPP_TEMPLATE`, alerts go as plain text, which WhatsApp only delive
 
 ## Production setup
 
-Set these on your host (Vercel → Settings → Environment Variables, or the server's environment), in addition to the WhatsApp alert settings above:
+Set these on your host (Vercel → Settings → Environment Variables, or the server's environment), in addition to the optional WhatsApp alert settings above:
 
 | Variable | What it is |
 | --- | --- |
 | `SESSION_SECRET` | **Required.** Random string, 32+ characters, used to sign login cookies. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Changing it signs everyone out. |
-| `WHATSAPP_OTP_TEMPLATE` | **Required for sign-in.** Name of an approved WhatsApp *Authentication* template (copy-code button). Sign-in codes are sent with it. |
-| `SRIJAN_OPS_PHONES` | Comma-separated mobile numbers of the Srijan team. Only these numbers get ops (admin) access. |
+| `BREVO_API_KEY` | **Required for sign-in.** A Brevo API key (Brevo → SMTP & API → API Keys). Sign-in codes are emailed with it. |
+| `EMAIL_FROM` | **Required for sign-in.** The address codes come from. It must be a sender verified in Brevo (Senders, Domains & Dedicated IPs); verifying your domain keeps codes out of spam. |
+| `EMAIL_FROM_NAME` | Optional sender name shown in the inbox (default `Srijan`). |
+| `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access. |
 | `POSTGRES_URL` or `DATABASE_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its table (`srijan.state`) on first use. |
 | `SRIJAN_DATA_FILE` | Only without Postgres: where the JSON file is stored (default `.data/db.json`). Must be on a persistent disk. |
 
 Notes:
 
-- The app starts with an empty database. Sign in once with a number from `SRIJAN_OPS_PHONES` to get the first ops account.
+- The app starts with an empty database. Sign in once with an address from `SRIJAN_OPS_EMAILS` to get the first ops account.
 - Rate limits are kept in memory, per server process.
 - With `POSTGRES_URL` set (e.g. Vercel + Supabase), data lives in Postgres and each request locks it while it runs, so it is safe on serverless hosts. Without it, the app uses the JSON file, which needs a single long-running server with a persistent disk and will fail on Vercel.
 - Payments are still mocked: bookings are marked paid without charging. Connect Razorpay/Cashfree before taking real bookings.

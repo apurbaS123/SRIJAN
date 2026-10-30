@@ -28,6 +28,7 @@ export function creatorPublic(c: Creator) {
     services: c.services,
     gear: c.gear,
     instagram: c.instagram,
+    social: c.social,
     followers: c.followers,
     engagementRate: c.engagementRate,
     onDemand: c.onDemand,

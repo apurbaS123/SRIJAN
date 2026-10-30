@@ -5,7 +5,8 @@ import { call, useAction } from "@/lib/client/api";
 import { ErrorNote, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 import { useSession } from "@/components/Session";
-import type { ServiceKey } from "@/lib/domain/types";
+import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
+import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
 
 const GEAR = ["Mirrorless / DSLR", "4K phone", "Gimbal", "Wireless mic", "Lights", "Drone"];
 
@@ -15,13 +16,15 @@ export default function JoinPage() {
   const { refresh } = useSession();
   const { busy, error, run } = useAction();
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [cityId, setCityId] = useState("guwahati");
   const [zoneId, setZoneId] = useState("zoo-road");
   const [bio, setBio] = useState("");
   const [services, setServices] = useState<Partial<Record<ServiceKey, string>>>({ videography: "" });
   const [gear, setGear] = useState<string[]>([]);
-  const [instagram, setInstagram] = useState("");
+  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
+  const [socialUrl, setSocialUrl] = useState("");
   const [followers, setFollowers] = useState("");
   const [onDemand, setOnDemand] = useState(true);
   const [maxTravelKm, setMaxTravelKm] = useState(10);
@@ -40,13 +43,14 @@ export default function JoinPage() {
     });
 
   async function sendCode() {
-    if (await run(() => call("/api/session/otp", { phone }))) setCodeSent(true);
+    if (await run(() => call("/api/session/otp", { email }))) setCodeSent(true);
   }
 
   async function submit() {
     const r = await run(() =>
       call("/api/creators", {
         name,
+        email,
         phone,
         code,
         cityId,
@@ -54,7 +58,7 @@ export default function JoinPage() {
         bio,
         services: Object.entries(services).map(([key, price]) => ({ key, price: price ? Number(price) : null })),
         gear,
-        instagram,
+        social: { platform, url: socialUrl },
         followers: followers ? Number(followers) : undefined,
         onDemand,
         maxTravelKm,
@@ -79,17 +83,22 @@ export default function JoinPage() {
           <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="field">
-          <label htmlFor="phone">Mobile number</label>
+          <label htmlFor="email">Email</label>
           <div className="row">
-            <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
-            <button className="btn btn-sm" disabled={busy || !phone} onClick={sendCode}>
+            <input id="email" className="input grow" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setCodeSent(false); setCode(""); }} placeholder="you@example.com" />
+            <button className="btn btn-sm" disabled={busy || !email} onClick={sendCode}>
               {codeSent ? "Resend code" : "Send code"}
             </button>
           </div>
         </div>
         <div className="field">
-          <label htmlFor="code">Code sent to your WhatsApp</label>
+          <label htmlFor="code">Code sent to your email</label>
           <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
+        </div>
+        <div className="field">
+          <label htmlFor="phone">Mobile number</label>
+          <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+          <span className="small muted">Clients and the Srijan team use it to reach you about jobs.</span>
         </div>
         <div className="row">
           <div className="field grow">
@@ -162,18 +171,6 @@ export default function JoinPage() {
             </div>
           </div>
         )}
-        {"influencer" in services && (
-          <div className="row">
-            <div className="field grow">
-              <label htmlFor="ig">Instagram handle</label>
-              <input id="ig" className="input" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@" />
-            </div>
-            <div className="field grow">
-              <label htmlFor="followers">Followers</label>
-              <input id="followers" className="input" type="number" value={followers} onChange={(e) => setFollowers(e.target.value)} />
-            </div>
-          </div>
-        )}
         <span className="label">Your gear</span>
         <div className="chips">
           {GEAR.map((g) => {
@@ -184,6 +181,28 @@ export default function JoinPage() {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <section className="card stack">
+        <h2>Your main social media account</h2>
+        <p className="small muted">Link the account that best shows your work. It appears on your public profile, and the Srijan team checks it when reviewing your profile.</p>
+        <div className="chips" role="group" aria-label="Site">
+          {SOCIAL_PLATFORMS.map((p) => (
+            <button key={p.key} aria-pressed={platform === p.key} className={`chip${platform === p.key ? " on" : ""}`} onClick={() => setPlatform(p.key)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="row">
+          <div className="field grow">
+            <label htmlFor="social">{SOCIAL_PLATFORMS.find((p) => p.key === platform)?.label} profile link</label>
+            <input id="social" className="input" type="url" inputMode="url" value={socialUrl} onChange={(e) => setSocialUrl(e.target.value)} placeholder={SOCIAL_PLATFORMS.find((p) => p.key === platform)?.example} />
+          </div>
+          <div className="field" style={{ maxWidth: 160 }}>
+            <label htmlFor="followers">Followers</label>
+            <input id="followers" className="input" type="number" min={0} value={followers} onChange={(e) => setFollowers(e.target.value)} placeholder="Optional" />
+          </div>
         </div>
       </section>
 

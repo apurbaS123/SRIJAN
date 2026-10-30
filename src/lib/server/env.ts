@@ -18,11 +18,17 @@ export function normalizePhone(raw: unknown) {
   return /^[6-9]\d{9}$/.test(ten) ? ten : "";
 }
 
-/** Srijan team (ops) phone numbers. Only these numbers get ops access, checked on every request. */
-export function isOpsPhone(phone: string) {
-  return (process.env.SRIJAN_OPS_PHONES ?? "")
+/** Lower-cased email address, or "" if it doesn't look like one. */
+export function normalizeEmail(raw: unknown) {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return v.length <= 200 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : "";
+}
+
+/** Srijan team (ops) email addresses. Only these get ops access, checked on every request. */
+export function isOpsEmail(email: string) {
+  return !!email && (process.env.SRIJAN_OPS_EMAILS ?? "")
     .split(",")
-    .map(normalizePhone)
+    .map(normalizeEmail)
     .filter(Boolean)
-    .includes(phone);
+    .includes(email);
 }

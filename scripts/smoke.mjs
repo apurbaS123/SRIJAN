@@ -3,10 +3,10 @@
 //        node scripts/smoke.mjs   (uses the existing build in .next)
 //
 // The script starts its own `next start` on a free port with a throwaway data file, a test
-// session secret and WhatsApp switched off, so it never touches your real data or sends messages.
-// It signs everyone in through the real phone-code flow. Two things it does from outside, by
+// session secret, and email and WhatsApp switched off, so it never touches your real data or
+// sends messages. It signs everyone in through the real email-code flow. Two things it does from outside, by
 // editing the throwaway data file between requests (the server reads it on every request):
-//   - puts a known sign-in code in place of the WhatsApp message
+//   - puts a known sign-in code in place of the email
 //   - moves every stored time back to fast-forward the 5-minute dispatch timers
 
 import { spawn } from "node:child_process";
@@ -18,7 +18,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SECRET = "smoke-test-session-secret-0123456789abcdef";
-const OPS_PHONE = "9000000001";
+const OPS_EMAIL = "team@srijan.test";
 const IST = 5.5 * 3600_000;
 const MIN = 60_000;
 
@@ -63,13 +63,14 @@ async function startServer() {
       // Never use a real database, even if one is configured.
       DATABASE_URL: "",
       POSTGRES_URL: "",
-      SRIJAN_OPS_PHONES: OPS_PHONE,
-      // Empty values win over .env.local, so nothing is ever sent on WhatsApp.
+      SRIJAN_OPS_EMAILS: OPS_EMAIL,
+      // Empty values win over .env.local, so no email or WhatsApp message is ever sent.
+      BREVO_API_KEY: "",
+      EMAIL_FROM: "",
       WHATSAPP_TOKEN: "",
       WHATSAPP_PHONE_NUMBER_ID: "",
       WHATSAPP_NOTIFY_TO: "",
       WHATSAPP_TEMPLATE: "",
-      WHATSAPP_OTP_TEMPLATE: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -95,17 +96,17 @@ function writeDb(db) {
   fs.renameSync(tmp, DATA_FILE);
 }
 
-// Latest code per phone: the name step re-sends the code the first step checked but didn't use up.
+// Latest code per email: the name step re-sends the code the first step checked but didn't use up.
 const codes = new Map();
 
-/** Stores a sign-in code for `phone` exactly as the server would after sending it on WhatsApp. */
-function issueCode(phone, code = String(100000 + Math.floor(Math.random() * 900000))) {
+/** Stores a sign-in code for `email` exactly as the server would after emailing it. */
+function issueCode(email, code = String(100000 + Math.floor(Math.random() * 900000))) {
   const db = readDb();
   const now = Date.now();
-  const codeHash = createHmac("sha256", SECRET).update(`otp:${phone}:${code}`).digest("hex");
-  db.otps = [...(db.otps ?? []).filter((o) => o.phone !== phone), { phone, codeHash, sentAt: now, expiresAt: now + 10 * MIN, attempts: 0 }];
+  const codeHash = createHmac("sha256", SECRET).update(`otp:${email}:${code}`).digest("hex");
+  db.otps = [...(db.otps ?? []).filter((o) => o.email !== email), { email, codeHash, sentAt: now, expiresAt: now + 10 * MIN, attempts: 0 }];
   writeDb(db);
-  codes.set(phone, code);
+  codes.set(email, code);
   return code;
 }
 
@@ -124,8 +125,9 @@ function advance(minutes) {
 
 let ipSeq = 1;
 class Agent {
-  constructor(name, phone) {
+  constructor(name, email, phone) {
     this.name = name;
+    this.email = email;
     this.phone = phone;
     this.cookie = "";
     // Own address per person, like real users, so the per-IP rate limits don't trip.
@@ -147,17 +149,18 @@ class Agent {
     const json = await res.json().catch(() => ({}));
     return { status: res.status, ...json };
   }
-  /** Signs in at /login with a WhatsApp code; new numbers give their name. Returns the role. */
+  /** Signs in at /login with an email code; new addresses give their name and phone. Returns the role. */
   async signIn() {
-    let r = await this.req("/api/session", { phone: this.phone, code: issueCode(this.phone) });
-    if (r.data?.needsName) r = await this.req("/api/session", { phone: this.phone, code: codes.get(this.phone), name: this.name });
-    ok(r.ok, `${this.name} signs in with a WhatsApp code`);
+    let r = await this.req("/api/session", { email: this.email, code: issueCode(this.email) });
+    if (r.data?.needsName) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), name: this.name, phone: this.phone });
+    ok(r.ok, `${this.name} signs in with an email code`);
     return r.data.role;
   }
-  /** Signs up at /join with a WhatsApp code. Returns the new creator's id. */
+  /** Signs up at /join with an email code. Returns the new creator's id. */
   async joinAsCreator(cityId, zoneId) {
     const r = await this.req("/api/creators", {
-      code: issueCode(this.phone),
+      code: issueCode(this.email),
+      email: this.email,
       name: this.name,
       phone: this.phone,
       cityId,
@@ -191,23 +194,25 @@ async function run() {
   console.log(`Server running at ${BASE} with a throwaway data file\n`);
 
   // --- Sign-in and roles --------------------------------------------------------
-  const ops = new Agent("Srijan Ops", OPS_PHONE);
-  const priya = new Agent("Priya Sharma", "9854012345");
-  const ankita = new Agent("Ankita Baruah", "9864011111");
-  const rituraj = new Agent("Rituraj Das", "9864022222");
-  const dhruba = new Agent("Dhruba Kalita", "9864033333");
-  const nilakshi = new Agent("Nilakshi Gogoi", "9864044444");
+  const ops = new Agent("Srijan Ops", OPS_EMAIL, "9000000001");
+  const priya = new Agent("Priya Sharma", "priya@cafebrahma.test", "9854012345");
+  const ankita = new Agent("Ankita Baruah", "ankita@creators.test", "9864011111");
+  const rituraj = new Agent("Rituraj Das", "rituraj@creators.test", "9864022222");
+  const dhruba = new Agent("Dhruba Kalita", "dhruba@creators.test", "9864033333");
+  const nilakshi = new Agent("Nilakshi Gogoi", "nilakshi@creators.test", "9864044444");
 
-  let r = await ops.req("/api/session/otp", { phone: OPS_PHONE });
-  ok(r.status === 503, "with WhatsApp off, the production server refuses to send codes");
+  let r = await ops.req("/api/session/otp", { email: OPS_EMAIL });
+  ok(r.status === 503, "with email off, the production server refuses to send codes");
   r = await priya.req("/api/session", { userId: "u_ops" });
   ok(!r.ok, "the old one-click demo sign-in is gone");
-  issueCode(priya.phone, "111111");
-  r = await priya.req("/api/session", { phone: priya.phone, code: "222222" });
-  ok(r.status === 400 && /wrong/.test(r.error), "a wrong WhatsApp code is refused");
+  issueCode(priya.email, "111111");
+  r = await priya.req("/api/session", { email: priya.email, code: "222222" });
+  ok(r.status === 400 && /wrong/.test(r.error), "a wrong email code is refused");
+  r = await priya.req("/api/session", { phone: priya.phone, code: "111111" });
+  ok(!r.ok, "signing in with a phone number no longer works");
 
-  ok((await ops.signIn()) === "ops", "a number in SRIJAN_OPS_PHONES gets ops access");
-  ok((await priya.signIn()) === "client", "a new number gets a client account");
+  ok((await ops.signIn()) === "ops", "an address in SRIJAN_OPS_EMAILS gets ops access");
+  ok((await priya.signIn()) === "client", "a new email gets a client account");
   r = await priya.req("/api/admin");
   ok(r.status === 403, "a client can’t open the ops dashboard");
 
@@ -331,11 +336,11 @@ async function run() {
   ok(r.data.status === "assigned", "ops assigns by hand after the window");
 
   // --- Campaign from a brand that isn't signed in --------------------------------
-  const brand = new Agent("Mitali (brand)", "9876543210");
+  const brand = new Agent("Mitali (brand)", "mitali@kazorganics.test", "9876543210");
   const campaign = {
     brandName: "Kaziranga Organics",
     contactName: "Mitali",
-    email: "mitali@kazorganics.in",
+    email: brand.email,
     phone: brand.phone,
     goal: "Product launch",
     regions: ["Assam"],
@@ -344,9 +349,9 @@ async function run() {
     callMode: "video",
   };
   r = await brand.req("/api/campaigns", campaign);
-  ok(r.status === 400, "a brand can’t book a call without verifying their WhatsApp number");
-  r = await brand.req("/api/campaigns", { ...campaign, code: issueCode(brand.phone) });
-  ok(r.ok, "brand books a strategy call with a WhatsApp code");
+  ok(r.status === 400, "a brand can’t book a call without verifying their email");
+  r = await brand.req("/api/campaigns", { ...campaign, code: issueCode(brand.email) });
+  ok(r.ok, "brand books a strategy call with an email code");
   const cid = r.data.id;
   r = await brand.req("/api/session");
   ok(r.data.user?.role === "client", "the brand is signed in to a new client account");

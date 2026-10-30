@@ -1,5 +1,5 @@
 // Business rules in one place. Change a number here and the whole app follows.
-import type { ServiceKey } from "./types";
+import type { ServiceKey, SocialPlatform } from "./types";
 
 export const MIN = 60_000;
 export const HOUR = 60 * MIN;
@@ -152,6 +152,14 @@ export const CAMPAIGN_STAGES: { key: import("./types").CampaignStage; label: str
   { key: "live", label: "Live" },
   { key: "report_settle", label: "Report & settle" },
   { key: "closed", label: "Closed" },
+];
+
+/** Where a creator's main social media account can be. `hosts` limits links to that site; empty allows any. */
+export const SOCIAL_PLATFORMS: { key: SocialPlatform; label: string; hosts: string[]; example: string }[] = [
+  { key: "instagram", label: "Instagram", hosts: ["instagram.com"], example: "instagram.com/yourname" },
+  { key: "youtube", label: "YouTube", hosts: ["youtube.com", "youtu.be"], example: "youtube.com/@yourchannel" },
+  { key: "facebook", label: "Facebook", hosts: ["facebook.com", "fb.com"], example: "facebook.com/yourpage" },
+  { key: "other", label: "Website / portfolio", hosts: [], example: "yourwebsite.com" },
 ];
 
 export function findPackage(id: string) {

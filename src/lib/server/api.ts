@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import type { DB, Role, User } from "@/lib/domain/types";
 import { DomainError } from "@/lib/domain/util";
 import type { Viewer } from "@/lib/domain/views";
-import { IS_PROD, isOpsPhone, normalizePhone, sessionSecret } from "./env";
+import { IS_PROD, isOpsEmail, normalizeEmail, sessionSecret } from "./env";
 import { withDb } from "./store";
 
 export const SESSION_COOKIE = "srijan_session";
@@ -50,8 +50,8 @@ export async function api<T>(fn: (ctx: Ctx) => T, opts: { role?: Role | Role[] }
     const uid = sessionUserId((await cookies()).get(SESSION_COOKIE)?.value);
     const { result, now } = await withDb((db, now) => {
       const user = uid ? db.users.find((u) => u.id === uid) : undefined;
-      // Removed from SRIJAN_OPS_PHONES: lose team access straight away, not at the next sign-in.
-      if (user?.role === "ops" && !isOpsPhone(normalizePhone(user.phone))) user.role = "client";
+      // Removed from SRIJAN_OPS_EMAILS: lose team access straight away, not at the next sign-in.
+      if (user?.role === "ops" && !isOpsEmail(normalizeEmail(user.email))) user.role = "client";
       if (opts.role) {
         const roles = Array.isArray(opts.role) ? opts.role : [opts.role];
         if (!user) throw new DomainError("Please sign in first", 401);

@@ -33,19 +33,20 @@ function SignIn() {
   const router = useRouter();
   const next = useSearchParams().get("next");
   const { busy, error, run } = useAction();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [step, setStep] = useState<"phone" | "code" | "name">("phone");
+  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"email" | "code" | "name">("email");
   if (!session) return sessionError ? <SessionError /> : <Loading />;
 
   async function sendCode() {
-    if (await run(() => call("/api/session/otp", { phone }))) setStep("code");
+    if (await run(() => call("/api/session/otp", { email }))) setStep("code");
   }
 
   async function verify() {
     const r = await run(() =>
-      call<{ needsName?: boolean; role?: Role }>("/api/session", { phone, code, ...(step === "name" ? { name } : {}) }),
+      call<{ needsName?: boolean; role?: Role }>("/api/session", { email, code, ...(step === "name" ? { name, phone } : {}) }),
     );
     if (r?.needsName) setStep("name");
     else if (r?.role) {
@@ -86,15 +87,15 @@ function SignIn() {
       <section className="card stack" style={{ maxWidth: 420 }}>
         <h1>Sign in</h1>
         <p className="muted small">
-          Clients, brands, creators and the Srijan team all sign in here. We’ll send a 6-digit code to your WhatsApp and open the right dashboard for your account.
+          Clients, brands, creators and the Srijan team all sign in here. We’ll email you a 6-digit code and open the right dashboard for your account.
         </p>
         <div className="field">
-          <label htmlFor="phone">WhatsApp number</label>
-          <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} disabled={step !== "phone"} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+          <label htmlFor="email">Email</label>
+          <input id="email" className="input" type="email" autoComplete="email" value={email} disabled={step !== "email"} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </div>
-        {step !== "phone" && (
+        {step !== "email" && (
           <div className="field">
-            <label htmlFor="code">Code sent to your WhatsApp</label>
+            <label htmlFor="code">Code sent to your email</label>
             <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
           </div>
         )}
@@ -108,20 +109,25 @@ function SignIn() {
               <label htmlFor="name">Your name</label>
               <input id="name" className="input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
+            <div className="field">
+              <label htmlFor="phone">Mobile number</label>
+              <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+              <span className="small muted">So your creator can reach you on shoot day.</span>
+            </div>
           </>
         )}
         <ErrorNote error={error} />
-        {step === "phone" ? (
-          <button className="btn btn-primary" disabled={busy || !phone} onClick={sendCode}>
+        {step === "email" ? (
+          <button className="btn btn-primary" disabled={busy || !email} onClick={sendCode}>
             Send code
           </button>
         ) : (
           <div className="row">
-            <button className="btn btn-primary" disabled={busy || !code || (step === "name" && !name.trim())} onClick={verify}>
+            <button className="btn btn-primary" disabled={busy || !code || (step === "name" && (!name.trim() || !phone.trim()))} onClick={verify}>
               {step === "name" ? "Create account" : "Sign in"}
             </button>
-            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setStep("phone"); setCode(""); }}>
-              Change number
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setStep("email"); setCode(""); }}>
+              Change email
             </button>
           </div>
         )}

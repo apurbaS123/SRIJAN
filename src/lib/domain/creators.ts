@@ -1,4 +1,4 @@
-import { SERVICES, findZone } from "./config";
+import { SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
 import type { Creator, CreatorService, DB, ServiceKey, User } from "./types";
 import { assert, cleanText, newId } from "./util";
 
@@ -15,6 +15,7 @@ const DEFAULT_SERVICE: Record<ServiceKey, { title: string; description: string }
 
 export interface SignupInput {
   name: string;
+  email?: string;
   phone: string;
   cityId: string;
   zoneId: string;
@@ -23,10 +24,32 @@ export interface SignupInput {
   gear?: string[];
   languages?: string[];
   instagram?: string;
+  social?: { platform?: string; url?: string };
   followers?: number;
   onDemand?: boolean;
   maxTravelKm?: number;
   upiId?: string;
+}
+
+/** A profile link on the chosen site (https only), or undefined when left empty. */
+function cleanSocial(input: SignupInput["social"]): Creator["social"] {
+  const raw = cleanText(input?.url, 300, "your social media link", true);
+  if (!raw) return undefined;
+  const p = SOCIAL_PLATFORMS.find((x) => x.key === input?.platform);
+  assert(p, "Pick which site your social media link is for");
+  let u: URL | undefined;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {}
+  assert(u && (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes("."), `Paste your ${p.label} profile link, e.g. ${p.example}`);
+  const host = u.hostname.toLowerCase().replace(/^(www|m)\./, "");
+  if (p.hosts.length) {
+    assert(p.hosts.some((h) => host === h || host.endsWith(`.${h}`)), `That link isn’t on ${p.label}. Paste your profile link, e.g. ${p.example}`);
+    assert(u.pathname.length > 1, `Paste the link to your own ${p.label} profile, e.g. ${p.example}`);
+  }
+  u.protocol = "https:";
+  u.username = u.password = "";
+  return { platform: p.key, url: u.toString() };
 }
 
 const UPI_RE = /^[\w.\-]{2,64}@[a-zA-Z]{2,32}$/;
@@ -37,11 +60,15 @@ function cleanList(v: unknown, maxItems: number, maxLen: number, label: string) 
   return list.map((x) => cleanText(x, maxLen, label)).filter(Boolean);
 }
 
-/** `phone` must already be verified by the caller (sign-in code). */
-export function signUpCreator(db: DB, input: SignupInput, phone: string, now: number) {
+/**
+ * `email` must already be verified by the caller (sign-in code) and lower-cased; `phone` is a
+ * 10-digit contact number for shoot day.
+ */
+export function signUpCreator(db: DB, input: SignupInput, contact: { email: string; phone: string }, now: number) {
+  const { email, phone } = contact;
   const name = cleanText(input.name, 80, "your name");
   assert(name.length >= 2, "Enter your name");
-  assert(!db.users.some((u) => (u.phone ?? "").replace(/\D/g, "").endsWith(phone)), "This number is already registered — sign in instead");
+  assert(!db.users.some((u) => u.email?.toLowerCase() === email), "This email is already registered — sign in instead");
   const place = findZone(input.cityId, input.zoneId);
   assert(place, "Pick your city and area");
   const given = Array.isArray(input.services) ? input.services : [];
@@ -55,8 +82,13 @@ export function signUpCreator(db: DB, input: SignupInput, phone: string, now: nu
   });
   const upiId = cleanText(input.upiId, 100, "your UPI ID", true);
   if (upiId) assert(UPI_RE.test(upiId), "UPI ID looks wrong, e.g. name@okaxis");
-  const instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
+  const social = cleanSocial(input.social);
+  let instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
   if (instagram) assert(/^@?[\w.]{1,30}$/.test(instagram), "Enter just your Instagram handle, e.g. @yourname");
+  if (!instagram && social?.platform === "instagram") {
+    const handle = new URL(social.url).pathname.split("/")[1] ?? "";
+    if (/^[\w.]{1,30}$/.test(handle)) instagram = `@${handle}`;
+  }
   const followers = Math.round(Number(input.followers) || 0);
   assert(followers >= 0 && followers <= 1_000_000_000, "Follower count looks wrong");
   const bio = cleanText(input.bio, 1000, "your bio", true);
@@ -64,7 +96,7 @@ export function signUpCreator(db: DB, input: SignupInput, phone: string, now: nu
   const languages = cleanList(input.languages, 10, 30, "languages");
 
   const creatorId = newId("cr");
-  const user: User = { id: newId("u"), role: "creator", name, phone: `+91 ${phone}`, creatorId, createdAt: now };
+  const user: User = { id: newId("u"), role: "creator", name, email, phone: `+91 ${phone}`, creatorId, createdAt: now };
   const creator: Creator = {
     id: creatorId,
     userId: user.id,
@@ -78,6 +110,7 @@ export function signUpCreator(db: DB, input: SignupInput, phone: string, now: nu
     services,
     gear,
     instagram: instagram || undefined,
+    social,
     followers: followers || undefined,
     onDemand: !!input.onDemand && keys.includes("videography"),
     available: false,
