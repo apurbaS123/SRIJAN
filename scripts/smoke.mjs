@@ -60,6 +60,9 @@ async function startServer() {
       ...process.env,
       SESSION_SECRET: SECRET,
       SRIJAN_DATA_FILE: DATA_FILE,
+      // Never use a real database, even if one is configured.
+      DATABASE_URL: "",
+      POSTGRES_URL: "",
       SRIJAN_OPS_PHONES: OPS_PHONE,
       // Empty values win over .env.local, so nothing is ever sent on WhatsApp.
       WHATSAPP_TOKEN: "",

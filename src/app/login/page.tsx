@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { call, useAction } from "@/lib/client/api";
 import { useSession } from "@/components/Session";
-import { ErrorNote, Loading } from "@/components/ui";
+import { ErrorNote, Loading, SessionError } from "@/components/ui";
 import type { Role } from "@/lib/domain/types";
 
 const HOME: Record<Role, string> = { client: "/bookings", creator: "/creator", ops: "/ops" };
@@ -29,7 +29,7 @@ export default function LoginPage() {
 }
 
 function SignIn() {
-  const { session, refresh } = useSession();
+  const { session, error: sessionError, refresh } = useSession();
   const router = useRouter();
   const next = useSearchParams().get("next");
   const { busy, error, run } = useAction();
@@ -37,7 +37,7 @@ function SignIn() {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [step, setStep] = useState<"phone" | "code" | "name">("phone");
-  if (!session) return <Loading />;
+  if (!session) return sessionError ? <SessionError /> : <Loading />;
 
   async function sendCode() {
     if (await run(() => call("/api/session/otp", { phone }))) setStep("code");
