@@ -35,9 +35,10 @@ export async function POST(req: Request) {
     assert(email, "Enter a valid email address");
     let user = db.users.find((u) => normalizeEmail(u.email) === email);
     if (!user && !body.name?.trim()) {
-      // Check the code without using it up, then ask for a name and phone.
+      // Check the code without using it up, then ask for a name and phone. Once the code is
+      // proven, say which kind of account this will be so the page can word it right.
       verifyOtp(db, email, body.code, now, false);
-      return { needsName: true };
+      return { needsName: true, newRole: isOpsEmail(email) ? "ops" : "client" };
     }
     if (!user) {
       // Check the details before using up the code, so a typo doesn't cost a new one.

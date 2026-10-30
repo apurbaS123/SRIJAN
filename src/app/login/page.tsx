@@ -38,6 +38,7 @@ function SignIn() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [step, setStep] = useState<"email" | "code" | "name">("email");
+  const [newRole, setNewRole] = useState<Role>("client");
   if (!session) return sessionError ? <SessionError /> : <Loading />;
 
   async function sendCode() {
@@ -46,9 +47,12 @@ function SignIn() {
 
   async function verify() {
     const r = await run(() =>
-      call<{ needsName?: boolean; role?: Role }>("/api/session", { email, code, ...(step === "name" ? { name, phone } : {}) }),
+      call<{ needsName?: boolean; newRole?: Role; role?: Role }>("/api/session", { email, code, ...(step === "name" ? { name, phone } : {}) }),
     );
-    if (r?.needsName) setStep("name");
+    if (r?.needsName) {
+      setNewRole(r.newRole ?? "client");
+      setStep("name");
+    }
     else if (r?.role) {
       await refresh();
       router.push(destination(r.role, next));
@@ -101,10 +105,14 @@ function SignIn() {
         )}
         {step === "name" && (
           <>
-            <p className="small muted">
-              New here? We’ll create a client account for booking shoots and brand campaigns. Are you a creator?{" "}
-              <Link href="/join">Create a creator profile</Link> instead.
-            </p>
+            {newRole === "ops" ? (
+              <p className="small muted">Welcome to the Srijan team. Add your name and number to finish setting up your team account — you’ll go straight to the ops dashboard.</p>
+            ) : (
+              <p className="small muted">
+                New here? We’ll create a client account for booking shoots and brand campaigns. Are you a creator?{" "}
+                <Link href="/join">Create a creator profile</Link> instead.
+              </p>
+            )}
             <div className="field">
               <label htmlFor="name">Your name</label>
               <input id="name" className="input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -112,7 +120,7 @@ function SignIn() {
             <div className="field">
               <label htmlFor="phone">Mobile number</label>
               <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
-              <span className="small muted">So your creator can reach you on shoot day.</span>
+              <span className="small muted">{newRole === "ops" ? "So creators and clients can reach the team." : "So your creator can reach you on shoot day."}</span>
             </div>
           </>
         )}
@@ -124,7 +132,7 @@ function SignIn() {
         ) : (
           <div className="row">
             <button className="btn btn-primary" disabled={busy || !code || (step === "name" && (!name.trim() || !phone.trim()))} onClick={verify}>
-              {step === "name" ? "Create account" : "Sign in"}
+              {step === "name" ? (newRole === "ops" ? "Create team account" : "Create account") : "Sign in"}
             </button>
             <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setStep("email"); setCode(""); }}>
               Change email

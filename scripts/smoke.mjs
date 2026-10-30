@@ -152,6 +152,7 @@ class Agent {
   /** Signs in at /login with an email code; new addresses give their name and phone. Returns the role. */
   async signIn() {
     let r = await this.req("/api/session", { email: this.email, code: issueCode(this.email) });
+    this.newRole = r.data?.newRole;
     if (r.data?.needsName) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), name: this.name, phone: this.phone });
     ok(r.ok, `${this.name} signs in with an email code`);
     return r.data.role;
@@ -212,7 +213,9 @@ async function run() {
   ok(!r.ok, "signing in with a phone number no longer works");
 
   ok((await ops.signIn()) === "ops", "an address in SRIJAN_OPS_EMAILS gets ops access");
+  ok(ops.newRole === "ops", "a new team email is told it’s setting up a team account");
   ok((await priya.signIn()) === "client", "a new email gets a client account");
+  ok(priya.newRole === "client", "a new client email is told it’s setting up a client account");
   r = await priya.req("/api/admin");
   ok(r.status === 403, "a client can’t open the ops dashboard");
 
