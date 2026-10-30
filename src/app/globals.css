@@ -501,14 +501,6 @@ tr.alert td { background: #fdf4ff; }
   box-shadow: var(--shadow-glow);
   transform: translateY(-2px);
 }
-.demo-banner {
-  background: var(--grad-primary);
-  color: rgba(255,255,255,0.75);
-  font-size: 12px;
-  text-align: center;
-  padding: 7px 12px;
-}
-.demo-banner b { color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ============================================================

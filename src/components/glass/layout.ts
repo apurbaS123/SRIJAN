@@ -114,7 +114,6 @@ export const COPY = {
   cta: { label: "Join as creator", href: "/join" },
   link: "How it works →",
   footL: "© Srijan · Made in the Northeast",
-  footR: "Prototype · payments & KYC simulated",
 };
 
 const WHITE = (a: number) => `rgba(245, 240, 255, ${a})`;
@@ -233,12 +232,6 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     id: "foot-l", kind: "text", group: "foot", text: COPY.footL, x: pad, cy: footCy, size: footSize, weight: 500,
     family: BODY, tracking: 0.02, fill: WHITE(0.34),
   });
-  if (!phone) {
-    text({
-      id: "foot-r", kind: "text", group: "foot", text: COPY.footR, x: pw - pad, cy: footCy, size: footSize,
-      weight: 500, family: BODY, tracking: 0.02, fill: WHITE(0.34), align: "right",
-    });
-  }
 
   // ── "← Back" sliver (viewport fractions) ────────────────
   const base: [number, number][] = [[0.147, 0.243], [0.252, 0.169], [0.287, 0.277], [0.151, 0.258]];
