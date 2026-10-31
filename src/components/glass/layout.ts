@@ -184,13 +184,21 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const maxW = pw - 2 * pad;
   let y = panelY + ph * (portrait ? 0.07 : 0.135);
 
-  const eyebrowSize = px(11, 10);
+  // Largest size ≤ `size` at which `line` fits in maxW (canvas text widths scale linearly with size).
+  const fit = (line: string, size: number, weight: number, family: string, tracking: number) =>
+    Math.min(size, (size * maxW) / measure(line, weight, size, family, tracking));
+
+  const eyebrowSize = fit(COPY.eyebrow, px(11, 10), 600, BODY, 0.2);
   text({
     id: "eyebrow", kind: "text", group: "eyebrow", text: COPY.eyebrow, x: pad, cy: y, size: eyebrowSize,
     weight: 600, family: BODY, tracking: 0.2, fill: WHITE(0.4),
   });
 
-  const hs = portrait ? Math.min(pw * 0.15, ph * 0.1) : Math.min(pw * 0.078, ph * 0.2);
+  const hs = Math.min(
+    portrait ? Math.min(pw * 0.15, ph * 0.1) : Math.min(pw * 0.078, ph * 0.2),
+    // 4% slack for the leftward nudge below and glyph overhang.
+    ...COPY.h1.map((line) => ((100 * maxW) / measure(line, 800, 100, DISPLAY, -0.035)) * 0.96),
+  );
   y += eyebrowSize / 2 + px(26, 14) + hs / 2;
   COPY.h1.forEach((line, i) => {
     text({
@@ -221,8 +229,12 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     weight: 700, family: BODY, tracking: 0.01, fill: "#f5f0ff", hoverFill: ACCENT, align: "left",
     href: COPY.cta.href,
   });
+  // "How it works" sits beside the pill, or under it when the row would overflow.
+  const howGap = px(30, 20);
+  const beside = pillW + howGap + measure(COPY.link, 600, btnSize, BODY) <= maxW;
   text({
-    id: "how", kind: "link", group: "cta", text: COPY.link, x: pad + pillW + px(30, 20), cy: y, size: btnSize,
+    id: "how", kind: "link", group: "cta", text: COPY.link, x: beside ? pad + pillW + howGap : pad,
+    cy: beside ? y : y + btnH / 2 + px(20, 16) + btnSize / 2, size: btnSize,
     weight: 600, family: BODY, tracking: 0, fill: WHITE(0.82), hoverFill: WHITE(1), action: "shatter",
   });
 
