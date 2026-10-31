@@ -1,7 +1,7 @@
 // What each kind of user is allowed to see. API responses are built from these.
 import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, FREE_REVISIONS, findPackage, findZone } from "./config";
 import { campaignMath } from "./campaigns";
-import { tickBooking } from "./bookings";
+import { clientRating, tickBooking } from "./bookings";
 import type { Booking, Campaign, Creator, DB, Offer, Role } from "./types";
 import { istDay, istMonth, rupees } from "./util";
 
@@ -115,6 +115,10 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     autoApproved: b.autoApproved,
     rating: b.rating,
     review: b.review,
+    reviewedAt: b.reviewedAt,
+    reviewOfClient: b.reviewOfClient ?? null,
+    /** The client's average from creators' reviews, shown to the creator and ops. */
+    clientRating: viewer.role === "ops" || (viewer.creatorId && viewer.creatorId === b.creatorId) ? clientRating(db, b.clientId) : undefined,
     latePenaltyPct: b.latePenaltyPct ?? 0,
     createdAt: b.createdAt,
     events: [...b.events].sort((x, y) => x.at - y.at),
@@ -152,6 +156,8 @@ export type OfferView = ReturnType<typeof offerView>;
 export function campaignView(db: DB, c: Campaign, viewer: Viewer) {
   const m = campaignMath(c);
   const isOps = viewer.role === "ops";
+  // The brand that booked it: their agreed budget and who worked on it, but not fees or commission.
+  const isOwner = !!viewer.userId && viewer.userId === c.userId;
   return {
     id: c.id,
     code: c.code,
@@ -166,15 +172,19 @@ export function campaignView(db: DB, c: Campaign, viewer: Viewer) {
     callMode: c.callMode,
     stage: c.stage,
     stageLabel: CAMPAIGN_STAGES.find((s) => s.key === c.stage)?.label ?? c.stage,
-    budget: isOps ? c.budget : undefined,
+    budget: isOps || isOwner ? c.budget : undefined,
     commissionRate: isOps ? c.commissionRate : undefined,
     math: isOps ? m : undefined,
     advancePaid: c.advancePaid,
     balancePaid: c.balancePaid,
     notes: isOps ? c.notes : undefined,
     creators: c.creators
-      .filter((x) => isOps || x.creatorId === viewer.creatorId)
-      .map((x) => ({ ...x, name: db.creators.find((cr) => cr.id === x.creatorId)?.name ?? "Creator" })),
+      .filter((x) => isOps || x.creatorId === viewer.creatorId || (isOwner && (x.status === "accepted" || x.status === "paid")))
+      .map((x) => ({
+        ...x,
+        fee: isOwner && !isOps ? undefined : x.fee,
+        name: db.creators.find((cr) => cr.id === x.creatorId)?.name ?? "Creator",
+      })),
     createdAt: c.createdAt,
     settledAt: c.settledAt,
   };

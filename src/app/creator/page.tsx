@@ -112,6 +112,7 @@ function Home() {
   if (!me) return null;
   const active = jobs.data?.filter((b) => !["completed", "refunded", "cancelled"].includes(b.status)) ?? [];
   const past = jobs.data?.filter((b) => ["completed", "refunded", "cancelled"].includes(b.status)) ?? [];
+  const toReview = past.filter((b) => b.status === "completed" && !b.reviewOfClient).length;
 
   return (
     <div className="container page narrow">
@@ -186,7 +187,7 @@ function Home() {
         {past.length > 0 && (
           <details>
             <summary className="small strong" style={{ cursor: "pointer" }}>
-              Past jobs ({past.length})
+              Past jobs ({past.length}){toReview ? ` · ${toReview} to review` : ""}
             </summary>
             <div className="stack" style={{ marginTop: 10 }}>
               {past.map((b) => (
@@ -194,7 +195,11 @@ function Home() {
                   <span className="small">
                     {b.code} · {b.packageName} · {when(b.scheduledAt)}
                   </span>
-                  <StatusBadge status={b.status} label={b.statusLabel} />
+                  {b.status === "completed" && !b.reviewOfClient ? (
+                    <span className="badge badge-orange">★ Review client</span>
+                  ) : (
+                    <StatusBadge status={b.status} label={b.statusLabel} />
+                  )}
                 </Link>
               ))}
             </div>

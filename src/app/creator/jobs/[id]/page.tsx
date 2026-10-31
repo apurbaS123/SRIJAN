@@ -6,6 +6,7 @@ import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView } from "@/lib/domain/views";
 import { ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
 import { duration, inr, time, when } from "@/lib/client/format";
+import { ReviewSection } from "@/components/Review";
 
 function Step({ n, title, state, children }: { n: number; title: string; state: "done" | "now" | "later"; children?: React.ReactNode }) {
   return (
@@ -97,6 +98,7 @@ function Job() {
               <br />
               {b.area} · client: {b.clientName} {b.clientPhone && `· ${b.clientPhone}`}
             </p>
+            {b.clientRating && <Stars rating={b.clientRating.rating} count={b.clientRating.count} />}
             <a className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} href={`https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}`} target="_blank" rel="noreferrer">
               Open in Maps
             </a>
@@ -162,10 +164,19 @@ function Job() {
             {b.status === "completed" && (
               <p className="small">
                 {inr(Math.round(b.creatorPayout * (1 - b.latePenaltyPct / 100)))} added to your <Link href="/creator/wallet">wallet</Link>
-                {b.rating ? <> · <Stars rating={b.rating} /></> : null}
               </p>
             )}
           </Step>
+
+          {b.status === "completed" && (
+            <ReviewSection
+              name={b.clientName.split(" ")[0]!}
+              mine={b.reviewOfClient}
+              theirs={b.reviewOfClient && b.rating ? { rating: b.rating, text: b.review, at: b.reviewedAt } : null}
+              busy={act.busy}
+              onSubmit={(rating, text) => void post({ action: "review", rating, text })}
+            />
+          )}
         </>
       )}
       <ErrorNote error={act.error} />

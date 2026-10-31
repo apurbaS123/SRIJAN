@@ -32,14 +32,23 @@ function List() {
             </div>
             <div className="row">
               <span className="small strong">{inr(b.total)}</span>
-              <StatusBadge status={b.status} label={b.statusLabel} />
+              {b.status === "completed" && !b.rating ? (
+                <span className="badge badge-orange">★ Leave a review</span>
+              ) : (
+                <StatusBadge status={b.status} label={b.statusLabel} />
+              )}
             </div>
           </Link>
         ))}
       </div>
       {campaigns && campaigns.length > 0 && (
         <section className="stack">
-          <h2>Campaign requests</h2>
+          <div className="row between">
+            <h2>Campaigns</h2>
+            <Link href="/campaigns" className="small strong">
+              {campaigns.some((c) => c.stage === "closed") ? "See finished campaigns →" : "View all →"}
+            </Link>
+          </div>
           {campaigns.map((c) => (
             <div key={c.id} className="card row between">
               <div className="stack" style={{ gap: 2 }}>

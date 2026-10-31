@@ -323,8 +323,20 @@ async function run() {
   ok(r.data.status === "revision_requested" && r.data.revisionsLeft === 0, "client uses the free revision");
   r = await ankita.req(`/api/bookings/${b1.id}`, { action: "deliver", videoUrl: "https://drive.example.com/v2" });
   ok(r.data.status === "delivered", "revision delivered");
-  r = await priya.req(`/api/bookings/${b1.id}`, { action: "approve", rating: 5, review: "Great" });
-  ok(r.data.status === "completed", "client approves");
+  r = await priya.req(`/api/bookings/${b1.id}`, { action: "approve" });
+  ok(r.data.status === "completed" && !r.data.rating, "client approves without having to review");
+  r = await priya.req(`/api/bookings/${b1.id}`, { action: "review", rating: 6 });
+  ok(r.status === 400, "a 6-star review is refused");
+  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "review", rating: 5 });
+  ok(r.ok && r.data.reviewOfClient?.rating === 5 && !r.data.reviewOfClient.text, "creator rates the client 5 ★ with no text");
+  r = await priya.req(`/api/bookings/${b1.id}`, { action: "review", rating: 4, text: "Lovely reel, a little late" });
+  ok(r.ok && r.data.rating === 4 && r.data.review === "Lovely reel, a little late", "client rates the creator 4 ★ with text");
+  r = await priya.req(`/api/bookings/${b1.id}`, { action: "review", rating: 1 });
+  ok(r.status === 400, "a second review of the same booking is refused");
+  r = await ankita.req(`/api/bookings/${b1.id}`);
+  ok(r.data.clientRating?.rating === 5 && r.data.clientRating.count === 1, "creator sees the client’s rating");
+  r = await priya.req(`/api/bookings/${b1.id}`);
+  ok(r.data.clientRating === undefined, "client doesn’t get their own rating summary");
   r = await ankita.req("/api/wallet");
   ok(r.data.available === 2000, "Ankita’s wallet gets her 80%: ₹2,000");
 
@@ -409,6 +421,11 @@ async function run() {
   ok(r.data.stage === "closed", "campaign settled and closed");
   r = await ankita.req("/api/wallet");
   ok(r.data.available === 22000, "Ankita’s campaign fee is in her wallet");
+  r = await brand.req("/api/campaigns");
+  const done = r.data.find((c) => c.id === cid);
+  ok(done?.stage === "closed" && done.budget === 300000 && done.settledAt, "the brand sees the finished campaign and its budget");
+  ok(done.creators.length === 1 && done.creators[0].name && done.creators[0].fee === undefined, "the brand sees who worked on it, but not their fee");
+  ok(done.math === undefined && done.commissionRate === undefined, "the brand doesn’t see Srijan’s commission");
 
   // --- Payouts -----------------------------------------------------------------
   r = await ankita.req("/api/wallet", { amount: 5000, instant: false });
@@ -417,7 +434,7 @@ async function run() {
   ok(r.data.count === 1 && r.data.total === 5000, "ops runs the payout");
 
   // --- Pages render ------------------------------------------------------------
-  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/wallet", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
+  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/wallet", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
     const res = await fetch(BASE + p);
     ok(res.status === 200, `page ${p} renders`);
   }

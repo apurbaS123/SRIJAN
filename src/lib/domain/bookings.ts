@@ -191,24 +191,58 @@ export function settleBooking(db: DB, b: Booking, now: number) {
   return { creatorNet, platformFee, refund };
 }
 
-export function approve(db: DB, bookingId: string, clientId: string, rating: number, review: string | undefined, now: number) {
+export function approve(db: DB, bookingId: string, clientId: string, now: number) {
   const b = db.bookings.find((x) => x.id === bookingId);
   assert(b && b.clientId === clientId, "Booking not found", 404);
   assert(b.status === "delivered", "There is no delivery to approve yet");
-  const r = Math.round(Number(rating));
-  assert(r >= 1 && r <= 5, "Give a rating from 1 to 5 stars");
   b.status = "completed";
   b.approvedAt = now;
-  b.rating = r;
-  b.review = cleanText(review, 1000, "your review", true) || undefined;
-  const c = db.creators.find((x) => x.id === b.creatorId);
-  if (c) {
-    c.ratingSum += r;
-    c.ratingCount += 1;
-  }
   const s = settleBooking(db, b, now);
   log(b, now, `Approved · ₹${s.creatorNet.toLocaleString("en-IN")} released to the creator`);
   return b;
+}
+
+/** 1–5 whole stars and optional text, the same rules for both sides of a review. */
+function cleanReview(rating: unknown, text: unknown) {
+  const r = Number(rating);
+  assert(Number.isInteger(r) && r >= 1 && r <= 5, "Choose from 1 to 5 stars");
+  return { rating: r, text: cleanText(text, 1000, "your review", true) || undefined };
+}
+
+/** The client reviews the creator, once, after the booking is completed. */
+export function reviewCreator(db: DB, bookingId: string, clientId: string, rating: unknown, text: unknown, now: number) {
+  const b = db.bookings.find((x) => x.id === bookingId);
+  assert(b && b.clientId === clientId, "Booking not found", 404);
+  assert(b.status === "completed", "You can review once the booking is completed");
+  assert(!b.rating, "You’ve already reviewed this booking");
+  const r = cleanReview(rating, text);
+  b.rating = r.rating;
+  b.review = r.text;
+  b.reviewedAt = now;
+  const c = db.creators.find((x) => x.id === b.creatorId);
+  if (c) {
+    c.ratingSum += r.rating;
+    c.ratingCount += 1;
+  }
+  log(b, now, `Client rated the creator ${r.rating} ★`);
+  return b;
+}
+
+/** The creator reviews the client, once, after the booking is completed. */
+export function reviewClient(db: DB, bookingId: string, creatorId: string, rating: unknown, text: unknown, now: number) {
+  const b = getForCreator(db, bookingId, creatorId);
+  assert(b.status === "completed", "You can review once the booking is completed");
+  assert(!b.reviewOfClient, "You’ve already reviewed this client");
+  const r = cleanReview(rating, text);
+  b.reviewOfClient = { rating: r.rating, text: r.text, at: now };
+  log(b, now, `Creator rated the client ${r.rating} ★`);
+  return b;
+}
+
+/** A client's average rating from creators, to one decimal, or null before their first review. */
+export function clientRating(db: DB, clientId: string) {
+  const rs = db.bookings.filter((b) => b.clientId === clientId && b.reviewOfClient).map((b) => b.reviewOfClient!.rating);
+  return { rating: rs.length ? Math.round((rs.reduce((s, r) => s + r, 0) / rs.length) * 10) / 10 : null, count: rs.length };
 }
 
 export function requestRevision(db: DB, bookingId: string, clientId: string, note: string, now: number) {

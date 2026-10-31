@@ -133,8 +133,12 @@ export interface Booking {
   revisionNote?: string;
   approvedAt?: number;
   autoApproved?: boolean;
+  /** The client's review of the creator: 1–5 stars, optional text. */
   rating?: number;
   review?: string;
+  reviewedAt?: number;
+  /** The creator's review of the client. */
+  reviewOfClient?: { rating: number; text?: string; at: number };
   /** Percent cut from the creator's payout for late delivery. */
   latePenaltyPct?: number;
   refundedAt?: number;

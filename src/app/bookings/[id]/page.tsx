@@ -7,6 +7,7 @@ import type { BookingView } from "@/lib/domain/views";
 import { Avatar, ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
 import { countdown, duration, inr, time, when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
+import { ReviewBody, ReviewSection } from "@/components/Review";
 
 const ORDER = ["searching", "assigned", "shooting", "editing", "delivered", "completed"];
 
@@ -28,8 +29,6 @@ function Tracking() {
   const { data: b, error, reload, setData } = useData<BookingView>(`/api/bookings/${id}`, 3000);
   const act = useAction();
   const now = useTick();
-  const [rating, setRating] = useState(5);
-  const [review, setReview] = useState("");
   const [note, setNote] = useState("");
   const isClient = session?.user?.role === "client";
 
@@ -142,21 +141,7 @@ function Tracking() {
           {isClient && (
             <>
               <hr className="divider" />
-              <div className="field">
-                <span className="label">Rate {b.creator?.name.split(" ")[0]}</span>
-                <div className="chips" role="radiogroup" aria-label="Rating">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} role="radio" aria-checked={rating === n} className={`chip${rating === n ? " on" : ""}`} onClick={() => setRating(n)}>
-                      {n} ★
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="review">Review (optional)</label>
-                <input id="review" className="input" value={review} onChange={(e) => setReview(e.target.value)} />
-              </div>
-              <button className="btn btn-green btn-lg" disabled={act.busy} onClick={() => post({ action: "approve", rating, review })}>
+              <button className="btn btn-green btn-lg" disabled={act.busy} onClick={() => post({ action: "approve" })}>
                 Approve & release payment
               </button>
               {b.revisionsLeft > 0 && (
@@ -184,8 +169,35 @@ function Tracking() {
               Open video
             </a>
           )}
-          {b.rating && <Stars rating={b.rating} />}
           {b.latePenaltyPct > 0 && <p className="small">Late-delivery credit of {inr(Math.round(b.creatorPayout * b.latePenaltyPct / 100))} refunded to you.</p>}
+        </section>
+      )}
+
+      {b.status === "completed" && b.creator && isClient && (
+        <ReviewSection
+          name={b.creator.name.split(" ")[0]!}
+          mine={b.rating ? { rating: b.rating, text: b.review, at: b.reviewedAt } : null}
+          theirs={b.rating ? b.reviewOfClient : null}
+          busy={act.busy}
+          onSubmit={(rating, text) => void post({ action: "review", rating, text })}
+        />
+      )}
+
+      {b.status === "completed" && !isClient && (b.rating || b.reviewOfClient) && (
+        <section className="card stack">
+          <h2>Reviews</h2>
+          {b.rating && (
+            <>
+              <span className="label">Client on {b.creator?.name ?? "the creator"}</span>
+              <ReviewBody r={{ rating: b.rating, text: b.review, at: b.reviewedAt }} />
+            </>
+          )}
+          {b.reviewOfClient && (
+            <>
+              <span className="label">Creator on {b.clientName}</span>
+              <ReviewBody r={b.reviewOfClient} />
+            </>
+          )}
         </section>
       )}
 

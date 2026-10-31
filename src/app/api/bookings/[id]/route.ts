@@ -1,6 +1,6 @@
 import { api, readJson } from "@/lib/server/api";
 import { bookingView } from "@/lib/domain/views";
-import { approve, cancelByClient, checkIn, deliver, finishShoot, refund, requestRevision } from "@/lib/domain/bookings";
+import { approve, cancelByClient, checkIn, deliver, finishShoot, refund, requestRevision, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { manualAssign } from "@/lib/domain/dispatch";
 import { DomainError, assert, cleanText } from "@/lib/domain/util";
 import type { Booking, DB, User } from "@/lib/domain/types";
@@ -24,7 +24,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 type Action =
-  | { action: "approve"; rating: number; review?: string }
+  | { action: "approve" }
+  | { action: "review"; rating: number; text?: string }
   | { action: "revision"; note: string }
   | { action: "cancel" }
   | { action: "checkin"; otp: string; lat: number; lng: number }
@@ -44,7 +45,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       switch (body.action) {
         case "approve":
           as("client");
-          approve(db, b.id, u.id, body.rating, body.review, now);
+          approve(db, b.id, u.id, now);
+          break;
+        case "review":
+          if (u.role === "client") reviewCreator(db, b.id, u.id, body.rating, body.text, now);
+          else if (u.role === "creator") reviewClient(db, b.id, u.creatorId!, body.rating, body.text, now);
+          else throw new DomainError("Your account can’t do that", 403);
           break;
         case "revision":
           as("client");

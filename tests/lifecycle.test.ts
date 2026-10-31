@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { approve, checkIn, createBooking, deliver, finishShoot, requestRevision } from "@/lib/domain/bookings";
+import { approve, checkIn, clientRating, createBooking, deliver, finishShoot, requestRevision, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { creatorWallet, withdraw } from "@/lib/domain/wallet";
@@ -36,7 +36,7 @@ describe("shoot lifecycle and money", () => {
     checkIn(db, b.id, "cr_ankita", b.otp, { lat: b.lat + 0.001, lng: b.lng }, SHOOT);
     finishShoot(db, b.id, "cr_ankita", SHOOT + 2 * HOUR);
     deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 8 * HOUR);
-    approve(db, b.id, "u_priya", 5, "Lovely", SHOOT + 9 * HOUR);
+    approve(db, b.id, "u_priya", SHOOT + 9 * HOUR);
     expect(b.status).toBe("completed");
     expect(ledger(db, b.id, "creator_earning")).toBe(2000);
     expect(ledger(db, b.id, "platform_fee")).toBe(500);
@@ -51,7 +51,7 @@ describe("shoot lifecycle and money", () => {
     finishShoot(db, b.id, "cr_ankita", SHOOT + HOUR);
     deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 24 * HOUR + 7 * HOUR);
     expect(b.latePenaltyPct).toBe(20);
-    approve(db, b.id, "u_priya", 4, undefined, SHOOT + 32 * HOUR);
+    approve(db, b.id, "u_priya", SHOOT + 32 * HOUR);
     expect(ledger(db, b.id, "creator_earning")).toBe(1600);
     expect(ledger(db, b.id, "client_refund")).toBe(400);
     expect(ledger(db, b.id, "platform_fee")).toBe(500);
@@ -78,6 +78,50 @@ describe("shoot lifecycle and money", () => {
     expect(() => withdraw(db, "cr_ankita", 5000, false, T0)).toThrow(/available/);
     withdraw(db, "cr_ankita", 4390, true, T0);
     expect(creatorWallet(db, "cr_ankita").available).toBe(0);
+  });
+});
+
+describe("reviews", () => {
+  function completed(db: DB) {
+    const b = bookedAndAccepted(db);
+    checkIn(db, b.id, "cr_ankita", b.otp, b, SHOOT);
+    finishShoot(db, b.id, "cr_ankita", SHOOT + HOUR);
+    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 5 * HOUR);
+    return b;
+  }
+
+  it("lets each side review once, only after completion", () => {
+    const db = seedDb(T0);
+    const b = completed(db);
+    const ankita = db.creators.find((c) => c.id === "cr_ankita")!;
+    const before = { sum: ankita.ratingSum, count: ankita.ratingCount };
+    expect(() => reviewCreator(db, b.id, "u_priya", 5, "", SHOOT + 6 * HOUR)).toThrow(/completed/);
+    approve(db, b.id, "u_priya", SHOOT + 6 * HOUR);
+
+    expect(() => reviewCreator(db, b.id, "u_priya", 0, "", SHOOT + 7 * HOUR)).toThrow(/1 to 5/);
+    expect(() => reviewCreator(db, b.id, "u_priya", 4.5, "", SHOOT + 7 * HOUR)).toThrow(/1 to 5/);
+    expect(() => reviewCreator(db, b.id, "u_other", 5, "", SHOOT + 7 * HOUR)).toThrow(/not found/);
+    reviewCreator(db, b.id, "u_priya", 4, "  ", SHOOT + 7 * HOUR);
+    expect(b.rating).toBe(4);
+    expect(b.review).toBeUndefined();
+    expect(ankita.ratingSum).toBe(before.sum + 4);
+    expect(ankita.ratingCount).toBe(before.count + 1);
+    expect(() => reviewCreator(db, b.id, "u_priya", 5, "", SHOOT + 8 * HOUR)).toThrow(/already/);
+
+    expect(() => reviewClient(db, b.id, "cr_rituraj", 5, "", SHOOT + 7 * HOUR)).toThrow(/not found/);
+    reviewClient(db, b.id, "cr_ankita", 5, "Clear brief, on time", SHOOT + 7 * HOUR);
+    expect(b.reviewOfClient).toEqual({ rating: 5, text: "Clear brief, on time", at: SHOOT + 7 * HOUR });
+    expect(() => reviewClient(db, b.id, "cr_ankita", 3, "", SHOOT + 8 * HOUR)).toThrow(/already/);
+    expect(clientRating(db, "u_priya")).toEqual({ rating: 5, count: 1 });
+  });
+
+  it("can review an auto-approved booking", () => {
+    const db = seedDb(T0);
+    const b = completed(db);
+    tickAll(db, SHOOT + 5 * HOUR + 48 * HOUR);
+    expect(b.autoApproved).toBe(true);
+    reviewCreator(db, b.id, "u_priya", 2, "Late and blurry", SHOOT + 60 * HOUR);
+    expect(b.review).toBe("Late and blurry");
   });
 });
 
