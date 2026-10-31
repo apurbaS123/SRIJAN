@@ -129,13 +129,30 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const bw = W - 2 * mx;
   const bh = H - 2 * my;
   const S = bw / 1730;
-  const navH = Math.max(bh * 0.108, 56);
-  const panelY = navH + 14;
-  const pw = bw;
-  const ph = bh - panelY;
   // Text scale: the reference scale on desktop, a readable floor on small screens.
   const T = portrait ? Math.max(S, bw / 620) : Math.max(S, 0.6);
   const px = (n: number, min: number) => Math.max(n * T, min);
+
+  // Nav links sit centred between brand and account; when that row is too tight
+  // (phones) they drop to a second row of the nav slab instead of disappearing.
+  const navPad = px(40, 18);
+  const markSize = px(24, 18);
+  const brandX = navPad + markSize + px(12, 8);
+  const brandSize = px(26, 20);
+  const brandW = measure("srijan", 800, brandSize, DISPLAY, -0.03);
+  const accountSize = px(15, 13);
+  const accountW = measure(content.account.label, 700, accountSize, BODY);
+  const linkSize = px(15, 13);
+  const linkWs = content.navLinks.map((l) => measure(l.label, 600, linkSize, BODY));
+  const linkGap = (n: number) => linkWs.reduce((a, b) => a + b, 0) + n * (linkWs.length - 1);
+  const inlineGap = px(40, 20);
+  const inlineX = Math.max(brandX + brandW + px(64, 24), bw / 2 - linkGap(inlineGap) / 2);
+  const inline = inlineX + linkGap(inlineGap) < bw - navPad - accountW - px(32, 16);
+  const navH = inline ? Math.max(bh * 0.108, 56) : Math.max(bh * 0.108, 56) + linkSize * 2.4;
+  const navCy = inline ? navH / 2 : navH * 0.34;
+  const panelY = navH + 14;
+  const pw = bw;
+  const ph = bh - panelY;
 
   const items: Item[] = [];
   const text = (it: Omit<Item, "w" | "h" | "align"> & { align?: Item["align"] }): Item => {
@@ -146,43 +163,38 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   };
 
   // ── Nav slab ────────────────────────────────────────────
-  const navPad = px(40, 18);
-  const navCy = navH / 2;
-  const markSize = px(24, 18);
   items.push({
     id: "mark", kind: "mark", group: "nav", text: "", x: navPad, cy: navCy, w: markSize, h: markSize,
     size: markSize, weight: 800, family: DISPLAY, tracking: 0, fill: "", align: "left", href: "/",
   });
-  const brand = text({
-    id: "brand", kind: "link", group: "nav", text: "srijan", x: navPad + markSize + px(12, 8), cy: navCy,
-    size: px(26, 20), weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/",
+  text({
+    id: "brand", kind: "link", group: "nav", text: "srijan", x: brandX, cy: navCy,
+    size: brandSize, weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/",
   });
-  const account = text({
+  text({
     id: "account", kind: "link", group: "nav", text: content.account.label, x: bw - navPad, cy: navCy,
-    size: px(15, 13), weight: 700, family: BODY, tracking: 0, fill: WHITE(0.92), hoverFill: "#ffffff",
+    size: accountSize, weight: 700, family: BODY, tracking: 0, fill: WHITE(0.92), hoverFill: "#ffffff",
     href: content.account.href, align: "right",
   });
-  if (!phone) {
-    const size = px(15, 13);
-    const gapL = px(40, 20);
-    const widths = content.navLinks.map((l) => measure(l.label, 600, size, BODY));
-    const total = widths.reduce((a, b) => a + b, 0) + gapL * (widths.length - 1);
-    let x = Math.max(brand.x + brand.w + px(64, 24), bw / 2 - total / 2);
-    if (x + total < account.x - account.w - px(32, 16)) {
-      content.navLinks.forEach((l, i) => {
-        text({
-          id: `nav-${i}`, kind: "link", group: "nav", text: l.label, x, cy: navCy, size, weight: 600, family: BODY,
-          tracking: 0, fill: WHITE(0.6), hoverFill: WHITE(1), href: l.href,
-        });
-        x += widths[i] + gapL;
+  {
+    // Second row: spread the links across the slab, centred.
+    const gap = inline ? inlineGap : Math.min(px(40, 24), (bw - 2 * navPad - linkGap(0)) / (linkWs.length - 1));
+    let x = inline ? inlineX : bw / 2 - linkGap(gap) / 2;
+    const cy = inline ? navCy : navH * 0.72;
+    content.navLinks.forEach((l, i) => {
+      text({
+        id: `nav-${i}`, kind: "link", group: "nav", text: l.label, x, cy, size: linkSize, weight: 600, family: BODY,
+        tracking: 0, fill: WHITE(0.6), hoverFill: WHITE(1), href: l.href,
       });
-    }
+      x += linkWs[i] + gap;
+    });
   }
 
   // ── Panel ───────────────────────────────────────────────
-  const pad = px(76, 22);
+  const pad = phone ? 24 : px(76, 22);
   const maxW = pw - 2 * pad;
   let y = panelY + ph * (portrait ? 0.07 : 0.135);
+  const firstContent = items.length;
 
   // Largest size ≤ `size` at which `line` fits in maxW (canvas text widths scale linearly with size).
   const fit = (line: string, size: number, weight: number, family: string, tracking: number) =>
@@ -223,14 +235,14 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const btnH = px(46, 40);
   const btnSize = px(15, 14);
   y += -subLh + subLh / 2 + px(36, 22) + btnH / 2;
-  const pillW = measure(COPY.cta.label, 700, btnSize, BODY) + px(48, 36);
+  const pillW = measure(COPY.cta.label, 700, btnSize, BODY) + (phone ? 32 : px(48, 36));
   items.push({
     id: "cta", kind: "pill", group: "cta", text: COPY.cta.label, x: pad, cy: y, w: pillW, h: btnH, size: btnSize,
     weight: 700, family: BODY, tracking: 0.01, fill: "#f5f0ff", hoverFill: ACCENT, align: "left",
     href: COPY.cta.href,
   });
   // "How it works" sits beside the pill, or under it when the row would overflow.
-  const howGap = px(30, 20);
+  const howGap = phone ? 18 : px(30, 20);
   const beside = pillW + howGap + measure(COPY.link, 600, btnSize, BODY) <= maxW;
   text({
     id: "how", kind: "link", group: "cta", text: COPY.link, x: beside ? pad + pillW + howGap : pad,
@@ -240,6 +252,17 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
 
   const footSize = px(11, 10);
   const footCy = panelY + ph - px(38, 22);
+
+  // Tall screens: sit the copy just above the panel's middle, as on desktop,
+  // rather than leaving the bottom half of the card empty.
+  if (portrait) {
+    const copy = items.slice(firstContent);
+    const top = Math.min(...copy.map((i) => i.cy - i.h / 2));
+    const bottom = Math.max(...copy.map((i) => i.cy + i.h / 2));
+    const dy = Math.min(panelY + (footCy - panelY) * 0.46 - (top + bottom) / 2, footCy - footSize * 3 - bottom);
+    if (dy > 0) copy.forEach((i) => (i.cy += dy));
+  }
+
   text({
     id: "foot-l", kind: "text", group: "foot", text: COPY.footL, x: pad, cy: footCy, size: footSize, weight: 500,
     family: BODY, tracking: 0.02, fill: WHITE(0.34),
