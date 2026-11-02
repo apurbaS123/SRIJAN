@@ -25,6 +25,11 @@
   --grad-primary:  linear-gradient(135deg, #7c3aed 0%, #c026d3 60%, #f0abfc 100%);
   --grad-accent:   linear-gradient(135deg, #9f1eff 0%, #e879f9 100%);
   --grad-shimmer:  linear-gradient(135deg, #7c3aed, #c026d3, #818cf8, #7c3aed);
+  --grad-heading:  var(--grad-primary);
+
+  /* ── Links ── */
+  --link:          var(--violet);
+  --link-hover:    var(--violet-hot);
 
   /* ── Semantic colours (kept for status UI) ── */
   --orange:        #d946ef;          /* remapped → hot pink-purple */
@@ -90,13 +95,13 @@ body > * {
   opacity: 1;
   filter: brightness(0.4);
 }
-a { color: var(--violet); }
-a:hover { color: var(--violet-hot); }
+a { color: var(--link); }
+a:hover { color: var(--link-hover); }
 h1, h2, h3 {
   font-family: var(--display);
   letter-spacing: -0.02em;
   margin: 0;
-  background: var(--grad-primary);
+  background: var(--grad-heading);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -125,16 +130,36 @@ button, input, select, textarea { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 20px;
 
-  /* Glassmorphism */
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  /* Text that sits directly on the dark image */
+  --ink:           #f5f0ff;
+  --ink-2:         #e4dcff;
+  --muted:         #c8c0e4;
+  --line:          rgba(232, 222, 255, 0.24);
+  --link:          #c4b5fd;
+  --link-hover:    #f0abfc;
+  --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 100%);
+  color: var(--ink);
+
+  background: #0b1c3d url("/bg3.jpg") center / cover no-repeat;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
-/* Remove glass effect on the hero (home) page */
+/* Light surfaces inside a page keep the dark-on-light palette. Zero specificity
+   so each surface's own colour (.card-dark, .btn-primary, .error…) still wins. */
+:where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success) {
+  --ink:           #1a002e;
+  --ink-2:         #3d1a5c;
+  --muted:         #7b5ea7;
+  --line:          #e8deff;
+  --link:          var(--violet);
+  --link-hover:    var(--violet-hot);
+  --grad-heading:  var(--grad-primary);
+  color: var(--ink);
+}
+
+/* Remove the panel on the hero (home) page */
 .page-no-glass {
   background: transparent;
   backdrop-filter: none;
