@@ -135,7 +135,7 @@ export function respondToInvite(db: DB, id: string, creatorId: string, accept: b
   return c;
 }
 
-/** Pays every accepted creator and books Srijan's commission. */
+/** Records what each accepted creator is owed (ops pays by hand) and books Srijan's commission. */
 export function settleCampaign(db: DB, id: string, now: number) {
   const c = get(db, id);
   assert(c.stage === "report_settle", "Move the campaign to “Report & settle” first");
@@ -146,7 +146,7 @@ export function settleCampaign(db: DB, id: string, now: number) {
   for (const slot of toPay) {
     slot.status = "paid";
     paid += slot.fee;
-    db.ledger.push({ id: newId("led"), at: now, type: "creator_earning", amount: slot.fee, creatorId: slot.creatorId, campaignId: c.id, note: `Campaign · ${c.brandName}` });
+    db.ledger.push({ id: newId("led"), at: now, type: "creator_earning", amount: slot.fee, creatorId: slot.creatorId, campaignId: c.id, status: "processing", note: `Campaign · ${c.brandName}` });
   }
   for (const slot of c.creators) if (slot.status === "invited") slot.status = "declined";
   db.ledger.push({ id: newId("led"), at: now, type: "campaign_payment", amount: c.budget, campaignId: c.id, note: c.brandName });

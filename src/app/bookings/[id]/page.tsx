@@ -5,14 +5,15 @@ import { useParams } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView } from "@/lib/domain/views";
 import { Avatar, ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
-import { countdown, duration, inr, time, when } from "@/lib/client/format";
+import { JobDetails } from "@/components/JobDetails";
+import { countdown, inr, time, when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
 import { ReviewBody, ReviewSection } from "@/components/Review";
 
-const ORDER = ["searching", "assigned", "shooting", "editing", "delivered", "completed"];
+const ORDER = ["searching", "assigned", "delivered", "completed"];
 
 function Progress({ status }: { status: string }) {
-  const s = status === "needs_ops" ? "searching" : status === "revision_requested" ? "editing" : status;
+  const s = status === "needs_ops" ? "searching" : status === "disputed" ? "delivered" : status;
   const idx = ORDER.indexOf(s);
   return (
     <div className="steps" style={{ gridTemplateColumns: `repeat(${ORDER.length}, minmax(0,1fr))` }} aria-hidden="true">
@@ -23,6 +24,12 @@ function Progress({ status }: { status: string }) {
   );
 }
 
+const REFUND_TEXT = {
+  pending: "Your refund is on its way. Banks usually take a few working days.",
+  processed: "Your refund has been sent to your original payment method.",
+  failed: "Your refund hit a problem. The Srijan team has been alerted and will sort it out.",
+};
+
 function Tracking() {
   const { id } = useParams<{ id: string }>();
   const { session } = useSession();
@@ -30,6 +37,7 @@ function Tracking() {
   const act = useAction();
   const now = useTick();
   const [note, setNote] = useState("");
+  const [reporting, setReporting] = useState(false);
   const isClient = session?.user?.role === "client";
 
   if (error) return <div className="container page"><p className="error">{error.message}</p></div>;
@@ -48,16 +56,23 @@ function Tracking() {
       </Link>
       <div className="row between">
         <div className="stack" style={{ gap: 2 }}>
-          <h1 style={{ fontSize: 28 }}>
-            {b.packageName} · {when(b.scheduledAt)}
-          </h1>
+          <h1 style={{ fontSize: 28 }}>{b.packageName}</h1>
           <span className="small muted">
-            {b.code} · {b.area} · {inr(b.total)} paid
+            {b.code} · {b.area} · {inr(b.total)}{b.status === "awaiting_payment" ? "" : " paid"}
           </span>
         </div>
         <StatusBadge status={b.status} label={b.statusLabel} />
       </div>
       <Progress status={b.status} />
+
+      {b.status === "awaiting_payment" && (
+        <section className="card card-orange stack">
+          <h2>Confirming your payment</h2>
+          <p className="small">
+            This usually takes a few seconds. If you closed the payment form without paying, you can <Link href="/book">book again</Link>. You won’t be charged for this booking.
+          </p>
+        </section>
+      )}
 
       {b.status === "searching" && (
         <section className="card card-orange stack">
@@ -66,8 +81,10 @@ function Tracking() {
               <h2>{b.dispatch.phase === "direct" ? "Waiting for your chosen creator" : "Finding your creator"}</h2>
               <span className="small" style={{ color: "var(--orange-ink)" }}>
                 {b.dispatch.phase === "direct"
-                  ? "They have 5 minutes to accept. If they don’t, everyone available nearby is alerted."
-                  : `${b.dispatch.notified} creator${b.dispatch.notified === 1 ? "" : "s"} alerted within ${b.dispatch.radiusKm} km${b.dispatch.widened ? " (search widened)" : " · widens at minute 3"}`}
+                  ? "They have 5 minutes to accept. If they don’t, everyone available is alerted."
+                  : b.online
+                    ? `${b.dispatch.notified} creator${b.dispatch.notified === 1 ? "" : "s"} alerted. The first to accept gets the job.`
+                    : `${b.dispatch.notified} creator${b.dispatch.notified === 1 ? "" : "s"} alerted within ${b.dispatch.radiusKm} km${b.dispatch.widened ? " (search widened)" : " · widens at minute 3"}`}
               </span>
             </div>
             <span className="ring" style={{ background: "#fff", border: "5px solid var(--orange)" }} aria-label="Time left">
@@ -85,9 +102,7 @@ function Tracking() {
       {b.status === "needs_ops" && (
         <section className="card card-orange stack">
           <h2>Our team is finding you a creator</h2>
-          <p className="small">
-            No one accepted in the first 5 minutes. A Srijan team member is calling creators now. If we can’t fill it, you get a full refund automatically.
-          </p>
+          <p className="small">No one accepted in the first 5 minutes. A Srijan team member is calling creators now. If we can’t fill it, you get a full refund.</p>
           {isClient && (
             <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "cancel" })}>
               Cancel · full refund
@@ -96,80 +111,83 @@ function Tracking() {
         </section>
       )}
 
-      {b.creator && (
-        <section className="card row">
-          <Avatar name={b.creator.name} />
-          <div className="grow stack" style={{ gap: 2 }}>
-            <b>{b.creator.name}</b>
-            <Stars rating={b.creator.rating} count={b.creator.ratingCount} />
-            <span className="tiny muted">{b.creator.gear.join(" · ")}</span>
-          </div>
-          <a className="btn btn-sm btn-ghost" href="#" onClick={(e) => e.preventDefault()} title="Masked calling comes with the telephony integration">
-            Call
-          </a>
-        </section>
-      )}
-
-      {b.status === "assigned" && b.otp && (
+      {b.refund && (
         <section className="card card-orange stack">
-          <b>Start code — share only when the creator arrives</b>
-          <div className="huge-num" style={{ letterSpacing: "0.3em" }}>{b.otp}</div>
-          <span className="small" style={{ color: "var(--orange-ink)" }}>
-            The shoot timer starts when they enter this code at your address.
-          </span>
+          <h2>Refund of {inr(b.refund.amount)}</h2>
+          <p className="small">{REFUND_TEXT[b.refund.status]}</p>
+          {b.refund.error && <p className="small">{b.refund.error}</p>}
         </section>
       )}
 
-      {(b.status === "shooting" || b.status === "editing" || b.status === "revision_requested") && (
+      {b.creator && (
         <section className="card stack">
-          <h2>{b.status === "shooting" ? "Shoot in progress" : b.status === "editing" ? "Your video is being edited" : "Revision in progress"}</h2>
-          <p className="small muted">
-            Guaranteed delivery by <b>{when(b.deliveryDueAt)}</b>
-            {b.deliveryDueAt > now ? ` (in ${duration(b.deliveryDueAt - now)})` : " — it’s late; the creator’s payout drops 10% per 6 hours and you get the difference back"}.
-          </p>
-          {b.revisionNote && b.status === "revision_requested" && <p className="small">Your note: “{b.revisionNote}”</p>}
-        </section>
-      )}
-
-      {b.status === "delivered" && (
-        <section className="card stack">
-          <h2>Your video is ready</h2>
-          <a href={b.videoUrl} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-            Open video
-          </a>
-          {b.latePenaltyPct > 0 && <p className="small">Delivered late — you’ll get {inr(Math.round(b.creatorPayout * b.latePenaltyPct / 100))} back when you approve.</p>}
-          {isClient && (
-            <>
-              <hr className="divider" />
-              <button className="btn btn-green btn-lg" disabled={act.busy} onClick={() => post({ action: "approve" })}>
-                Approve & release payment
-              </button>
-              {b.revisionsLeft > 0 && (
-                <div className="stack">
-                  <div className="field">
-                    <label htmlFor="note">Or ask for changes ({b.revisionsLeft} free revision left)</label>
-                    <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Use a brighter colour grade and shorten the intro" />
-                  </div>
-                  <button className="btn" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "revision", note })}>
-                    Request changes
-                  </button>
-                </div>
-              )}
-              {b.autoApproveAt && <p className="tiny muted">Approves automatically on {when(b.autoApproveAt)} if you don’t respond.</p>}
-            </>
+          <h2>Contact</h2>
+          <div className="row">
+            <Avatar name={b.creator.name} />
+            <div className="grow stack" style={{ gap: 2 }}>
+              <b>{b.creator.name}</b>
+              <Stars rating={b.creator.rating} count={b.creator.ratingCount} />
+            </div>
+            {b.creatorPhone && (
+              <a className="btn btn-sm btn-primary" href={`tel:${b.creatorPhone.replace(/\s/g, "")}`}>
+                Call {b.creatorPhone}
+              </a>
+            )}
+          </div>
+          {b.clientPhone && (
+            <span className="small muted">
+              {isClient ? "Your number" : `${b.clientName}’s number`}, shared with the creator: <b>{b.clientPhone}</b>
+              {b.online ? ". They’ll call you about this online job." : ""}
+            </span>
           )}
+        </section>
+      )}
+
+      {b.status === "delivered" && isClient && (
+        <section className="card card-selected stack">
+          <h2>The creator has finished this job</h2>
+          <p className="small">Approve it once you’re happy. The creator then gets paid.</p>
+          <button className="btn btn-green btn-lg" disabled={act.busy} onClick={() => confirm("Approve this job? The creator will be paid.") && void post({ action: "approve" })}>
+            Mark As Approved
+          </button>
+          {reporting ? (
+            <div className="stack">
+              <div className="field">
+                <label htmlFor="note">What went wrong?</label>
+                <textarea id="note" className="textarea" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tell the Srijan team what happened" />
+              </div>
+              <button className="btn" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "report", note })}>
+                Send to the Srijan team
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} onClick={() => setReporting(true)}>
+              Report a problem
+            </button>
+          )}
+          {b.autoApproveAt && <p className="tiny muted">Approves automatically on {when(b.autoApproveAt)} if you don’t respond.</p>}
+        </section>
+      )}
+
+      {b.status === "delivered" && !isClient && (
+        <section className="card stack">
+          <h2>Waiting for the client</h2>
+          {b.autoApproveAt && <p className="small muted">Approves automatically on {when(b.autoApproveAt)}.</p>}
+        </section>
+      )}
+
+      {b.status === "disputed" && (
+        <section className="card card-orange stack">
+          <h2>Problem reported</h2>
+          {b.report && <p className="small">“{b.report.note}”</p>}
+          <p className="small">The creator’s payment is on hold while the Srijan team looks into it.</p>
         </section>
       )}
 
       {b.status === "completed" && (
         <section className="card stack">
           <h2>Done{b.autoApproved ? " · auto-approved" : ""}</h2>
-          {b.videoUrl && (
-            <a href={b.videoUrl} target="_blank" rel="noreferrer">
-              Open video
-            </a>
-          )}
-          {b.latePenaltyPct > 0 && <p className="small">Late-delivery credit of {inr(Math.round(b.creatorPayout * b.latePenaltyPct / 100))} refunded to you.</p>}
+          <p className="small muted">Thank you for using Srijan.</p>
         </section>
       )}
 
@@ -203,13 +221,7 @@ function Tracking() {
 
       <ErrorNote error={act.error} />
 
-      <section className="card stack">
-        <h2>Brief</h2>
-        <p>{b.brief}</p>
-        <p className="small muted">
-          {b.aspect} · {b.address}
-        </p>
-      </section>
+      <JobDetails b={b} money={{ label: b.status === "awaiting_payment" ? "To pay" : "Paid", value: inr(b.total) }} />
 
       <section className="card stack">
         <h2>Activity</h2>

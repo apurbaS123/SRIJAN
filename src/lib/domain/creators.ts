@@ -1,9 +1,9 @@
 import { SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
-import type { Creator, CreatorService, DB, ServiceKey, User } from "./types";
+import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from "./types";
 import { assert, cleanText, newId } from "./util";
 
 const DEFAULT_SERVICE: Record<ServiceKey, { title: string; description: string }> = {
-  videography: { title: "1-day shoot", description: "On-location shoot and edit, delivered within 24 hours at Srijan’s fixed package price." },
+  videography: { title: "1-day shoot", description: "On-location shoot and edit at Srijan’s fixed package price." },
   video_editing: { title: "Edit my footage", description: "Send your clips, get an edited video with captions and music." },
   influencer: { title: "Brand collaboration", description: "Sponsored posts to my audience, handled by the Srijan campaign team." },
   photography: { title: "Photo shoot", description: "On-location photography with edited photos." },
@@ -28,7 +28,6 @@ export interface SignupInput {
   followers?: number;
   onDemand?: boolean;
   maxTravelKm?: number;
-  upiId?: string;
 }
 
 /** A profile link on the chosen site (https only), or undefined when left empty. */
@@ -52,7 +51,48 @@ function cleanSocial(input: SignupInput["social"]): Creator["social"] {
   return { platform: p.key, url: u.toString() };
 }
 
-const UPI_RE = /^[\w.\-]{2,64}@[a-zA-Z]{2,32}$/;
+const UPI_RE = /^[\w.\-]{2,64}@[a-zA-Z0-9]{2,32}$/;
+const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const ACCOUNT_RE = /^\d{9,18}$/;
+
+/** Services that come with instant job alerts. */
+const ALERT_SERVICES: ServiceKey[] = ["videography", "video_editing"];
+
+/** Has the creator told us where to send their money? */
+export function hasPayoutDetails(c: Creator) {
+  return c.payoutMethod === "bank" ? !!c.bank : !!c.upiId;
+}
+
+/** Safe to show back to the creator: the account number is cut to its last 4 digits. */
+export function payoutSummary(c: Creator) {
+  if (c.payoutMethod === "bank" && c.bank) {
+    return { method: "bank" as const, accountName: c.bank.accountName, accountLast4: c.bank.accountNumber.slice(-4), ifsc: c.bank.ifsc };
+  }
+  return c.upiId ? { method: "upi" as const, upiId: c.upiId } : null;
+}
+
+export type PayoutInput = { method?: "upi" | "bank"; upiId?: string } & Partial<BankDetails>;
+
+function setPayoutDetails(c: Creator, input: PayoutInput) {
+  if (input?.method === "upi") {
+    const upi = cleanText(input.upiId, 100, "your UPI ID");
+    assert(UPI_RE.test(upi), "UPI ID looks wrong, e.g. name@okaxis");
+    c.payoutMethod = "upi";
+    c.upiId = upi;
+    c.bank = undefined;
+    return;
+  }
+  assert(input?.method === "bank", "Choose bank account or UPI");
+  const accountName = cleanText(input.accountName, 100, "the account holder’s name");
+  assert(accountName.length >= 2, "Enter the account holder’s name");
+  const accountNumber = String(input.accountNumber ?? "").replace(/\s/g, "");
+  assert(ACCOUNT_RE.test(accountNumber), "Account number should be 9 to 18 digits");
+  const ifsc = String(input.ifsc ?? "").trim().toUpperCase();
+  assert(IFSC_RE.test(ifsc), "IFSC looks wrong, e.g. SBIN0001234");
+  c.payoutMethod = "bank";
+  c.bank = { accountName, accountNumber, ifsc };
+  c.upiId = undefined;
+}
 
 function cleanList(v: unknown, maxItems: number, maxLen: number, label: string) {
   const list = Array.isArray(v) ? v : [];
@@ -80,8 +120,6 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     if (price !== null) assert(price <= 1_000_000, "Service prices must be under ₹10,00,000");
     return { key, ...DEFAULT_SERVICE[key], price: key === "videography" ? 2500 : price };
   });
-  const upiId = cleanText(input.upiId, 100, "your UPI ID", true);
-  if (upiId) assert(UPI_RE.test(upiId), "UPI ID looks wrong, e.g. name@okaxis");
   const social = cleanSocial(input.social);
   let instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
   if (instagram) assert(/^@?[\w.]{1,30}$/.test(instagram), "Enter just your Instagram handle, e.g. @yourname");
@@ -112,13 +150,12 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     instagram: instagram || undefined,
     social,
     followers: followers || undefined,
-    onDemand: !!input.onDemand && keys.includes("videography"),
+    onDemand: !!input.onDemand && keys.some((k) => ALERT_SERVICES.includes(k)),
     available: false,
     maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : 10,
     verification: "pending",
     // Set by the Srijan team after they check the documents — never self-declared.
     kyc: { aadhaar: false, pan: false },
-    upiId: upiId || undefined,
     ratingSum: 0,
     ratingCount: 0,
     jobsDone: 0,
@@ -133,7 +170,7 @@ export interface CreatorPatch {
   available?: boolean;
   onDemand?: boolean;
   maxTravelKm?: number;
-  upiId?: string;
+  payout?: PayoutInput;
   /** Live location from the phone (optional). */
   lat?: number;
   lng?: number;
@@ -143,22 +180,21 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
   const c = db.creators.find((x) => x.id === creatorId);
   assert(c, "Creator not found", 404);
   if (patch.available !== undefined) {
-    if (patch.available) assert(c.verification === "verified", "You can go online once your profile is verified");
+    if (patch.available) {
+      assert(c.verification === "verified", "You can go online once your profile is verified");
+      assert(hasPayoutDetails(c), "Link your bank account or UPI ID before going online");
+    }
     c.available = !!patch.available;
   }
   if (patch.onDemand !== undefined) {
-    if (patch.onDemand) assert(c.services.some((s) => s.key === "videography"), "Add the videography service to take same-day shoots");
+    if (patch.onDemand) assert(c.services.some((s) => ALERT_SERVICES.includes(s.key)), "Add videography or video editing to get job alerts");
     c.onDemand = !!patch.onDemand;
   }
   if (patch.maxTravelKm !== undefined) {
     assert([5, 10, 15, 20, 25].includes(Number(patch.maxTravelKm)), "Travel distance must be 5, 10, 15, 20 or 25 km");
     c.maxTravelKm = Number(patch.maxTravelKm);
   }
-  if (patch.upiId !== undefined) {
-    const upi = cleanText(patch.upiId, 100, "your UPI ID");
-    assert(UPI_RE.test(upi), "UPI ID looks wrong, e.g. name@okaxis");
-    c.upiId = upi;
-  }
+  if (patch.payout !== undefined) setPayoutDetails(c, patch.payout);
   if (patch.lat !== undefined || patch.lng !== undefined) {
     const lat = Number(patch.lat);
     const lng = Number(patch.lng);

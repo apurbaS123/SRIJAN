@@ -3,6 +3,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { call, serverNow, useAction, useData } from "@/lib/client/api";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
+import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
 import { ErrorNote, Guard, Loading } from "@/components/ui";
 import { useMeta, type Meta } from "@/components/useMeta";
 import { inr } from "@/lib/client/format";
@@ -64,13 +65,13 @@ function BookForm({ meta }: { meta: Meta }) {
   }, [slots, slot]);
 
   const pkg = meta.packages.find((p) => p.id === packageId)!;
-  const gst = Math.round(pkg.price * meta.gstRate);
-  const total = pkg.price + gst;
+  const online = !!pkg.online;
+  const total = pkg.price;
   const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta).length);
 
   async function pay() {
-    const b = await run(() =>
-      call<BookingView>("/api/bookings", {
+    const paidBookingId = await run(async () => {
+      const { booking, checkout } = await call<{ booking: BookingView; checkout: CheckoutDetails }>("/api/bookings", {
         packageId,
         cityId,
         zoneId,
@@ -80,14 +81,19 @@ function BookForm({ meta }: { meta: Meta }) {
         aspect,
         referenceUrl,
         requestedCreatorId: creatorId || undefined,
-      }),
-    );
-    if (b) router.push(`/bookings/${b.id}`);
+      });
+      const paid = await openCheckout(checkout);
+      if (!paid) return undefined; // closed without paying; they can simply try again
+      // If this call is lost, Razorpay's webhook still confirms the payment.
+      await call("/api/payments/verify", { bookingId: booking.id, ...paid }).catch(() => undefined);
+      return booking.id;
+    });
+    if (paidBookingId) router.push(`/bookings/${paidBookingId}`);
   }
 
   return (
     <div className="container page narrow">
-      <h1>Book a 1-day shoot</h1>
+      <h1>Book a job</h1>
       {chosen && (
         <div className="card card-violet row between">
           <span>
@@ -112,6 +118,7 @@ function BookForm({ meta }: { meta: Meta }) {
         ))}
       </section>
 
+      {!online && (
       <section className="stack">
         <h2>2. Where</h2>
         <div className="row">
@@ -206,9 +213,10 @@ function BookForm({ meta }: { meta: Meta }) {
           />
         )}
       </section>
+      )}
 
       <section className="stack">
-        <h2>3. When</h2>
+        <h2>{online ? "2. Finish by" : "3. When"}</h2>
         <div className="chips" role="group" aria-label="Date">
           {days.map((d, i) => (
             <button key={d} className={`chip${d === date ? " on" : ""}`} onClick={() => setDate(d)}>
@@ -224,14 +232,14 @@ function BookForm({ meta }: { meta: Meta }) {
           ))}
         </div>
         <span className="hint">
-          Same-day shoots need {meta.dispatch.minNoticeMs / 3600_000} hours’ notice. Start times {meta.dispatch.firstStartHour}:00–{meta.dispatch.lastStartHour}:00.
+          Jobs need {meta.dispatch.minNoticeMs / 3600_000} hours’ notice. Times {meta.dispatch.firstStartHour}:00–{meta.dispatch.lastStartHour}:00.
         </span>
       </section>
 
       <section className="stack">
-        <h2>4. Brief</h2>
+        <h2>{online ? "3. Brief" : "4. Brief"}</h2>
         <div className="field">
-          <label htmlFor="brief">What should the video show?</label>
+          <label htmlFor="brief">{online ? "What do you need done?" : "What should the video show?"}</label>
           <textarea id="brief" className="textarea" value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. Opening-week reel for our café: interiors, coffee being made, happy customers. Warm look." />
         </div>
         <div className="field">
@@ -252,23 +260,19 @@ function BookForm({ meta }: { meta: Meta }) {
           <span>{pkg.name}</span>
           <span>{inr(pkg.price)}</span>
         </div>
-        <div className="row between muted">
-          <span>GST ({Math.round(meta.gstRate * 100)}%)</span>
-          <span>{inr(gst)}</span>
-        </div>
         <hr className="divider" />
         <div className="row between strong" style={{ fontSize: 18 }}>
           <span>Total</span>
           <span>{inr(total)}</span>
         </div>
         <p className="small" style={{ color: "var(--ink-2)" }}>
-          Your money is held by Srijan and released to the creator only after you approve the video. Full refund if no creator is found or you cancel before one accepts.
+          You pay Srijan now, and the creator is paid after you approve the finished job. Full refund if no creator is found or you cancel before one accepts.
         </p>
       </section>
 
       <ErrorNote error={error} />
       <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot} onClick={pay}>
-        {busy ? "Processing…" : `Pay ${inr(total)} · UPI or card (simulated)`}
+        {busy ? "Processing…" : `Pay ${inr(total)}`}
       </button>
     </div>
   );

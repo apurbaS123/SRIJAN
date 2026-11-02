@@ -1,38 +1,18 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView } from "@/lib/domain/views";
 import { ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
-import { duration, inr, time, when } from "@/lib/client/format";
+import { JobDetails } from "@/components/JobDetails";
+import { inr, when } from "@/lib/client/format";
 import { ReviewSection } from "@/components/Review";
-
-function Step({ n, title, state, children }: { n: number; title: string; state: "done" | "now" | "later"; children?: React.ReactNode }) {
-  return (
-    <section className={`card stack${state === "now" ? " card-selected" : ""}`} style={state === "later" ? { opacity: 0.6 } : undefined}>
-      <div className="row">
-        <span
-          className="avatar"
-          style={{ width: 28, height: 28, fontSize: 13, background: state === "done" ? "var(--green)" : state === "now" ? "var(--ink)" : "#d5d6dc", color: "#fff" }}
-          aria-hidden="true"
-        >
-          {state === "done" ? "✓" : n}
-        </span>
-        <h3>{title}</h3>
-      </div>
-      {children}
-    </section>
-  );
-}
 
 function Job() {
   const { id } = useParams<{ id: string }>();
   const { data: b, error, setData, reload } = useData<BookingView>(`/api/bookings/${id}`, 4000);
   const act = useAction();
   const now = useTick(5000);
-  const [otp, setOtp] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
 
   if (error) return <div className="container page"><p className="error">{error.message}</p></div>;
   if (!b) return <Loading />;
@@ -43,19 +23,7 @@ function Job() {
     else void reload();
   }
 
-  function checkInWithGps() {
-    if (!navigator.geolocation) return act.setError("This device can’t share location");
-    navigator.geolocation.getCurrentPosition(
-      (p) => void post({ action: "checkin", otp, lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => act.setError("Location permission was denied"),
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-  }
-
-  const order = ["assigned", "shooting", "editing", "delivered", "completed"];
-  const at = order.indexOf(b.status === "revision_requested" ? "editing" : b.status);
-  const st = (i: number) => (at > i ? "done" : at === i ? "now" : "later") as "done" | "now" | "later";
-  const late = b.deliveryDueAt < now;
+  const tooEarly = !b.online && now < b.scheduledAt;
 
   return (
     <div className="container page narrow">
@@ -64,109 +32,87 @@ function Job() {
       </Link>
       <div className="row between">
         <div className="stack" style={{ gap: 2 }}>
-          <h1 style={{ fontSize: 28 }}>
-            {b.packageName} · {when(b.scheduledAt)}
-          </h1>
-          <span className="small muted">
-            {b.code} · you earn {inr(b.creatorPayout)}
-            {b.latePenaltyPct ? ` − ${b.latePenaltyPct}% late` : ""}
-          </span>
+          <h1 style={{ fontSize: 28 }}>{b.packageName}</h1>
+          <span className="small muted">{b.code} · you earn {inr(b.creatorPayout)}</span>
         </div>
         <StatusBadge status={b.status} label={b.statusLabel} />
       </div>
-
-      <section className="card card-violet stack">
-        <b>Brief</b>
-        <p>{b.brief}</p>
-        <span className="small" style={{ color: "var(--ink-2)" }}>
-          {b.aspect}
-          {b.referenceUrl && (
-            <>
-              {" "}· <a href={b.referenceUrl} target="_blank" rel="noreferrer">reference</a>
-            </>
-          )}
-        </span>
-      </section>
 
       {["refunded", "cancelled"].includes(b.status) ? (
         <div className="card">This booking was {b.status}.</div>
       ) : (
         <>
-          <Step n={1} title="Travel to the client" state={st(0) === "now" ? "now" : "done"}>
-            <p className="small">
-              <b>{b.address}</b>
-              <br />
-              {b.area} · client: {b.clientName} {b.clientPhone && `· ${b.clientPhone}`}
-            </p>
+          <section className="card stack" style={{ gap: 6 }}>
+            <h2>Client</h2>
+            <b>{b.clientName}</b>
+            {b.clientPhone && (
+              <a className="btn btn-sm btn-primary" style={{ alignSelf: "flex-start" }} href={`tel:${b.clientPhone.replace(/\s/g, "")}`}>
+                Call {b.clientPhone}
+              </a>
+            )}
+            {b.online && <span className="small muted">This is an online job. Call the client to get their files and agree the details.</span>}
             {b.clientRating && <Stars rating={b.clientRating.rating} count={b.clientRating.count} />}
-            <a className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} href={`https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}`} target="_blank" rel="noreferrer">
-              Open in Maps
-            </a>
-          </Step>
-
-          <Step n={2} title="Check in at the location" state={st(0)}>
-            {b.status === "assigned" && (
-              <>
-                <p className="small muted">Ask the client for the 4-digit start code in their app. It only works within 200 m of the address.</p>
-                <label htmlFor="otp" className="label">
-                  Client’s start code
-                </label>
-                <input id="otp" className="input otp-input" inputMode="numeric" maxLength={4} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} />
-                <div className="row">
-                  <button className="btn btn-accent" disabled={act.busy || otp.length !== 4} onClick={checkInWithGps}>
-                    Check in with my GPS
-                  </button>
-                </div>
-              </>
+            {!b.online && (
+              <a className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} href={`https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}`} target="_blank" rel="noreferrer">
+                Open in Maps
+              </a>
             )}
-            {b.checkInAt && <span className="small muted">Checked in at {time(b.checkInAt)}</span>}
-          </Step>
+          </section>
 
-          <Step n={3} title={`Shoot · up to ${b.packageHours} hours`} state={st(1)}>
-            {b.status === "shooting" && (
-              <>
-                <p className="small muted">Started {time(b.checkInAt)} · {duration(now - (b.checkInAt ?? now))} so far</p>
-                <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "finish" })}>
-                  Finish shoot
-                </button>
-              </>
-            )}
-            {b.shootEndAt && <span className="small muted">Finished at {time(b.shootEndAt)}</span>}
-          </Step>
+          <JobDetails b={b} money={{ label: "You earn", value: inr(b.creatorPayout) }} />
 
-          <Step n={4} title="Edit & deliver" state={st(2)}>
-            <span className={`badge ${late ? "badge-red" : "badge-orange"}`} style={{ alignSelf: "flex-start" }}>
-              Due {when(b.deliveryDueAt)}
-              {!b.deliveredAt && (late ? " · late" : ` · ${duration(b.deliveryDueAt - now)} left`)}
-            </span>
-            {(b.status === "editing" || b.status === "revision_requested") && (
-              <>
-                {b.status === "revision_requested" && <p className="small strong">Client asked for changes: “{b.revisionNote}”</p>}
-                <div className="field">
-                  <label htmlFor="url">Link to the final video</label>
-                  <input id="url" className="input" type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="Google Drive, YouTube unlisted, Dropbox…" />
-                  <span className="hint">Direct upload to Srijan storage comes later. Late delivery cuts your payout 10% per 6 hours.</span>
-                </div>
-                <button className="btn btn-accent" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "deliver", videoUrl })}>
-                  Deliver to client
-                </button>
-              </>
-            )}
-            {b.deliveredAt && (
-              <span className="small muted">
-                Delivered {when(b.deliveredAt)} · <a href={b.videoUrl} target="_blank" rel="noreferrer">video</a>
-              </span>
-            )}
-          </Step>
+          {b.status === "assigned" && (
+            <section className="card card-selected stack">
+              <h2>Submit your proof of work</h2>
+              <ol className="small stack" style={{ gap: 4, paddingLeft: 18 }}>
+                <li>Open the Srijan Drive folder and upload your finished work. Name it {b.code}.</li>
+                <li>Come back here and press Mark As Finished.</li>
+              </ol>
+              {b.proofUploadUrl ? (
+                <a className="btn btn-accent" style={{ alignSelf: "flex-start" }} href={b.proofUploadUrl} target="_blank" rel="noreferrer">
+                  Open Srijan Drive folder
+                </a>
+              ) : (
+                <p className="small" style={{ color: "var(--red)" }}>The upload folder isn’t set up yet. Please contact the Srijan team.</p>
+              )}
+              <button
+                className="btn btn-green btn-lg"
+                disabled={act.busy || tooEarly}
+                onClick={() => confirm("Have you uploaded your proof of work? The client will be asked to approve the job.") && void post({ action: "finish" })}
+              >
+                Mark As Finished
+              </button>
+              {tooEarly && <span className="tiny muted">You can press this from {when(b.scheduledAt)}, when the job starts.</span>}
+            </section>
+          )}
 
-          <Step n={5} title="Client approves · you get paid" state={st(3)}>
-            {b.status === "delivered" && b.autoApproveAt && <p className="small muted">Waiting for the client. Auto-approves {when(b.autoApproveAt)}.</p>}
-            {b.status === "completed" && (
+          {b.status === "delivered" && (
+            <section className="card stack">
+              <h2>Waiting for the client to approve</h2>
+              {b.autoApproveAt && <p className="small muted">If the client doesn’t respond, this job is approved automatically on {when(b.autoApproveAt)}.</p>}
+            </section>
+          )}
+
+          {b.status === "disputed" && (
+            <section className="card card-orange stack">
+              <h2>The client reported a problem</h2>
+              {b.report && <p className="small">“{b.report.note}”</p>}
+              <p className="small">The Srijan team will look into it and contact you. Your payment is on hold until then.</p>
+            </section>
+          )}
+
+          {b.status === "completed" && (
+            <section className="card stack">
+              <h2>{b.payoutStatus === "paid" ? "Payment sent" : "Job approved"}</h2>
               <p className="small">
-                {inr(Math.round(b.creatorPayout * (1 - b.latePenaltyPct / 100)))} added to your <Link href="/creator/wallet">wallet</Link>
+                {b.payoutStatus === "paid"
+                  ? `Srijan has sent ${inr(b.creatorPayout)} to your bank or UPI.`
+                  : b.payoutStatus === "owed"
+                    ? `Srijan will send ${inr(b.creatorPayout)} to your bank or UPI.`
+                    : "This job is complete."}
               </p>
-            )}
-          </Step>
+            </section>
+          )}
 
           {b.status === "completed" && (
             <ReviewSection

@@ -17,7 +17,7 @@ import { DomainError } from "@/lib/domain/util";
 
 /** First run: an empty marketplace. */
 function initialDb(): DB {
-  return { version: 1, seq: 1000, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [], otps: [] };
+  return { version: 1, seq: 1000, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [], otps: [], notifications: [] };
 }
 
 type Outcome<T> = { ok: true; result: T; now: number } | { ok: false; error: unknown };

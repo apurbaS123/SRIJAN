@@ -19,7 +19,7 @@ const LINKS = {
   ],
   creator: [
     { href: "/creator", label: "Jobs" },
-    { href: "/creator/wallet", label: "Wallet" },
+    { href: "/creator/payout", label: "Get paid" },
     { href: "/creator/campaigns", label: "Campaigns" },
   ],
   ops: [

@@ -1,23 +1,20 @@
-// On-demand shoot lifecycle: book & pay → find creator → check in → shoot → edit → deliver → approve → payout.
+// Job lifecycle: book → pay with Razorpay → first creator to accept gets it → creator uploads proof
+// and marks it finished → client approves → Srijan pays the creator 80%.
 import {
   AUTO_APPROVE_MS,
-  CHECKIN_RADIUS_KM,
   CREATOR_SHARE,
-  DELIVERY_SLA_MS,
   DISPATCH,
-  FREE_REVISIONS,
-  GST_RATE,
-  LATE_PENALTY,
+  PAYMENT_WINDOW_MS,
   PLATFORM_SHARE,
   findPackage,
   findZone,
 } from "./config";
 import { cancelSearch, startDispatch, tickDispatch } from "./dispatch";
-import type { Booking, DB } from "./types";
-import { DomainError, assert, cleanText, cleanUrl, haversineKm, istHour, newId, nextCode, parseIstLocal, randomOtp, rupees } from "./util";
+import { notifyUser } from "./notifications";
+import type { Booking, BookingStatus, DB } from "./types";
+import { assert, cleanText, cleanUrl, istHour, newId, nextCode, parseIstLocal, rupees } from "./util";
 
 const ASPECTS: Booking["aspect"][] = ["9:16", "16:9", "1:1"];
-const MAX_CHECKIN_FAILURES = 5;
 
 function log(b: Booking, at: number, text: string) {
   b.events.push({ at, text });
@@ -26,15 +23,15 @@ function log(b: Booking, at: number, text: string) {
 export function quote(packageId: string) {
   const pkg = findPackage(packageId);
   assert(pkg, "Unknown package");
-  const gst = rupees(pkg.price * GST_RATE);
-  return { pkg, price: pkg.price, gst, total: pkg.price + gst, creatorPayout: rupees(pkg.price * CREATOR_SHARE) };
+  return { pkg, price: pkg.price, total: pkg.price, creatorPayout: rupees(pkg.price * CREATOR_SHARE) };
 }
 
 export interface NewBookingInput {
   packageId: string;
-  cityId: string;
-  zoneId: string;
-  address: string;
+  /** Not needed for online jobs, like zoneId and address. */
+  cityId?: string;
+  zoneId?: string;
+  address?: string;
   /** "YYYY-MM-DDTHH:mm" in IST */
   scheduledAt: string;
   brief: string;
@@ -43,27 +40,28 @@ export interface NewBookingInput {
   requestedCreatorId?: string;
 }
 
-/** Creates the booking, records the (mock) payment and starts looking for a creator. */
+/** Creates the booking, unpaid. Nobody is alerted until `recordPayment`. */
 export function createBooking(db: DB, clientId: string, input: NewBookingInput, now: number) {
   const q = quote(input.packageId);
-  const place = findZone(input.cityId, input.zoneId);
-  assert(place, "Pick a city and area");
-  const address = cleanText(input.address, 300, "the shoot address");
-  assert(address.length >= 5, "Enter the full shoot address");
+  const online = !!q.pkg.online;
+  const place = online ? undefined : findZone(String(input.cityId), String(input.zoneId));
+  assert(online || place, "Pick a city and area");
+  const address = online ? "" : cleanText(input.address, 300, "the shoot address");
+  assert(online || address.length >= 5, "Enter the full shoot address");
   const brief = cleanText(input.brief, 2000, "the brief");
-  assert(brief.length >= 10, "Tell the creator what the video should show (at least 10 characters)");
+  assert(brief.length >= 10, "Tell the creator what you need (at least 10 characters)");
   const referenceUrl = cleanUrl(input.referenceUrl, "the reference video", true);
   const aspect = input.aspect ?? "9:16";
   assert(ASPECTS.includes(aspect), "Pick a video format");
   const scheduledAt = parseIstLocal(String(input.scheduledAt ?? ""));
   assert(!Number.isNaN(scheduledAt), "Pick a date and time");
-  assert(scheduledAt >= now + DISPATCH.minNoticeMs - 60_000, "Shoots need at least 2 hours’ notice");
+  assert(scheduledAt >= now + DISPATCH.minNoticeMs - 60_000, "Jobs need at least 2 hours’ notice");
   const h = istHour(scheduledAt);
   assert(
     h >= DISPATCH.firstStartHour && h <= DISPATCH.lastStartHour,
-    `Shoots can start between ${DISPATCH.firstStartHour}:00 and ${DISPATCH.lastStartHour}:00`,
+    `Pick a time between ${DISPATCH.firstStartHour}:00 and ${DISPATCH.lastStartHour}:00`,
   );
-  assert(scheduledAt <= now + 90 * 24 * 60 * 60_000, "Shoots can be booked up to 90 days ahead");
+  assert(scheduledAt <= now + 90 * 24 * 60 * 60_000, "Jobs can be booked up to 90 days ahead");
   if (input.requestedCreatorId) {
     assert(db.creators.some((c) => c.id === input.requestedCreatorId && c.verification === "verified"), "Creator not found");
   }
@@ -74,32 +72,47 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     clientId,
     packageId: q.pkg.id,
     price: q.price,
-    gst: q.gst,
     total: q.total,
+    online: online || undefined,
     address,
-    cityId: place.city.id,
-    zoneId: place.zone.id,
-    lat: place.zone.lat,
-    lng: place.zone.lng,
+    cityId: place?.city.id ?? "",
+    zoneId: place?.zone.id ?? "",
+    lat: place?.zone.lat ?? 0,
+    lng: place?.zone.lng ?? 0,
     scheduledAt,
     brief,
     aspect,
     referenceUrl,
     requestedCreatorId: input.requestedCreatorId || undefined,
-    status: "searching",
-    otp: randomOtp(),
+    status: "awaiting_payment",
     createdAt: now,
-    paidAt: now,
     dispatch: { phase: "done", roundStartedAt: now, roundEndsAt: now, widened: false, radiusKm: 0, notifiedCreatorIds: [] },
-    deliveryDueAt: scheduledAt + DELIVERY_SLA_MS,
-    revisionsUsed: 0,
     events: [],
   };
   db.bookings.push(b);
-  db.ledger.push({ id: newId("led"), at: now, type: "client_payment", amount: b.total, bookingId: b.id, note: `${b.code} · held until approval` });
-  log(b, now, `Paid ₹${b.total.toLocaleString("en-IN")} · held safely by Srijan`);
-  startDispatch(db, b, now);
   return b;
+}
+
+/**
+ * Razorpay has confirmed the money. Safe to call twice (checkout and webhook both report it).
+ * Returns "paid" the first time. A payment that lands after the booking was dropped can't start a
+ * job, so it is set up for a refund: returns "refund".
+ */
+export function recordPayment(db: DB, b: Booking, paymentId: string, now: number): "paid" | "refund" | "already" {
+  if (b.razorpayPaymentId) return "already";
+  const waiting = b.status === "awaiting_payment";
+  b.razorpayPaymentId = paymentId;
+  b.paidAt = now;
+  db.ledger.push({ id: newId("led"), at: now, type: "client_payment", amount: b.total, bookingId: b.id, note: b.code });
+  log(b, now, `Paid ₹${b.total.toLocaleString("en-IN")}`);
+  if (waiting) {
+    b.status = "searching";
+    startDispatch(db, b, now);
+    return "paid";
+  }
+  b.status = "awaiting_payment"; // a dropped booking is "cancelled", which `refund` would refuse
+  refund(db, b, "paid after the booking had expired", now);
+  return "refund";
 }
 
 function getForCreator(db: DB, bookingId: string, creatorId: string) {
@@ -108,97 +121,75 @@ function getForCreator(db: DB, bookingId: string, creatorId: string) {
   return b;
 }
 
-export function checkIn(db: DB, bookingId: string, creatorId: string, otp: string, at: { lat: number; lng: number }, now: number) {
-  const b = getForCreator(db, bookingId, creatorId);
-  assert(b.status === "assigned", "This job is not waiting for check-in");
-  assert((b.checkInFailures ?? 0) < MAX_CHECKIN_FAILURES, "Check-in is locked after too many wrong codes — contact the Srijan team", 429);
-  if (String(otp ?? "").trim() !== b.otp) {
-    b.checkInFailures = (b.checkInFailures ?? 0) + 1;
-    if (b.checkInFailures === MAX_CHECKIN_FAILURES) log(b, now, "Check-in locked after too many wrong start codes");
-    throw new DomainError("That start code is wrong — ask the client for the code shown in their app", 400, true);
-  }
-  assert(Number.isFinite(at.lat) && Number.isFinite(at.lng), "Turn on location to check in");
-  const distKm = haversineKm(at, b);
-  assert(
-    distKm <= CHECKIN_RADIUS_KM,
-    `You are ${distKm < 1 ? Math.round(distKm * 1000) + " m" : distKm.toFixed(1) + " km"} from the address. Check in within ${CHECKIN_RADIUS_KM * 1000} m.`,
-  );
-  const c = db.creators.find((x) => x.id === creatorId);
-  if (c) {
-    c.lat = at.lat;
-    c.lng = at.lng;
-  }
-  b.status = "shooting";
-  b.checkInAt = now;
-  log(b, now, "Creator checked in · shoot started");
+function getForClient(db: DB, bookingId: string, clientId: string) {
+  const b = db.bookings.find((x) => x.id === bookingId);
+  assert(b && b.clientId === clientId, "Booking not found", 404);
   return b;
 }
 
-export function finishShoot(db: DB, bookingId: string, creatorId: string, now: number) {
+/** The creator has uploaded their proof of work and pressed Mark As Finished. */
+export function markFinished(db: DB, bookingId: string, creatorId: string, now: number) {
   const b = getForCreator(db, bookingId, creatorId);
-  assert(b.status === "shooting", "The shoot hasn’t started");
-  b.status = "editing";
-  b.shootEndAt = now;
-  log(b, now, "Shoot finished · editing");
-  return b;
-}
-
-export function latePenaltyPct(dueAt: number, deliveredAt: number) {
-  if (deliveredAt <= dueAt) return 0;
-  const steps = Math.ceil((deliveredAt - dueAt) / LATE_PENALTY.stepMs);
-  return Math.min(LATE_PENALTY.capPct, steps * LATE_PENALTY.pctPerStep);
-}
-
-export function deliver(db: DB, bookingId: string, creatorId: string, videoUrl: string, now: number) {
-  const b = getForCreator(db, bookingId, creatorId);
-  assert(b.status === "editing" || b.status === "revision_requested", "Nothing to deliver right now");
-  const url = cleanUrl(videoUrl, "the video (Google Drive, YouTube unlisted, etc.)")!;
-  const revision = b.status === "revision_requested";
-  b.videoUrl = url;
-  b.deliveredAt = now;
+  assert(b.status === "assigned", "This job isn’t in progress");
+  assert(b.online || now >= b.scheduledAt, "You can mark this job as finished once its start time has passed");
   b.status = "delivered";
-  if (!b.firstDeliveredAt) {
-    b.firstDeliveredAt = now;
-    b.latePenaltyPct = latePenaltyPct(b.deliveryDueAt, now);
-  }
-  log(
-    b,
-    now,
-    revision
-      ? "Revised video delivered"
-      : b.latePenaltyPct
-        ? `Video delivered late · creator payout reduced ${b.latePenaltyPct}%`
-        : "Video delivered on time",
-  );
+  b.deliveredAt = now;
+  log(b, now, "Creator marked the job as finished");
+  notifyUser(db, b.clientId, now, {
+    title: "Your job is finished",
+    lines: [b.code, "Please check it and press Mark As Approved."],
+    href: `/bookings/${b.id}`,
+  });
   return b;
 }
 
-/** Splits the money once the client approves (or 48 h pass). */
+/** Books the 80/20 split. The creator's share stays owed until ops has paid it. */
 export function settleBooking(db: DB, b: Booking, now: number) {
-  const creatorGross = rupees(b.price * CREATOR_SHARE);
-  const penalty = b.latePenaltyPct ?? 0;
-  const creatorNet = rupees(creatorGross * (1 - penalty / 100));
-  const refund = creatorGross - creatorNet;
-  const platformFee = b.price - creatorGross;
-  db.ledger.push({ id: newId("led"), at: now, type: "creator_earning", amount: creatorNet, bookingId: b.id, creatorId: b.creatorId, note: `${b.code}${penalty ? ` · late −${penalty}%` : ""}` });
+  const creatorNet = rupees(b.price * CREATOR_SHARE);
+  const platformFee = b.price - creatorNet;
+  db.ledger.push({ id: newId("led"), at: now, type: "creator_earning", amount: creatorNet, bookingId: b.id, creatorId: b.creatorId, status: "processing", note: b.code });
   db.ledger.push({ id: newId("led"), at: now, type: "platform_fee", amount: platformFee, bookingId: b.id, note: `${b.code} · ${Math.round(PLATFORM_SHARE * 100)}%` });
-  db.ledger.push({ id: newId("led"), at: now, type: "gst_collected", amount: b.gst, bookingId: b.id, note: b.code });
-  if (refund > 0) {
-    db.ledger.push({ id: newId("led"), at: now, type: "client_refund", amount: refund, bookingId: b.id, note: `${b.code} · late delivery credit` });
-  }
   const c = db.creators.find((x) => x.id === b.creatorId);
-  if (c) c.jobsDone += 1;
-  return { creatorNet, platformFee, refund };
+  if (c) {
+    c.jobsDone += 1;
+    notifyUser(db, c.userId, now, {
+      title: "Job approved",
+      lines: [b.code, `Srijan will send ₹${creatorNet.toLocaleString("en-IN")} to your bank or UPI.`],
+      href: `/creator/jobs/${b.id}`,
+    });
+  }
+  return { creatorNet, platformFee };
 }
 
 export function approve(db: DB, bookingId: string, clientId: string, now: number) {
-  const b = db.bookings.find((x) => x.id === bookingId);
-  assert(b && b.clientId === clientId, "Booking not found", 404);
-  assert(b.status === "delivered", "There is no delivery to approve yet");
+  const b = getForClient(db, bookingId, clientId);
+  assert(b.status === "delivered", "There is nothing to approve yet");
   b.status = "completed";
   b.approvedAt = now;
   const s = settleBooking(db, b, now);
-  log(b, now, `Approved · ₹${s.creatorNet.toLocaleString("en-IN")} released to the creator`);
+  log(b, now, `Approved · ₹${s.creatorNet.toLocaleString("en-IN")} to be paid to the creator`);
+  return b;
+}
+
+/** The client isn't happy: the payout stops until the Srijan team decides. */
+export function reportProblem(db: DB, bookingId: string, clientId: string, note: unknown, now: number) {
+  const b = getForClient(db, bookingId, clientId);
+  assert(b.status === "delivered", "You can report a problem once the job is marked as finished");
+  const text = cleanText(note, 1000, "the problem");
+  assert(text.length >= 5, "Tell us what went wrong");
+  b.status = "disputed";
+  b.report = { note: text, at: now };
+  log(b, now, `Client reported a problem: “${text}”`);
+  return b;
+}
+
+/** Ops looked into a reported problem and sides with the creator. */
+export function releaseDisputed(db: DB, b: Booking, now: number) {
+  assert(b.status === "disputed", "This job has no reported problem");
+  b.status = "completed";
+  b.approvedAt = now;
+  const s = settleBooking(db, b, now);
+  log(b, now, `Srijan team approved the job · ₹${s.creatorNet.toLocaleString("en-IN")} to be paid to the creator`);
   return b;
 }
 
@@ -211,8 +202,7 @@ function cleanReview(rating: unknown, text: unknown) {
 
 /** The client reviews the creator, once, after the booking is completed. */
 export function reviewCreator(db: DB, bookingId: string, clientId: string, rating: unknown, text: unknown, now: number) {
-  const b = db.bookings.find((x) => x.id === bookingId);
-  assert(b && b.clientId === clientId, "Booking not found", 404);
+  const b = getForClient(db, bookingId, clientId);
   assert(b.status === "completed", "You can review once the booking is completed");
   assert(!b.rating, "You’ve already reviewed this booking");
   const r = cleanReview(rating, text);
@@ -245,42 +235,41 @@ export function clientRating(db: DB, clientId: string) {
   return { rating: rs.length ? Math.round((rs.reduce((s, r) => s + r, 0) / rs.length) * 10) / 10 : null, count: rs.length };
 }
 
-export function requestRevision(db: DB, bookingId: string, clientId: string, note: string, now: number) {
-  const b = db.bookings.find((x) => x.id === bookingId);
-  assert(b && b.clientId === clientId, "Booking not found", 404);
-  assert(b.status === "delivered", "There is no delivery to review yet");
-  assert(b.revisionsUsed < FREE_REVISIONS, "You’ve used your free revision");
-  const text = cleanText(note, 1000, "what to change");
-  assert(text.length >= 5, "Tell the creator what to change");
-  b.revisionsUsed += 1;
-  b.revisionNote = text;
-  b.status = "revision_requested";
-  log(b, now, `Revision requested: “${b.revisionNote}”`);
-  return b;
-}
-
+/**
+ * Marks the booking refunded. If real money was taken the refund is left "pending" and the caller
+ * sends it to Razorpay after saving (see src/lib/server/payments.ts).
+ */
 export function refund(db: DB, b: Booking, reason: string, now: number) {
   assert(!["completed", "refunded", "cancelled"].includes(b.status), "This booking can’t be refunded now");
   cancelSearch(db, b, now);
   b.status = "refunded";
   b.refundedAt = now;
+  if (b.razorpayPaymentId) b.refund = { amount: b.total, reason, status: "pending" };
   db.ledger.push({ id: newId("led"), at: now, type: "client_refund", amount: b.total, bookingId: b.id, note: `${b.code} · ${reason}` });
   log(b, now, `Full refund of ₹${b.total.toLocaleString("en-IN")} · ${reason}`);
   return b;
 }
 
-/** Client can cancel for free until a creator is on the way. */
+/** Client can cancel for free until a creator has accepted. */
 export function cancelByClient(db: DB, bookingId: string, clientId: string, now: number) {
-  const b = db.bookings.find((x) => x.id === bookingId);
-  assert(b && b.clientId === clientId, "Booking not found", 404);
+  const b = getForClient(db, bookingId, clientId);
   assert(b.status === "searching" || b.status === "needs_ops", "A creator is already on this job — contact support to cancel");
   refund(db, b, "cancelled by client", now);
   b.status = "cancelled";
   return b;
 }
 
+/** Bookings saved under the old check-in, shoot and revision steps carry on as "creator working". */
+const OLD_IN_PROGRESS = ["shooting", "editing", "revision_requested"];
+
 /** Time-based rules that aren't part of the creator search. */
 export function tickBooking(db: DB, b: Booking, now: number) {
+  if (OLD_IN_PROGRESS.includes(b.status)) b.status = "assigned" as BookingStatus;
+  if (b.status === "awaiting_payment" && now >= b.createdAt + PAYMENT_WINDOW_MS) {
+    b.status = "cancelled";
+    log(b, now, "Payment wasn’t completed");
+    return;
+  }
   tickDispatch(db, b, now);
   if (b.status === "delivered" && b.deliveredAt && now >= b.deliveredAt + AUTO_APPROVE_MS) {
     const at = b.deliveredAt + AUTO_APPROVE_MS;
@@ -288,6 +277,6 @@ export function tickBooking(db: DB, b: Booking, now: number) {
     b.approvedAt = at;
     b.autoApproved = true;
     const s = settleBooking(db, b, at);
-    log(b, at, `Auto-approved after 48 h · ₹${s.creatorNet.toLocaleString("en-IN")} released to the creator`);
+    log(b, at, `Auto-approved after 48 h · ₹${s.creatorNet.toLocaleString("en-IN")} to be paid to the creator`);
   }
 }

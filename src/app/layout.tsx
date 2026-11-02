@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/Session";
 import { Header } from "@/components/Header";
+import { DemoNotifications } from "@/components/DemoNotifications";
 
 export const metadata: Metadata = {
   title: "Srijan — the creator economy of the Northeast",
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <img className="bg-video" src="/bg1.png" alt="" aria-hidden="true" />
         <SessionProvider>
           <Header />
+          <DemoNotifications />
           <main>{children}</main>
         </SessionProvider>
       </body>

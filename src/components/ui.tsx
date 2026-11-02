@@ -146,9 +146,9 @@ export function CreatorCard({ c, km }: { c: CreatorPublic; km?: number }) {
 
 export function StatusBadge({ status, label }: { status: string; label: string }) {
   const tone =
-    status === "needs_ops" || status === "refunded" || status === "cancelled"
+    status === "needs_ops" || status === "refunded" || status === "cancelled" || status === "disputed"
       ? "badge-red"
-      : status === "searching" || status === "revision_requested"
+      : status === "searching" || status === "awaiting_payment"
         ? "badge-orange"
         : status === "completed" || status === "delivered"
           ? "badge-green"

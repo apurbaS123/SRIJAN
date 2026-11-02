@@ -1,98 +1,176 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { approve, checkIn, clientRating, createBooking, deliver, finishShoot, requestRevision, reviewClient, reviewCreator } from "@/lib/domain/bookings";
+import { approve, cancelByClient, clientRating, createBooking, markFinished, recordPayment, refund, releaseDisputed, reportProblem, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
-import { creatorWallet, withdraw } from "@/lib/domain/wallet";
+import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { campaignMath, inviteCreator, respondToInvite, settleCampaign, updateCampaign } from "@/lib/domain/campaigns";
 import { HOUR, MIN } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
+const JOB = { packageId: "quick_reel", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
+
+function paid(db: DB) {
+  const b = createBooking(db, "u_priya", JOB, T0);
+  recordPayment(db, b, "pay_test1", T0);
+  return b;
+}
 
 function bookedAndAccepted(db: DB) {
-  const b = createBooking(
-    db,
-    "u_priya",
-    { packageId: "quick_reel", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" },
-    T0,
-  );
+  const b = paid(db);
   const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
   acceptOffer(db, o.id, "cr_ankita", T0 + MIN);
+  return b;
+}
+
+function finished(db: DB) {
+  const b = bookedAndAccepted(db);
+  markFinished(db, b.id, "cr_ankita", SHOOT + 5 * HOUR);
   return b;
 }
 
 const ledger = (db: DB, bookingId: string, type: string) =>
   db.ledger.filter((l) => l.bookingId === bookingId && l.type === type).reduce((s, l) => s + l.amount, 0);
 
-describe("shoot lifecycle and money", () => {
-  it("pays 80/20 with GST recorded when delivered on time", () => {
+describe("paying for a job", () => {
+  it("charges exactly the package price, with no GST", () => {
+    const b = createBooking(seedDb(T0), "u_priya", JOB, T0);
+    expect(b.total).toBe(2500);
+  });
+
+  it("alerts nobody until the payment is confirmed", () => {
+    const db = seedDb(T0);
+    const b = createBooking(db, "u_priya", JOB, T0);
+    expect(b.status).toBe("awaiting_payment");
+    expect(db.offers.filter((o) => o.bookingId === b.id)).toEqual([]);
+    expect(ledger(db, b.id, "client_payment")).toBe(0);
+    expect(recordPayment(db, b, "pay_1", T0)).toBe("paid");
+    expect(b.status).toBe("searching");
+    expect(db.offers.filter((o) => o.bookingId === b.id).length).toBeGreaterThan(0);
+    expect(ledger(db, b.id, "client_payment")).toBe(2500);
+  });
+
+  it("counts a payment once when checkout and the webhook both report it", () => {
+    const db = seedDb(T0);
+    const b = createBooking(db, "u_priya", JOB, T0);
+    recordPayment(db, b, "pay_1", T0);
+    const offers = db.offers.length;
+    expect(recordPayment(db, b, "pay_1", T0 + 1000)).toBe("already");
+    expect(ledger(db, b.id, "client_payment")).toBe(2500);
+    expect(db.offers.length).toBe(offers);
+  });
+
+  it("drops an unpaid booking after 30 minutes and refunds a payment that lands later", () => {
+    const db = seedDb(T0);
+    const b = createBooking(db, "u_priya", JOB, T0);
+    tickAll(db, T0 + 29 * MIN);
+    expect(b.status).toBe("awaiting_payment");
+    tickAll(db, T0 + 30 * MIN);
+    expect(b.status).toBe("cancelled");
+    expect(recordPayment(db, b, "pay_late", T0 + 31 * MIN)).toBe("refund");
+    expect(b.status).toBe("refunded");
+    expect(b.refund).toMatchObject({ amount: 2500, status: "pending" });
+    expect(db.offers.filter((o) => o.bookingId === b.id)).toEqual([]);
+  });
+
+  it("sets up a real refund when a paid client cancels, and can't refund twice", () => {
+    const db = seedDb(T0);
+    const b = paid(db);
+    cancelByClient(db, b.id, "u_priya", T0 + MIN);
+    expect(b.status).toBe("cancelled");
+    expect(b.refund).toMatchObject({ amount: 2500, status: "pending" });
+    expect(() => refund(db, b, "again", T0 + 2 * MIN)).toThrow(/can’t be refunded/);
+    expect(ledger(db, b.id, "client_refund")).toBe(2500);
+  });
+});
+
+describe("finishing and approving a job", () => {
+  it("owes the creator 80% and keeps 20% once the client approves", () => {
     const db = seedDb(T0);
     const b = bookedAndAccepted(db);
-    expect(b.total).toBe(2950);
-    expect(() => checkIn(db, b.id, "cr_ankita", "0000", b, SHOOT)).toThrow(/start code/);
-    expect(() => checkIn(db, b.id, "cr_ankita", b.otp, { lat: b.lat + 0.01, lng: b.lng }, SHOOT)).toThrow(/from the address/);
-    checkIn(db, b.id, "cr_ankita", b.otp, { lat: b.lat + 0.001, lng: b.lng }, SHOOT);
-    finishShoot(db, b.id, "cr_ankita", SHOOT + 2 * HOUR);
-    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 8 * HOUR);
-    approve(db, b.id, "u_priya", SHOOT + 9 * HOUR);
+    markFinished(db, b.id, "cr_ankita", SHOOT + HOUR);
+    expect(b.status).toBe("delivered");
+    expect(ledger(db, b.id, "creator_earning")).toBe(0);
+    approve(db, b.id, "u_priya", SHOOT + 2 * HOUR);
     expect(b.status).toBe("completed");
     expect(ledger(db, b.id, "creator_earning")).toBe(2000);
     expect(ledger(db, b.id, "platform_fee")).toBe(500);
-    expect(ledger(db, b.id, "gst_collected")).toBe(450);
-    expect(ledger(db, b.id, "client_refund")).toBe(0);
   });
 
-  it("cuts the creator payout 10% per 6 h late and credits the client", () => {
+  it("won't let a creator finish an on-site job before it starts, or someone else's", () => {
     const db = seedDb(T0);
     const b = bookedAndAccepted(db);
-    checkIn(db, b.id, "cr_ankita", b.otp, b, SHOOT);
-    finishShoot(db, b.id, "cr_ankita", SHOOT + HOUR);
-    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 24 * HOUR + 7 * HOUR);
-    expect(b.latePenaltyPct).toBe(20);
-    approve(db, b.id, "u_priya", SHOOT + 32 * HOUR);
-    expect(ledger(db, b.id, "creator_earning")).toBe(1600);
-    expect(ledger(db, b.id, "client_refund")).toBe(400);
-    expect(ledger(db, b.id, "platform_fee")).toBe(500);
+    expect(() => markFinished(db, b.id, "cr_ankita", SHOOT - MIN)).toThrow(/start time/);
+    expect(() => markFinished(db, b.id, "cr_rituraj", SHOOT + HOUR)).toThrow(/not found/);
+    expect(() => approve(db, b.id, "u_priya", SHOOT + HOUR)).toThrow(/nothing to approve/);
   });
 
-  it("allows one free revision and auto-approves 48 h after delivery", () => {
+  it("only the booking's own client can approve", () => {
     const db = seedDb(T0);
-    const b = bookedAndAccepted(db);
-    checkIn(db, b.id, "cr_ankita", b.otp, b, SHOOT);
-    finishShoot(db, b.id, "cr_ankita", SHOOT + HOUR);
-    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 5 * HOUR);
-    requestRevision(db, b.id, "u_priya", "Use a brighter colour grade", SHOOT + 6 * HOUR);
-    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v2", SHOOT + 10 * HOUR);
-    expect(() => requestRevision(db, b.id, "u_priya", "Again please", SHOOT + 11 * HOUR)).toThrow(/free revision/);
-    tickAll(db, SHOOT + 10 * HOUR + 48 * HOUR);
+    const b = finished(db);
+    expect(() => approve(db, b.id, "u_other", SHOOT + 6 * HOUR)).toThrow(/not found/);
+  });
+
+  it("auto-approves 48 hours after the job is finished", () => {
+    const db = seedDb(T0);
+    const b = finished(db);
+    tickAll(db, SHOOT + 5 * HOUR + 47 * HOUR);
+    expect(b.status).toBe("delivered");
+    tickAll(db, SHOOT + 5 * HOUR + 48 * HOUR);
     expect(b.status).toBe("completed");
     expect(b.autoApproved).toBe(true);
+    expect(ledger(db, b.id, "creator_earning")).toBe(2000);
   });
 
-  it("lets a creator withdraw only what has been released", () => {
+  it("stops the payout when the client reports a problem, until ops decides", () => {
     const db = seedDb(T0);
-    const w = creatorWallet(db, "cr_ankita");
-    expect(w.available).toBe(4400);
-    expect(() => withdraw(db, "cr_ankita", 5000, false, T0)).toThrow(/available/);
-    withdraw(db, "cr_ankita", 4390, true, T0);
-    expect(creatorWallet(db, "cr_ankita").available).toBe(0);
+    const b = finished(db);
+    expect(() => reportProblem(db, b.id, "u_priya", "  ", SHOOT + 6 * HOUR)).toThrow(/Enter the problem/);
+    reportProblem(db, b.id, "u_priya", "The creator never came", SHOOT + 6 * HOUR);
+    expect(b.status).toBe("disputed");
+    tickAll(db, SHOOT + 100 * HOUR);
+    expect(b.status).toBe("disputed");
+    expect(ledger(db, b.id, "creator_earning")).toBe(0);
+    releaseDisputed(db, b, SHOOT + 101 * HOUR);
+    expect(b.status).toBe("completed");
+    expect(ledger(db, b.id, "creator_earning")).toBe(2000);
+  });
+
+  it("can refund a reported job instead, and then owes the creator nothing", () => {
+    const db = seedDb(T0);
+    const b = finished(db);
+    reportProblem(db, b.id, "u_priya", "The creator never came", SHOOT + 6 * HOUR);
+    refund(db, b, "creator didn't do the job", SHOOT + 7 * HOUR);
+    expect(b.status).toBe("refunded");
+    expect(ledger(db, b.id, "creator_earning")).toBe(0);
+    expect(payoutsDue(db)).toEqual([]);
+  });
+});
+
+describe("manual payouts", () => {
+  it("lists what's owed with the creator's details until ops marks it paid", () => {
+    const db = seedDb(T0);
+    const b = finished(db);
+    approve(db, b.id, "u_priya", SHOOT + 6 * HOUR);
+    const [due] = payoutsDue(db);
+    expect(due).toMatchObject({ amount: 2000, creatorName: "Ankita Baruah", method: "upi", upiId: "ankita@okaxis", bookingId: b.id });
+    markPayoutPaid(db, due!.id, "UTR123", SHOOT + 7 * HOUR);
+    expect(payoutsDue(db)).toEqual([]);
+    expect(db.ledger.find((l) => l.id === due!.id)).toMatchObject({ status: "paid", paymentRef: "UTR123", paidAt: SHOOT + 7 * HOUR });
+    expect(() => markPayoutPaid(db, due!.id, "", SHOOT + 8 * HOUR)).toThrow(/already/);
+  });
+
+  it("doesn't treat old wallet earnings as owed", () => {
+    expect(payoutsDue(seedDb(T0))).toEqual([]);
   });
 });
 
 describe("reviews", () => {
-  function completed(db: DB) {
-    const b = bookedAndAccepted(db);
-    checkIn(db, b.id, "cr_ankita", b.otp, b, SHOOT);
-    finishShoot(db, b.id, "cr_ankita", SHOOT + HOUR);
-    deliver(db, b.id, "cr_ankita", "https://drive.example.com/v1", SHOOT + 5 * HOUR);
-    return b;
-  }
-
   it("lets each side review once, only after completion", () => {
     const db = seedDb(T0);
-    const b = completed(db);
+    const b = finished(db);
     const ankita = db.creators.find((c) => c.id === "cr_ankita")!;
     const before = { sum: ankita.ratingSum, count: ankita.ratingCount };
     expect(() => reviewCreator(db, b.id, "u_priya", 5, "", SHOOT + 6 * HOUR)).toThrow(/completed/);
@@ -117,7 +195,7 @@ describe("reviews", () => {
 
   it("can review an auto-approved booking", () => {
     const db = seedDb(T0);
-    const b = completed(db);
+    const b = finished(db);
     tickAll(db, SHOOT + 5 * HOUR + 48 * HOUR);
     expect(b.autoApproved).toBe(true);
     reviewCreator(db, b.id, "u_priya", 2, "Late and blurry", SHOOT + 60 * HOUR);
@@ -136,7 +214,7 @@ describe("campaigns", () => {
     expect(result.paid).toBe(32000);
     expect(result.srijanKeeps).toBe(218000);
     expect(c.stage).toBe("closed");
-    expect(creatorWallet(db, "cr_lalrem").available).toBe(20000);
+    expect(payoutsDue(db).map((p) => [p.creatorName, p.amount])).toEqual([["Lalremruati", 20000], ["Rituraj Das", 12000]]);
   });
 
   it("rejects commission outside 30–35% and over-budget invites", () => {

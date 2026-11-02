@@ -24,15 +24,13 @@ export function bookingAlertLines(db: DB, b: Booking): string[] {
     `New booking ${b.code}`,
     `Package: ${pkg?.name ?? b.packageId}`,
     `When: ${istDateTime(b.scheduledAt)} IST`,
-    `Where: ${b.address}, ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
+    b.online ? "Where: Online job" : `Where: ${b.address}, ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
     `Client: ${client?.name ?? "Unknown"}${client?.phone ? ` · ${client.phone}` : ""}${client?.email ? ` · ${client.email}` : ""}`,
     `Brief: ${b.brief}`,
     `Format: ${b.aspect}`,
     ...(b.referenceUrl ? [`Reference: ${b.referenceUrl}`] : []),
     ...(requested ? [`Requested creator: ${requested.name}`] : []),
-    `Paid: ${inr(b.total)} (${inr(b.price)} + GST ${inr(b.gst)})`,
-    `Start code: ${b.otp}`,
-    `Delivery due: ${istDateTime(b.deliveryDueAt)} IST`,
+    `Paid: ${inr(b.total)}`,
   ];
 }
 

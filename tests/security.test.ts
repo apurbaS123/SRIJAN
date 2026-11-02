@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { checkIn, createBooking } from "@/lib/domain/bookings";
-import { acceptOffer } from "@/lib/domain/dispatch";
+import { createBooking } from "@/lib/domain/bookings";
 import { setVerification, signUpCreator } from "@/lib/domain/creators";
 import { createCampaign } from "@/lib/domain/campaigns";
 import { DomainError, cleanUrl } from "@/lib/domain/util";
@@ -10,7 +9,6 @@ import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { MIN } from "@/lib/domain/config";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
-const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
 const base = { packageId: "quick_reel", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
 describe("sign-in codes", () => {
@@ -87,18 +85,6 @@ describe("creator KYC", () => {
     setVerification(db, creator.id, "verified", true);
     expect(creator.verification).toBe("verified");
     expect(creator.kyc).toEqual({ aadhaar: true, pan: true });
-  });
-});
-
-describe("check-in start code", () => {
-  it("locks after 5 wrong codes", () => {
-    const db = seedDb(T0);
-    const b = createBooking(db, "u_priya", base, T0);
-    const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
-    acceptOffer(db, o.id, "cr_ankita", T0 + MIN);
-    const wrong = b.otp === "0000" ? "1111" : "0000";
-    for (let i = 0; i < 5; i++) expect(() => checkIn(db, b.id, "cr_ankita", wrong, b, SHOOT)).toThrow(/start code/);
-    expect(() => checkIn(db, b.id, "cr_ankita", b.otp, b, SHOOT)).toThrow(/locked/);
   });
 });
 

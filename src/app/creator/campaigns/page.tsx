@@ -24,7 +24,7 @@ function Invites() {
           <article key={c.id + slot.creatorId} className={`card stack${slot.status === "invited" ? " card-violet" : ""}`}>
             <div className="row between">
               <h2>{c.brandName}</h2>
-              <span className="badge">{slot.status === "invited" ? "Invite" : slot.status}</span>
+              <span className="badge">{slot.status === "invited" ? "Invite" : slot.status === "paid" ? "Settled · payment on its way" : slot.status}</span>
             </div>
             <p className="small">
               {c.goal} · {c.regions.join(", ")}

@@ -114,6 +114,15 @@ const TABLES: Record<Collection, Table> = {
       ["created_at", "timestamptz", time("createdAt")],
     ],
   },
+  notifications: {
+    name: "notifications",
+    key: "id",
+    columns: [
+      ["user_id", "text", text("userId")],
+      ["title", "text", text("title")],
+      ["at", "timestamptz", time("at")],
+    ],
+  },
   // Codes are stored only as hashes; the hash identifies each one.
   otps: {
     name: "sign_in_codes",

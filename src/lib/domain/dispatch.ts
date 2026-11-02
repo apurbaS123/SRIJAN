@@ -7,11 +7,15 @@
 // 4. Creators who come online during the window are alerted too.
 // 5. If nobody accepts by the end of the window, the booking goes to the ops team.
 //
+// Only creators who offer the job's service are alerted. Online jobs skip the distance rules.
+//
 // All of this runs lazily: `tickDispatch` is called on every request with the current
 // time, so it works without background jobs (and on serverless hosting).
 
 import { DISPATCH, HOUR, findPackage } from "./config";
-import type { Booking, Creator, DB, Offer } from "./types";
+import { hasPayoutDetails } from "./creators";
+import { closeOfferNotifications, notifyCreatorOfOffer, notifyUser } from "./notifications";
+import type { Booking, Creator, DB, Offer, ServiceKey } from "./types";
 import { DomainError, assert, haversineKm, newId } from "./util";
 
 function log(b: Booking, at: number, text: string) {
@@ -24,17 +28,23 @@ export function bookingWindow(b: Booking): [number, number] {
 }
 
 export function isCreatorBusy(db: DB, creatorId: string, booking: Booking) {
+  if (booking.online) return false;
   const [s, e] = bookingWindow(booking);
   return db.bookings.some((o) => {
-    if (o.id === booking.id || o.creatorId !== creatorId) return false;
-    if (o.status !== "assigned" && o.status !== "shooting") return false;
+    if (o.id === booking.id || o.creatorId !== creatorId || o.online) return false;
+    if (o.status !== "assigned") return false;
     const [os, oe] = bookingWindow(o);
     return os < e && s < oe;
   });
 }
 
-export function canTakeShoots(c: Creator) {
-  return c.verification === "verified" && c.onDemand && c.services.some((s) => s.key === "videography");
+export function jobService(b: Booking): ServiceKey {
+  return findPackage(b.packageId)?.service ?? "videography";
+}
+
+/** Verified, opted in to alerts, offers this kind of work and can be paid for it. */
+export function canTakeJob(c: Creator, service: ServiceKey) {
+  return c.verification === "verified" && c.onDemand && hasPayoutDetails(c) && c.services.some((s) => s.key === service);
 }
 
 /** Creators who should be alerted now, nearest first. Skips anyone already alerted or who declined. */
@@ -44,10 +54,11 @@ export function eligibleCreators(db: DB, booking: Booking, radiusKm: number) {
       .filter((o) => o.bookingId === booking.id && (o.status === "pending" || o.status === "declined"))
       .map((o) => o.creatorId),
   );
+  const service = jobService(booking);
   return db.creators
-    .filter((c) => canTakeShoots(c) && c.available && !skip.has(c.id))
-    .map((creator) => ({ creator, distanceKm: haversineKm(creator, booking) }))
-    .filter((x) => x.distanceKm <= radiusKm && x.distanceKm <= x.creator.maxTravelKm)
+    .filter((c) => canTakeJob(c, service) && c.available && !skip.has(c.id))
+    .map((creator) => ({ creator, distanceKm: booking.online ? 0 : haversineKm(creator, booking) }))
+    .filter((x) => booking.online || (x.distanceKm <= radiusKm && x.distanceKm <= x.creator.maxTravelKm))
     .filter((x) => !isCreatorBusy(db, x.creator.id, booking))
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }
@@ -65,6 +76,7 @@ function createOffer(db: DB, b: Booking, creatorId: string, kind: Offer["kind"],
   };
   db.offers.push(offer);
   if (!b.dispatch.notifiedCreatorIds.includes(creatorId)) b.dispatch.notifiedCreatorIds.push(creatorId);
+  notifyCreatorOfOffer(db, b, offer);
   return offer;
 }
 
@@ -89,7 +101,10 @@ function startBroadcast(db: DB, b: Booking, at: number) {
   d.widened = false;
   d.radiusKm = DISPATCH.initialRadiusKm;
   const n = alertNearby(db, b, at);
-  if (n === 0) {
+  if (b.online) {
+    d.widened = true; // no distance limit, so there is nothing to widen
+    log(b, at, n === 0 ? "No one available right now" : `${n} creator${n === 1 ? "" : "s"} alerted · 5 min to accept`);
+  } else if (n === 0) {
     log(b, at, `No one free within ${DISPATCH.initialRadiusKm} km`);
     widen(db, b, at);
   } else {
@@ -109,9 +124,9 @@ export function startDispatch(db: DB, b: Booking, now: number) {
   };
   if (b.requestedCreatorId) {
     const c = db.creators.find((x) => x.id === b.requestedCreatorId);
-    if (c && canTakeShoots(c) && c.available && !isCreatorBusy(db, c.id, b)) {
+    if (c && canTakeJob(c, jobService(b)) && c.available && !isCreatorBusy(db, c.id, b)) {
       b.dispatch.roundEndsAt = now + DISPATCH.directOfferMs;
-      createOffer(db, b, c.id, "direct", now, haversineKm(c, b));
+      createOffer(db, b, c.id, "direct", now, b.online ? 0 : haversineKm(c, b));
       log(b, now, `Sent to ${c.name} first · 5 min to accept`);
       return;
     }
@@ -125,6 +140,7 @@ function expirePending(db: DB, bookingId: string, status: "expired" | "taken", a
     if (o.bookingId === bookingId && o.status === "pending") {
       o.status = status;
       o.respondedAt = at;
+      closeOfferNotifications(db, o.id, at);
     }
   }
 }
@@ -175,6 +191,11 @@ function assignCreator(db: DB, b: Booking, creator: Creator, now: number) {
   b.assignedAt = now;
   b.dispatch.phase = "done";
   expirePending(db, b.id, "taken", now);
+  notifyUser(db, b.clientId, now, {
+    title: `${creator.name} accepted your job`,
+    lines: [b.code, "Open the job to see their phone number and all the details."],
+    href: `/bookings/${b.id}`,
+  });
 }
 
 export function acceptOffer(db: DB, offerId: string, creatorId: string, now: number) {
@@ -191,8 +212,9 @@ export function acceptOffer(db: DB, offerId: string, creatorId: string, now: num
   const creator = db.creators.find((c) => c.id === creatorId)!;
   o.status = "accepted";
   o.respondedAt = now;
+  closeOfferNotifications(db, o.id, now);
   assignCreator(db, b, creator, now);
-  const secs = Math.max(0, Math.round((now - b.paidAt) / 1000));
+  const secs = Math.max(0, Math.round((now - (b.paidAt ?? now)) / 1000));
   const took = secs < 60 ? `${secs} sec` : `${Math.floor(secs / 60)} min ${secs % 60} sec`;
   log(b, now, `${creator.name} accepted · ${b.dispatch.notifiedCreatorIds.length} alerted · matched in ${took}`);
   return b;
@@ -204,6 +226,7 @@ export function declineOffer(db: DB, offerId: string, creatorId: string, now: nu
   assert(o.status === "pending", "This offer is no longer open", 409);
   o.status = "declined";
   o.respondedAt = now;
+  closeOfferNotifications(db, o.id, now);
   const b = db.bookings.find((x) => x.id === o.bookingId);
   if (b) tickDispatch(db, b, now);
 }
@@ -212,7 +235,7 @@ export function declineOffer(db: DB, offerId: string, creatorId: string, now: nu
 export function manualAssign(db: DB, b: Booking, creatorId: string, now: number) {
   assert(b.status === "searching" || b.status === "needs_ops", "This booking already has a creator");
   const c = db.creators.find((x) => x.id === creatorId);
-  assert(c && c.verification === "verified", "Pick a verified creator");
+  assert(c && canTakeJob(c, jobService(b)), "Pick a verified creator who offers this service and has linked their bank or UPI");
   assert(!isCreatorBusy(db, c.id, b), `${c.name} already has a shoot around this time`);
   assignCreator(db, b, c, now);
   log(b, now, `Srijan team assigned ${c.name}`);

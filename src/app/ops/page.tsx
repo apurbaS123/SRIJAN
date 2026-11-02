@@ -3,12 +3,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
+import type { PayoutDue } from "@/lib/domain/payouts";
 import { ErrorNote, Guard, StatusBadge } from "@/components/ui";
 import { countdown, inr, lakh, time, when } from "@/lib/client/format";
 
 interface Overview {
   kpis: { shootsToday: number; liveNow: number; searching: number; needsOps: number; pipelineValue: number; revenueMonth: number; pendingVerification: number };
-  money: { month: string; shootGmv: number; platformFee: number; campaignBilled: number; campaignCommission: number; gstCollected: number; refunds: number; queuedPayouts: { count: number; total: number } };
+  money: { month: string; shootGmv: number; platformFee: number; campaignBilled: number; campaignCommission: number; refunds: number };
+  payoutsDue: PayoutDue[];
+  refundsStuck: { id: string; code: string; amount: number; status: string; error?: string }[];
   dispatch: (BookingView & { candidates: { id: string; name: string; available: boolean; km: number }[] })[];
   pendingCreators: CreatorPublic[];
 }
@@ -24,9 +27,9 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
         ? `${b.dispatch.notified} alerted · nobody accepted`
         : b.status === "delivered"
           ? `Auto-approves ${when(b.autoApproveAt)}`
-          : b.status === "assigned"
-            ? `Shoot ${when(b.scheduledAt)}`
-            : `Due ${when(b.deliveryDueAt)}`;
+          : b.status === "disputed"
+            ? `Client: “${b.report?.note ?? ""}”`
+            : `${b.online ? "Finish by" : "Job"} ${when(b.scheduledAt)}`;
 
   async function post(body: Record<string, unknown>) {
     const ok = await act.run(() => call(`/api/bookings/${b.id}`, body));
@@ -69,6 +72,11 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
             </button>
           </div>
         )}
+        {b.status === "disputed" && (
+          <button className="btn btn-sm btn-primary" style={{ marginTop: 6, marginRight: 6 }} disabled={act.busy} onClick={() => confirm(`Approve ${b.code} so the creator gets paid ${inr(b.creatorPayout)}?`) && post({ action: "release" })}>
+            Pay creator
+          </button>
+        )}
         {!["completed", "refunded", "cancelled"].includes(b.status) && (
           <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={act.busy} onClick={() => confirm(`Refund ${inr(b.total)} for ${b.code}?`) && post({ action: "refund", reason: "refunded by Srijan team" })}>
             Refund
@@ -80,6 +88,53 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
   );
 }
 
+function PayoutRow({ p, onChange }: { p: PayoutDue; onChange: () => void }) {
+  const act = useAction();
+  const [reference, setReference] = useState("");
+
+  async function markPaid() {
+    if (!confirm(`Have you sent ${inr(p.amount)} to ${p.creatorName}?`)) return;
+    const ok = await act.run(() => call("/api/admin", { action: "mark_paid", payoutId: p.id, reference }));
+    if (ok) onChange();
+  }
+
+  return (
+    <article className="card card-tight stack" style={{ background: "var(--bg)" }}>
+      <div className="row between">
+        <b>
+          {inr(p.amount)} → {p.creatorName}
+        </b>
+        <span className="small muted">
+          {p.note} · {when(p.at)}
+        </span>
+      </div>
+      <div className="small">
+        {p.method === "upi" && (
+          <>
+            UPI: <b>{p.upiId}</b>
+          </>
+        )}
+        {p.method === "bank" && (
+          <>
+            {p.bank!.accountName} · A/C <b>{p.bank!.accountNumber}</b> · IFSC <b>{p.bank!.ifsc}</b>
+          </>
+        )}
+        {!p.method && <span style={{ color: "var(--red)" }}>No bank or UPI linked yet. Contact them{p.creatorPhone ? ` on ${p.creatorPhone}` : ""}.</span>}
+      </div>
+      <div className="row">
+        <label className="sr-only" htmlFor={`ref-${p.id}`}>
+          Payment reference
+        </label>
+        <input id={`ref-${p.id}`} className="input grow" style={{ minHeight: 36 }} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="UTR or UPI reference (optional)" />
+        <button className="btn btn-sm btn-primary" disabled={act.busy} onClick={markPaid}>
+          Mark as paid
+        </button>
+      </div>
+      {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
+    </article>
+  );
+}
+
 function Dashboard() {
   const { data, reload } = useData<Overview>("/api/admin", 3000);
   const act = useAction();
@@ -88,9 +143,9 @@ function Dashboard() {
   const k = data.kpis;
   const m = data.money;
 
-  async function admin(body: Record<string, unknown>) {
-    const ok = await act.run(() => call("/api/admin", body));
-    if (ok !== undefined) void reload();
+  async function retryRefund(id: string) {
+    const ok = await act.run(() => call(`/api/bookings/${id}`, { action: "retry_refund" }));
+    if (ok) void reload();
   }
 
   return (
@@ -129,8 +184,8 @@ function Dashboard() {
 
       <section className="card stack">
         <div className="row between">
-          <h2>Live shoots</h2>
-          <span className="small muted">Alert everyone within 10 km · 5 min to accept · widen to 25 km at minute 3 · then ops</span>
+          <h2>Live jobs</h2>
+          <span className="small muted">Alert everyone in the field within 10 km (online jobs: everywhere) · 5 min to accept · widen to 25 km at minute 3 · then ops</span>
         </div>
         <div className="table-wrap">
           <table style={{ minWidth: 900 }}>
@@ -150,7 +205,7 @@ function Dashboard() {
               {data.dispatch.length === 0 && (
                 <tr>
                   <td colSpan={6} className="muted">
-                    Nothing live. Sign in as Priya Sharma and book a shoot to see dispatch in action.
+                    Nothing live right now.
                   </td>
                 </tr>
               )}
@@ -162,11 +217,41 @@ function Dashboard() {
         </div>
       </section>
 
+      <section className="card stack">
+        <div className="row between">
+          <h2>Creators to pay ({data.payoutsDue.length})</h2>
+          <span className="small muted">Send the money from your bank or UPI app, then mark it as paid</span>
+        </div>
+        {data.payoutsDue.length === 0 && <p className="small muted">Nobody is waiting to be paid.</p>}
+        {data.payoutsDue.map((p) => (
+          <PayoutRow key={p.id} p={p} onChange={reload} />
+        ))}
+      </section>
+
+      {data.refundsStuck.length > 0 && (
+        <section className="card card-orange stack">
+          <h2>Refunds that need attention</h2>
+          {data.refundsStuck.map((r) => (
+            <div key={r.id} className="row between">
+              <span className="small">
+                <Link href={`/bookings/${r.id}`} className="strong">
+                  {r.code}
+                </Link>{" "}
+                · {inr(r.amount)} · {r.error ?? "Not sent to Razorpay yet"}
+              </span>
+              <button className="btn btn-sm" disabled={act.busy} onClick={() => retryRefund(r.id)}>
+                Retry refund
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
       <div className="grid-2">
         <section className="card stack">
           <h2>Money · {m.month}</h2>
           <div className="row between">
-            <span>Shoots billed (ex-GST) · Srijan 20%</span>
+            <span>Jobs billed · Srijan 20%</span>
             <span>
               {inr(m.shootGmv)} → <b>{inr(m.platformFee)}</b>
             </span>
@@ -178,25 +263,13 @@ function Dashboard() {
             </span>
           </div>
           <div className="row between muted small">
-            <span>GST collected (to be paid to government)</span>
-            <span>{inr(m.gstCollected)}</span>
-          </div>
-          <div className="row between muted small">
-            <span>Refunds and late-delivery credits</span>
+            <span>Refunds</span>
             <span>{inr(m.refunds)}</span>
           </div>
           <hr className="divider" />
           <div className="row between strong">
             <span>Srijan revenue</span>
             <span style={{ color: "var(--violet-ink)" }}>{inr(m.platformFee + m.campaignCommission)}</span>
-          </div>
-          <div className="card card-tight row between" style={{ background: "var(--bg)" }}>
-            <span className="small">
-              Friday payout run: <b>{inr(m.queuedPayouts.total)}</b> to {m.queuedPayouts.count} creator request{m.queuedPayouts.count === 1 ? "" : "s"}
-            </span>
-            <button className="btn btn-sm btn-primary" disabled={act.busy || m.queuedPayouts.count === 0} onClick={() => admin({ action: "payout_run" })}>
-              Mark as paid
-            </button>
           </div>
         </section>
         <section className="card stack">

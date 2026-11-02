@@ -1,11 +1,12 @@
 import { api, readJson } from "@/lib/server/api";
 import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
 import { setVerification } from "@/lib/domain/creators";
-import { runPayouts } from "@/lib/domain/wallet";
-import { canTakeShoots, isCreatorBusy } from "@/lib/domain/dispatch";
+import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
+import { canTakeJob, isCreatorBusy, jobService } from "@/lib/domain/dispatch";
 import { haversineKm, DomainError } from "@/lib/domain/util";
 
-const ACTIVE = ["searching", "needs_ops", "assigned", "shooting", "editing", "delivered", "revision_requested"];
+const ACTIVE = ["searching", "needs_ops", "assigned", "delivered", "disputed"];
+const needsAction = (status: string) => status === "needs_ops" || status === "disputed";
 
 /** Everything the ops dashboard needs in one call. */
 export async function GET() {
@@ -13,7 +14,7 @@ export async function GET() {
     ({ db, now, viewer }) => {
       const active = db.bookings
         .filter((b) => ACTIVE.includes(b.status))
-        .sort((a, b) => Number(b.status === "needs_ops") - Number(a.status === "needs_ops") || a.scheduledAt - b.scheduledAt);
+        .sort((a, b) => Number(needsAction(b.status)) - Number(needsAction(a.status)) || a.scheduledAt - b.scheduledAt);
       return {
         ...opsOverview(db, now),
         dispatch: active.map((b) => ({
@@ -22,12 +23,17 @@ export async function GET() {
           candidates:
             b.status === "searching" || b.status === "needs_ops"
               ? db.creators
-                  .filter((c) => canTakeShoots(c) && !isCreatorBusy(db, c.id, b))
-                  .map((c) => ({ id: c.id, name: c.name, available: c.available, km: Math.round(haversineKm(c, b) * 10) / 10 }))
+                  .filter((c) => canTakeJob(c, jobService(b)) && !isCreatorBusy(db, c.id, b))
+                  .map((c) => ({ id: c.id, name: c.name, available: c.available, km: b.online ? 0 : Math.round(haversineKm(c, b) * 10) / 10 }))
                   .sort((x, y) => x.km - y.km)
                   .slice(0, 8)
               : [],
         })),
+        payoutsDue: payoutsDue(db),
+        // Refunds that failed, or that never reached Razorpay.
+        refundsStuck: db.bookings
+          .filter((b) => b.refund?.status === "failed" || (b.refund?.status === "pending" && !b.refund.razorpayRefundId))
+          .map((b) => ({ id: b.id, code: b.code, amount: b.refund!.amount, status: b.refund!.status, error: b.refund!.error })),
         pendingCreators: db.creators
           .filter((c) => c.verification === "pending")
           .map((c) => {
@@ -43,17 +49,17 @@ export async function GET() {
 
 type Action =
   | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean }
-  | { action: "payout_run" };
+  | { action: "mark_paid"; payoutId: string; reference?: string };
 
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
   return api(
-    ({ db }) => {
+    ({ db, now }) => {
       switch (body.action) {
         case "verify":
           return setVerification(db, body.creatorId, body.decision, body.kycChecked === true);
-        case "payout_run":
-          return runPayouts(db);
+        case "mark_paid":
+          return markPayoutPaid(db, body.payoutId, body.reference, now);
         default:
           throw new DomainError("Unknown action");
       }

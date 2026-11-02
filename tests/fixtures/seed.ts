@@ -1,5 +1,5 @@
 // Test fixture: a small fictional marketplace for the unit tests. Not used by the app.
-import { CREATOR_SHARE, DAY, GST_RATE, HOUR, findZone } from "@/lib/domain/config";
+import { CREATOR_SHARE, DAY, HOUR, findZone } from "@/lib/domain/config";
 import type { Campaign, Creator, CreatorService, DB, User } from "@/lib/domain/types";
 import { rupees } from "@/lib/domain/util";
 
@@ -91,10 +91,9 @@ export function seedDb(now: number): DB {
     });
   }
 
-  // One finished shoot so wallets and the money table aren't empty.
+  // One finished shoot from the old flow: its earning has no status, so it isn't owed.
   const done = now - 4 * DAY;
   const price = 5500;
-  const gst = rupees(price * GST_RATE);
   const z = findZone("guwahati", "ganeshguri")!.zone;
   db.bookings.push({
     id: "bkg_seed_1",
@@ -102,8 +101,7 @@ export function seedDb(now: number): DB {
     clientId: "u_priya",
     packageId: "product_showcase",
     price,
-    gst,
-    total: price + gst,
+    total: price,
     address: "Shop 4, GS Road, Ganeshguri, Guwahati",
     cityId: "guwahati",
     zoneId: "ganeshguri",
@@ -114,37 +112,26 @@ export function seedDb(now: number): DB {
     aspect: "9:16",
     creatorId: "cr_ankita",
     status: "completed",
-    otp: "1234",
     createdAt: done - 9 * HOUR,
     paidAt: done - 9 * HOUR,
     dispatch: { phase: "done", roundStartedAt: done - 9 * HOUR, roundEndsAt: done - 9 * HOUR + 5 * 60_000, widened: false, radiusKm: 10, notifiedCreatorIds: ["cr_ankita", "cr_rituraj", "cr_dhruba"] },
     assignedAt: done - 9 * HOUR + 120_000,
-    checkInAt: done - 6 * HOUR,
-    shootEndAt: done - 3.5 * HOUR,
-    deliveryDueAt: done - 6 * HOUR + 24 * HOUR,
     deliveredAt: done - 1 * HOUR,
-    firstDeliveredAt: done - 1 * HOUR,
-    videoUrl: "https://example.com/videos/sr-2031",
-    revisionsUsed: 0,
     approvedAt: done,
     rating: 5,
     review: "Quick, friendly and the videos look great.",
-    latePenaltyPct: 0,
     events: [
-      { at: done - 9 * HOUR, text: "Paid ₹6,490 · held safely by Srijan" },
+      { at: done - 9 * HOUR, text: "Paid ₹5,500" },
       { at: done - 9 * HOUR, text: "3 creators within 10 km alerted · 5 min to accept" },
       { at: done - 9 * HOUR + 120_000, text: "Ankita Baruah accepted · 3 alerted · matched in 2 min 0 sec" },
-      { at: done - 6 * HOUR, text: "Creator checked in · shoot started" },
-      { at: done - 3.5 * HOUR, text: "Shoot finished · editing" },
-      { at: done - 1 * HOUR, text: "Video delivered on time" },
-      { at: done, text: "Approved · ₹4,400 released to the creator" },
+      { at: done - 1 * HOUR, text: "Creator marked the job as finished" },
+      { at: done, text: "Approved · ₹4,400 to be paid to the creator" },
     ],
   });
   db.ledger.push(
-    { id: "led_s1", at: done - 9 * HOUR, type: "client_payment", amount: price + gst, bookingId: "bkg_seed_1", note: "SR-2031 · held until approval" },
+    { id: "led_s1", at: done - 9 * HOUR, type: "client_payment", amount: price, bookingId: "bkg_seed_1", note: "SR-2031" },
     { id: "led_s2", at: done, type: "creator_earning", amount: rupees(price * CREATOR_SHARE), bookingId: "bkg_seed_1", creatorId: "cr_ankita", note: "SR-2031" },
     { id: "led_s3", at: done, type: "platform_fee", amount: price - rupees(price * CREATOR_SHARE), bookingId: "bkg_seed_1", note: "SR-2031 · 20%" },
-    { id: "led_s4", at: done, type: "gst_collected", amount: gst, bookingId: "bkg_seed_1", note: "SR-2031" },
   );
 
   const campaign = (c: Partial<Campaign> & Pick<Campaign, "id" | "code" | "brandName" | "stage">): Campaign => ({

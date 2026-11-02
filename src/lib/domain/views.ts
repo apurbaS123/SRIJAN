@@ -1,7 +1,8 @@
 // What each kind of user is allowed to see. API responses are built from these.
-import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, FREE_REVISIONS, findPackage, findZone } from "./config";
+import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, findPackage, findZone } from "./config";
 import { campaignMath } from "./campaigns";
 import { clientRating, tickBooking } from "./bookings";
+import { pruneNotifications } from "./notifications";
 import type { Booking, Campaign, Creator, DB, Offer, Role } from "./types";
 import { istDay, istMonth, rupees } from "./util";
 
@@ -14,6 +15,7 @@ export interface Viewer {
 /** Run every time-based rule up to `now`. */
 export function tickAll(db: DB, now: number) {
   for (const b of db.bookings) tickBooking(db, b, now);
+  pruneNotifications(db, now);
 }
 
 export function creatorPublic(c: Creator) {
@@ -49,13 +51,12 @@ export function placeName(cityId: string, zoneId: string) {
 }
 
 export const STATUS_LABEL: Record<Booking["status"], string> = {
+  awaiting_payment: "Waiting for payment",
   searching: "Finding your creator",
   needs_ops: "Our team is assigning a creator",
-  assigned: "Creator on the way",
-  shooting: "Shooting",
-  editing: "Editing",
-  delivered: "Video delivered",
-  revision_requested: "Revision in progress",
+  assigned: "Creator working on it",
+  delivered: "Waiting for approval",
+  disputed: "Problem reported",
   completed: "Completed",
   refunded: "Refunded",
   cancelled: "Cancelled",
@@ -65,7 +66,11 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
   const pkg = findPackage(b.packageId)!;
   const creator = b.creatorId ? db.creators.find((c) => c.id === b.creatorId) : undefined;
   const client = db.users.find((u) => u.id === b.clientId);
-  const seesCode = viewer.role === "ops" || viewer.userId === b.clientId;
+  const isOps = viewer.role === "ops";
+  const isClient = viewer.userId === b.clientId;
+  const isJobCreator = !!viewer.creatorId && viewer.creatorId === b.creatorId;
+  const creatorUser = creator ? db.users.find((u) => u.id === creator.userId) : undefined;
+  const earning = db.ledger.find((l) => l.type === "creator_earning" && l.bookingId === b.id);
   const pendingOffers = db.offers.filter((o) => o.bookingId === b.id && o.status === "pending").length;
   return {
     id: b.id,
@@ -77,11 +82,11 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     packageSummary: pkg.summary,
     packageHours: pkg.hours,
     price: b.price,
-    gst: b.gst,
     total: b.total,
     creatorPayout: rupees(b.price * CREATOR_SHARE),
+    online: !!b.online,
     address: b.address,
-    area: placeName(b.cityId, b.zoneId),
+    area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
     cityId: b.cityId,
     lat: b.lat,
     lng: b.lng,
@@ -89,9 +94,16 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     brief: b.brief,
     aspect: b.aspect,
     referenceUrl: b.referenceUrl,
-    otp: seesCode ? b.otp : undefined,
     clientName: client?.name ?? "Client",
-    clientPhone: viewer.role === "ops" || viewer.creatorId === b.creatorId ? client?.phone : undefined,
+    /** Shared with the creator once they've accepted the job. */
+    clientPhone: isOps || isClient || isJobCreator ? client?.phone : undefined,
+    creatorPhone: isOps || isClient ? creatorUser?.phone : undefined,
+    /** Where the creator uploads proof of work. */
+    proofUploadUrl: isJobCreator && b.status === "assigned" ? process.env.SRIJAN_PROOF_DRIVE_URL || null : undefined,
+    /** Has Srijan sent the creator their share yet? */
+    payoutStatus: (isOps || isJobCreator) && earning ? (earning.status === "processing" ? ("owed" as const) : ("paid" as const)) : undefined,
+    refund: isOps || isClient ? (b.refund ? { amount: b.refund.amount, status: b.refund.status, error: isOps ? b.refund.error : undefined } : null) : undefined,
+    report: b.report ?? null,
     requestedCreatorId: b.requestedCreatorId,
     creator: creator ? creatorPublic(creator) : null,
     dispatch: {
@@ -103,13 +115,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
       pendingOffers,
     },
     assignedAt: b.assignedAt,
-    checkInAt: b.checkInAt,
-    shootEndAt: b.shootEndAt,
-    deliveryDueAt: b.deliveryDueAt,
     deliveredAt: b.deliveredAt,
-    videoUrl: b.videoUrl,
-    revisionsLeft: FREE_REVISIONS - b.revisionsUsed,
-    revisionNote: b.revisionNote,
     autoApproveAt: b.status === "delivered" && b.deliveredAt ? b.deliveredAt + AUTO_APPROVE_MS : null,
     approvedAt: b.approvedAt,
     autoApproved: b.autoApproved,
@@ -118,8 +124,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     reviewedAt: b.reviewedAt,
     reviewOfClient: b.reviewOfClient ?? null,
     /** The client's average from creators' reviews, shown to the creator and ops. */
-    clientRating: viewer.role === "ops" || (viewer.creatorId && viewer.creatorId === b.creatorId) ? clientRating(db, b.clientId) : undefined,
-    latePenaltyPct: b.latePenaltyPct ?? 0,
+    clientRating: isOps || isJobCreator ? clientRating(db, b.clientId) : undefined,
     createdAt: b.createdAt,
     events: [...b.events].sort((x, y) => x.at - y.at),
   };
@@ -143,9 +148,9 @@ export function offerView(db: DB, o: Offer) {
     packageSummary: pkg.summary,
     price: b.price,
     payout: rupees(b.price * CREATOR_SHARE),
-    area: placeName(b.cityId, b.zoneId),
+    online: !!b.online,
+    area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
     scheduledAt: b.scheduledAt,
-    deliveryDueAt: b.deliveryDueAt,
     brief: b.brief,
     aspect: b.aspect,
     alerted: b.dispatch.notifiedCreatorIds.length,
@@ -205,12 +210,11 @@ export function opsOverview(db: DB, now: number) {
   const platformFee = sum("platform_fee");
   const campaignBilled = sum("campaign_payment");
   const campaignCommission = sum("campaign_commission");
-  const queuedPayouts = db.ledger.filter((l) => l.type === "withdrawal" && l.status === "processing");
   const openCampaigns = db.campaigns.filter((c) => c.stage !== "closed");
   return {
     kpis: {
-      shootsToday: db.bookings.filter((b) => istDay(b.scheduledAt) === today && !["refunded", "cancelled"].includes(b.status)).length,
-      liveNow: db.bookings.filter((b) => ["assigned", "shooting", "editing", "revision_requested"].includes(b.status)).length,
+      shootsToday: db.bookings.filter((b) => istDay(b.scheduledAt) === today && !["awaiting_payment", "refunded", "cancelled"].includes(b.status)).length,
+      liveNow: db.bookings.filter((b) => b.status === "assigned").length,
       searching: db.bookings.filter((b) => b.status === "searching").length,
       needsOps: db.bookings.filter((b) => b.status === "needs_ops").length,
       pipelineValue: openCampaigns.reduce((s, c) => s + (c.budget ?? 0), 0),
@@ -223,9 +227,7 @@ export function opsOverview(db: DB, now: number) {
       platformFee,
       campaignBilled,
       campaignCommission,
-      gstCollected: sum("gst_collected"),
       refunds: sum("client_refund"),
-      queuedPayouts: { count: queuedPayouts.length, total: queuedPayouts.reduce((s, l) => s + l.amount, 0) },
     },
   };
 }

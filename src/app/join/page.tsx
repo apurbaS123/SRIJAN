@@ -28,7 +28,6 @@ export default function JoinPage() {
   const [followers, setFollowers] = useState("");
   const [onDemand, setOnDemand] = useState(true);
   const [maxTravelKm, setMaxTravelKm] = useState(10);
-  const [upiId, setUpiId] = useState("");
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
 
@@ -62,19 +61,18 @@ export default function JoinPage() {
         followers: followers ? Number(followers) : undefined,
         onDemand,
         maxTravelKm,
-        upiId,
       }),
     );
     if (r) {
       await refresh();
-      router.push("/creator");
+      router.push("/creator/payout?welcome=1");
     }
   }
 
   return (
     <div className="container page narrow">
       <h1>Join Srijan as a creator</h1>
-      <p className="muted">List everything you do. Each service gets its own price on your profile. Same-day shoots pay 80% of the package price.</p>
+      <p className="muted">List everything you do. Each service gets its own price on your profile. Jobs through Srijan pay 80% of the package price.</p>
 
       <section className="card stack">
         <h2>You</h2>
@@ -154,21 +152,25 @@ export default function JoinPage() {
               <input id={`price-${k}`} className="input" type="number" min={0} value={services[k as ServiceKey]} onChange={(e) => setServices((s) => ({ ...s, [k]: e.target.value }))} />
             </div>
           ))}
-        {"videography" in services && (
+        {("videography" in services || "video_editing" in services) && (
           <div className="card card-dark stack">
             <label className="row between strong">
-              Take same-day shoot jobs
+              Get job alerts
               <input type="checkbox" checked={onDemand} onChange={(e) => setOnDemand(e.target.checked)} style={{ width: 22, height: 22, accentColor: "var(--orange)" }} />
             </label>
-            <p className="small muted">Get alerts when a client near you books a shoot. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert.</p>
-            <span className="label" style={{ color: "#c9cbd3" }}>How far will you travel?</span>
-            <div className="chips">
-              {[5, 10, 15, 20, 25].map((k) => (
-                <button key={k} className="chip" style={k === maxTravelKm ? { background: "var(--orange)", borderColor: "var(--orange)", color: "#fff" } : undefined} onClick={() => setMaxTravelKm(k)}>
-                  {k} km
-                </button>
-              ))}
-            </div>
+            <p className="small muted">Get alerts when a client books a job in your field. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert, and the first to accept gets the job.</p>
+            {"videography" in services && (
+              <>
+                <span className="label" style={{ color: "#c9cbd3" }}>How far will you travel?</span>
+                <div className="chips">
+                  {[5, 10, 15, 20, 25].map((k) => (
+                    <button key={k} className="chip" style={k === maxTravelKm ? { background: "var(--orange)", borderColor: "var(--orange)", color: "#fff" } : undefined} onClick={() => setMaxTravelKm(k)}>
+                      {k} km
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
         <span className="label">Your gear</span>
@@ -206,20 +208,11 @@ export default function JoinPage() {
         </div>
       </section>
 
-      <section className="card stack">
-        <h2>Verify & get paid</h2>
-        <p className="small muted">After you submit, the Srijan team will contact you to check your Aadhaar and PAN before your profile goes live.</p>
-        <div className="field">
-          <label htmlFor="upi">UPI ID for payouts</label>
-          <input id="upi" className="input" value={upiId} onChange={(e) => setUpiId(e.target.value)} placeholder="name@okaxis" />
-        </div>
-      </section>
-
       <ErrorNote error={error} />
       <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code} onClick={submit}>
         Submit for verification
       </button>
-      <p className="tiny muted">The Srijan team reviews your profile before you can go online.</p>
+      <p className="tiny muted">Next, you’ll link your bank account or UPI ID. The Srijan team reviews your profile before you can go online.</p>
     </div>
   );
 }

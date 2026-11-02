@@ -8,6 +8,8 @@ const MAX_BODY_BYTES = 64 * 1024;
  */
 export function proxy(req: NextRequest) {
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return NextResponse.next();
+  // Razorpay's servers call this one, not a browser. The route checks Razorpay's signature instead.
+  if (req.nextUrl.pathname === "/api/payments/webhook") return NextResponse.next();
   const origin = req.headers.get("origin");
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   let sameSite = false;

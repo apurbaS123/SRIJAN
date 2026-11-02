@@ -43,7 +43,7 @@ function Alert({ o, onDone }: { o: OfferView; onDone: () => void }) {
     <article className="card card-dark stack" aria-live="assertive">
       <div className="row between">
         <span className="tag" style={{ background: "var(--orange)", color: "var(--ink)" }}>
-          {o.kind === "direct" ? "Client picked you" : "New shoot near you"}
+          {o.kind === "direct" ? "Client picked you" : o.online ? "New online job" : "New job near you"}
         </span>
         <span
           className="ring"
@@ -60,13 +60,12 @@ function Alert({ o, onDone }: { o: OfferView; onDone: () => void }) {
       </div>
       <div className="stack" style={{ gap: 6, fontSize: 14 }}>
         <div className="row between"><span className="muted">Package</span><b>{o.packageName}</b></div>
-        <div className="row between"><span className="muted">When</span><b>{when(o.scheduledAt)}</b></div>
-        <div className="row between"><span className="muted">Where</span><b>{o.area} · {o.distanceKm} km away</b></div>
-        <div className="row between"><span className="muted">Deliver by</span><b>{when(o.deliveryDueAt)}</b></div>
+        <div className="row between"><span className="muted">{o.online ? "Finish by" : "When"}</span><b>{when(o.scheduledAt)}</b></div>
+        <div className="row between"><span className="muted">Where</span><b>{o.online ? "Online" : `${o.area} · ${o.distanceKm} km away`}</b></div>
       </div>
       <p className="small">{o.brief}</p>
       <p className="tiny muted">
-        {o.kind === "direct" ? "Only you have this job for now." : `Sent to ${o.alerted} creator${o.alerted === 1 ? "" : "s"} nearby. First to accept gets it.`} Exact address after you accept.
+        {o.kind === "direct" ? "Only you have this job for now." : `Sent to ${o.alerted} creator${o.alerted === 1 ? "" : "s"}. First to accept gets it.`} {o.online ? "The client’s number appears after you accept." : "Exact address after you accept."}
       </p>
       <ErrorNote error={act.error} />
       <div className="row">
@@ -129,19 +128,29 @@ function Home() {
         </div>
       )}
 
+      {!me.payout && (
+        <div className="card card-orange row between">
+          <span className="small">Link your bank account or UPI ID so you can go online and get paid.</span>
+          <Link href="/creator/payout" className="btn btn-sm btn-accent">
+            Link now
+          </Link>
+        </div>
+      )}
+
       {me.onDemand && (
         <section className={`card stack${me.available ? " card-dark" : ""}`}>
           <div className="row between">
             <div className="stack" style={{ gap: 2 }}>
               <h2>{me.available ? "You’re online" : "You’re offline"}</h2>
               <span className="small muted">
-                {me.available ? `Getting shoot alerts within ${me.maxTravelKm} km of ${me.area.split(",")[0]}` : "Go online to get same-day shoot alerts"}
+                {me.available ? "Getting alerts for jobs in your field" : "Go online to get job alerts"}
               </span>
             </div>
-            <button className={`btn btn-lg ${me.available ? "" : "btn-accent"}`} disabled={act.busy || me.verification !== "verified"} onClick={() => patch({ available: !me.available })}>
+            <button className={`btn btn-lg ${me.available ? "" : "btn-accent"}`} disabled={act.busy || me.verification !== "verified" || !me.payout} onClick={() => patch({ available: !me.available })}>
               {me.available ? "Go offline" : "Go online"}
             </button>
           </div>
+          {me.services.some((s) => s.key === "videography") && (
           <div className="row">
             <span className="small muted">Travel up to</span>
             {[5, 10, 15, 20, 25].map((k) => (
@@ -153,6 +162,7 @@ function Home() {
               Update my location
             </button>
           </div>
+          )}
         </section>
       )}
 

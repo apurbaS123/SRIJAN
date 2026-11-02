@@ -1,9 +1,15 @@
-import { after } from "next/server";
+import { NextResponse } from "next/server";
 import { api, readJson } from "@/lib/server/api";
-import { bookingAlertLines, sendWhatsAppAlert } from "@/lib/server/whatsapp";
+import { assertRazorpayConfigured, createOrder, razorpayKeyId } from "@/lib/server/razorpay";
 import { limitByIp } from "@/lib/server/rateLimit";
+import { withDb } from "@/lib/server/store";
 import { bookingView } from "@/lib/domain/views";
 import { createBooking, type NewBookingInput } from "@/lib/domain/bookings";
+import { findPackage } from "@/lib/domain/config";
+import type { Booking } from "@/lib/domain/types";
+
+/** Bookings nobody paid for are clutter, not history. */
+const everPaid = (b: Booking) => b.status !== "awaiting_payment" && !(b.status === "cancelled" && !b.paidAt);
 
 /** Clients see their bookings, creators their jobs, ops everything. */
 export async function GET() {
@@ -15,30 +21,63 @@ export async function GET() {
           : user!.role === "creator"
             ? db.bookings.filter((b) => b.creatorId === user!.creatorId)
             : db.bookings.filter((b) => b.clientId === user!.id);
-      return [...list].sort((a, b) => b.createdAt - a.createdAt).map((b) => bookingView(db, b, viewer));
+      return list.filter(everPaid).sort((a, b) => b.createdAt - a.createdAt).map((b) => bookingView(db, b, viewer));
     },
     { role: ["client", "creator", "ops"] },
   );
 }
 
-/** Book and pay (payment is mocked — plug in Razorpay/Cashfree here). */
+/** Creates an unpaid booking and its Razorpay order. The browser then opens Razorpay Checkout. */
 export async function POST(req: Request) {
   const limited = await limitByIp("booking", 20, 60 * 60_000);
   if (limited) return limited;
   const input = await readJson<NewBookingInput>(req);
-  let alert: string[] | undefined;
-  const res = await api(
-    ({ db, now, user, viewer }) => {
+  let made: { id: string; code: string; total: number; packageName: string; prefill: { name: string; email?: string; contact?: string } } | undefined;
+  const first = await api(
+    ({ db, now, user }) => {
+      assertRazorpayConfigured();
       const b = createBooking(db, user!.id, input, now);
-      alert = bookingAlertLines(db, b);
-      return bookingView(db, b, viewer);
+      made = {
+        id: b.id,
+        code: b.code,
+        total: b.total,
+        packageName: findPackage(b.packageId)?.name ?? "Srijan job",
+        prefill: { name: user!.name, email: user!.email, contact: user!.phone?.replace(/\s/g, "") },
+      };
+      return null;
     },
     { role: "client" },
   );
-  // Only alert once the booking is saved; runs after the response is sent.
-  if (res.ok && alert) {
-    const lines = alert;
-    after(() => sendWhatsAppAlert(lines));
+  if (!first.ok || !made) return first;
+
+  const booking = made;
+  let orderId: string;
+  try {
+    orderId = (await createOrder(booking.total, booking.code, { bookingId: booking.id })).id;
+  } catch (e) {
+    console.error("Razorpay order failed", e);
+    await withDb((db) => {
+      const b = db.bookings.find((x) => x.id === booking.id);
+      if (b) b.status = "cancelled";
+    });
+    return NextResponse.json({ ok: false, error: "We couldn’t start the payment. You haven’t been charged. Please try again." }, { status: 502 });
   }
-  return res;
+  return api(
+    ({ db, viewer }) => {
+      const b = db.bookings.find((x) => x.id === booking.id)!;
+      b.razorpayOrderId = orderId;
+      return {
+        booking: bookingView(db, b, viewer),
+        checkout: {
+          key: razorpayKeyId(),
+          orderId,
+          amount: booking.total * 100,
+          currency: "INR",
+          description: `${booking.packageName} · ${booking.code}`,
+          prefill: booking.prefill,
+        },
+      };
+    },
+    { role: "client" },
+  );
 }

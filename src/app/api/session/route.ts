@@ -4,6 +4,7 @@ import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorPublic } from "@/lib/domain/views";
+import { payoutSummary } from "@/lib/domain/creators";
 import { assert, cleanText, newId } from "@/lib/domain/util";
 import type { User } from "@/lib/domain/types";
 
@@ -14,7 +15,7 @@ export async function GET() {
     const creator = user.creatorId ? db.creators.find((c) => c.id === user.creatorId) : undefined;
     return {
       user: { id: user.id, role: user.role, name: user.name, phone: user.phone, email: user.email },
-      creator: creator ? { ...creatorPublic(creator), upiId: creator.upiId, kyc: creator.kyc } : null,
+      creator: creator ? { ...creatorPublic(creator), payout: payoutSummary(creator), kyc: creator.kyc } : null,
     };
   });
 }

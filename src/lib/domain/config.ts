@@ -12,20 +12,24 @@ export interface ShootPackage {
   id: string;
   name: string;
   price: number;
-  /** Max hours on location. */
+  /** Max hours on location; 0 for online jobs. */
   hours: number;
   summary: string;
+  /** Only creators offering this service are alerted. */
+  service: ServiceKey;
+  /** Done remotely: no address, and creators are alerted wherever they are. */
+  online?: boolean;
 }
 
-/** Suggested launch prices (₹, before GST). Edit freely. */
+/** Suggested launch prices (₹). Clients pay exactly this. Edit freely. */
 export const PACKAGES: ShootPackage[] = [
-  { id: "quick_reel", name: "Quick Reel", price: 2500, hours: 2, summary: "1 reel up to 60 sec · up to 2 hr shoot · edit, captions, music" },
-  { id: "product_showcase", name: "Product Showcase", price: 5500, hours: 3, summary: "3 short videos · up to 3 hr shoot · product close-ups" },
-  { id: "event_highlights", name: "Event Highlights", price: 8500, hours: 4, summary: "60–90 sec highlight film + 2 reels · up to 4 hr coverage" },
-  { id: "brand_story", name: "Brand Story", price: 12500, hours: 5, summary: "1 film up to 2 min · half-day shoot · script help" },
+  { id: "quick_reel", name: "Quick Reel", price: 2500, hours: 2, service: "videography", summary: "1 reel up to 60 sec · up to 2 hr shoot · edit, captions, music" },
+  { id: "product_showcase", name: "Product Showcase", price: 5500, hours: 3, service: "videography", summary: "3 short videos · up to 3 hr shoot · product close-ups" },
+  { id: "event_highlights", name: "Event Highlights", price: 8500, hours: 4, service: "videography", summary: "60–90 sec highlight film + 2 reels · up to 4 hr coverage" },
+  { id: "brand_story", name: "Brand Story", price: 12500, hours: 5, service: "videography", summary: "1 film up to 2 min · half-day shoot · script help" },
+  { id: "video_edit", name: "Video Editing", price: 1500, hours: 0, service: "video_editing", online: true, summary: "Online job · no visit · your editor calls you for the clips and sends the finished edit" },
 ];
 
-export const GST_RATE = 0.18;
 /** On-demand shoots: creator keeps 80%, Srijan keeps 20%. */
 export const CREATOR_SHARE = 0.8;
 export const PLATFORM_SHARE = 0.2;
@@ -48,15 +52,11 @@ export const DISPATCH = {
   lastStartHour: 18,
 };
 
-export const CHECKIN_RADIUS_KM = 0.2;
-export const DELIVERY_SLA_MS = 24 * HOUR; // after the scheduled start
-export const AUTO_APPROVE_MS = 48 * HOUR; // after delivery
-export const FREE_REVISIONS = 1;
-export const LATE_PENALTY = { stepMs: 6 * HOUR, pctPerStep: 10, capPct: 50 };
+export const AUTO_APPROVE_MS = 48 * HOUR; // after the creator marks the job finished
+/** An unpaid booking is dropped after this long. Checkout closes itself sooner (see /book). */
+export const PAYMENT_WINDOW_MS = 30 * MIN;
 
 export const CAMPAIGN_COMMISSION = { min: 0.3, max: 0.35, default: 0.3 };
-
-export const PAYOUT = { minWithdrawal: 100, instantFee: 10 };
 
 export const SERVICES: { key: ServiceKey; label: string }[] = [
   { key: "influencer", label: "Influencers" },

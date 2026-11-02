@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { createBooking } from "@/lib/domain/bookings";
+import { createBooking, recordPayment } from "@/lib/domain/bookings";
 import { acceptOffer, declineOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { MIN } from "@/lib/domain/config";
@@ -10,7 +10,7 @@ import type { DB } from "@/lib/domain/types";
 const T0 = Date.UTC(2026, 9, 26, 4, 30);
 
 function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, now = T0) {
-  return createBooking(
+  const b = createBooking(
     db,
     "u_priya",
     {
@@ -24,6 +24,8 @@ function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, 
     },
     now,
   );
+  recordPayment(db, b, `pay_${b.id}`, now);
+  return b;
 }
 
 const pendingFor = (db: DB, bookingId: string) =>
@@ -111,6 +113,62 @@ describe("client picked a creator", () => {
     expect(b.dispatch.phase).toBe("broadcast");
     expect(b.dispatch.roundEndsAt).toBe(T0 + 6 * MIN);
     expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba"]);
+  });
+});
+
+describe("only the right field is alerted", () => {
+  it("doesn't alert on-site jobs to creators in other fields", () => {
+    const db = seedDb(T0);
+    const b = book(db, { zoneId: "chandmari" });
+    // Bhaswati (designer) and Ritika (writer) are based nearby but don't shoot.
+    expect(pendingFor(db, b.id)).not.toContain("cr_bhaswati");
+    expect(pendingFor(db, b.id)).not.toContain("cr_ritika");
+  });
+
+  it("alerts an online job to its field wherever they are, skipping everyone else", () => {
+    const db = seedDb(T0);
+    const b = book(db, { packageId: "video_edit", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    expect(b.online).toBe(true);
+    expect(b.status).toBe("searching");
+    // The editors, including Pallab in Dibrugarh and Wanphrang in Shillong. Nilakshi only shoots.
+    expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_pallab", "cr_rituraj", "cr_wanphrang"]);
+    expect(db.offers.every((o) => o.bookingId !== b.id || o.distanceKm === 0)).toBe(true);
+  });
+
+  it("doesn't let an online job block a creator's on-site shoot", () => {
+    const db = seedDb(T0);
+    const online = book(db, { packageId: "video_edit", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    acceptOffer(db, db.offers.find((o) => o.bookingId === online.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
+    const shoot = book(db, {}, T0 + 2 * MIN);
+    expect(pendingFor(db, shoot.id)).toContain("cr_ankita");
+  });
+
+  it("skips creators who haven't linked a bank or UPI", () => {
+    const db = seedDb(T0);
+    db.creators.find((c) => c.id === "cr_ankita")!.upiId = undefined;
+    expect(pendingFor(db, book(db).id)).not.toContain("cr_ankita");
+  });
+});
+
+describe("demo notifications", () => {
+  const unread = (db: DB, userId: string) => (db.notifications ?? []).filter((n) => n.userId === userId && !n.readAt);
+
+  it("tells each alerted creator what, where, when and the brief", () => {
+    const db = seedDb(T0);
+    book(db);
+    const [n] = unread(db, "u_ankita");
+    expect(n!.lines.join(" ")).toMatch(/Quick Reel.*Zoo Road, Guwahati.*26 Oct 2026.*Opening-week reel/);
+    expect(unread(db, "u_nilakshi")).toEqual([]);
+    expect(unread(db, "u_bhaswati")).toEqual([]);
+  });
+
+  it("clears the alert for everyone once the job is taken, and tells the client", () => {
+    const db = seedDb(T0);
+    const b = book(db);
+    acceptOffer(db, db.offers.find((o) => o.bookingId === b.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
+    expect(unread(db, "u_ankita")).toEqual([]);
+    expect(unread(db, "u_rituraj")).toEqual([]);
+    expect(unread(db, "u_priya").map((n) => n.title)).toEqual(["Ankita Baruah accepted your job"]);
   });
 });
 

@@ -23,7 +23,7 @@ function terms(from: number) {
   return [
     {
       term: "Same-day shoot",
-      body: "a verified videographer comes to your place, shoots and edits, and delivers within 24 hours.",
+      body: "a verified videographer comes to your place, shoots and edits. Online jobs like video editing need no visit at all.",
     },
     {
       term: "Five-minute dispatch",
@@ -31,11 +31,11 @@ function terms(from: number) {
     },
     {
       term: "Fixed price",
-      body: `packages from ${inr(from)} + GST, with no haggling. Creators keep 80% of every shoot.`,
+      body: `packages from ${inr(from)}, with no haggling. Creators keep 80% of every shoot.`,
     },
     {
       term: "Safe payment",
-      body: "you pay Srijan up front and the creator is paid when you approve the delivery, with one free revision.",
+      body: "you pay Srijan up front and the creator is paid after you approve the finished job.",
     },
     {
       term: "Managed campaign",

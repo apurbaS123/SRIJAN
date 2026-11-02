@@ -4,7 +4,8 @@
 //
 // The script starts its own `next start` on a free port with a throwaway data file, a test
 // session secret, and email and WhatsApp switched off, so it never touches your real data or
-// sends messages. It signs everyone in through the real email-code flow. Two things it does from
+// sends messages. Razorpay is a small fake server started by this script, so no real money moves.
+// It signs everyone in through the real email-code flow. Two things it does from
 // outside, by editing the throwaway store between requests (the server reads it on every request):
 //   - puts a known sign-in code in place of the email
 //   - moves every stored time back to fast-forward the 5-minute dispatch timers
@@ -16,6 +17,7 @@
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +28,9 @@ const SECRET = "smoke-test-session-secret-0123456789abcdef";
 const OPS_EMAIL = "team@srijan.test";
 const IST = 5.5 * 3600_000;
 const MIN = 60_000;
+const RZP_SECRET = "smoke-razorpay-key-secret";
+const RZP_WEBHOOK_SECRET = "smoke-razorpay-webhook-secret";
+const DRIVE_URL = "https://drive.google.com/drive/folders/smoke";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "srijan-smoke-"));
 const DATA_FILE = path.join(tmpDir, "db.json");
@@ -40,6 +45,75 @@ function ok(cond, msg) {
   if (!cond) throw new Error(msg);
   passed++;
   console.log(`✓ ${msg}`);
+}
+
+// ── Fake Razorpay ─────────────────────────────────────────────────────────────
+
+const rzp = { orders: new Map(), payments: new Map(), refunds: [], seq: 0, server: null, base: "" };
+
+function startFakeRazorpay() {
+  return new Promise((resolve) => {
+    rzp.server = http.createServer(async (req, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = raw ? JSON.parse(raw) : {};
+      const reply = (status, data) => {
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(data));
+      };
+      const fail = (status, description) => reply(status, { error: { description } });
+      if (req.headers.authorization !== `Basic ${Buffer.from(`rzp_test_smoke:${RZP_SECRET}`).toString("base64")}`) return fail(401, "Bad key");
+      const path = req.url.replace(/^\/v1/, "");
+      if (req.method === "POST" && path === "/orders") {
+        const order = { id: `order_${++rzp.seq}`, amount: body.amount, currency: body.currency, receipt: body.receipt };
+        rzp.orders.set(order.id, order);
+        return reply(200, order);
+      }
+      const m = path.match(/^\/payments\/([^/]+)(?:\/(capture|refund|refunds))?$/);
+      const p = m && rzp.payments.get(m[1]);
+      if (!p) return fail(404, "Not found");
+      if (req.method === "GET" && !m[2]) return reply(200, p);
+      if (req.method === "POST" && m[2] === "capture") {
+        if (p.status !== "authorized") return fail(400, "This payment has already been captured");
+        p.status = "captured";
+        return reply(200, p);
+      }
+      if (req.method === "POST" && m[2] === "refund") {
+        if (rzp.failNextRefund) {
+          rzp.failNextRefund = false;
+          return fail(502, "Razorpay is having trouble");
+        }
+        if (rzp.refunds.some((r) => r.payment_id === p.id && r.receipt === body.receipt)) return fail(400, "Duplicate receipt found for this refund request");
+        const refund = { id: `rfnd_${++rzp.seq}`, payment_id: p.id, amount: body.amount, receipt: body.receipt, status: "processed" };
+        rzp.refunds.push(refund);
+        return reply(200, refund);
+      }
+      if (req.method === "GET" && m[2] === "refunds") return reply(200, { items: rzp.refunds.filter((r) => r.payment_id === p.id) });
+      fail(404, "Not found");
+    });
+    rzp.server.listen(0, "127.0.0.1", () => {
+      rzp.base = `http://127.0.0.1:${rzp.server.address().port}`;
+      resolve();
+    });
+  });
+}
+
+/** What the customer does on Razorpay's form: the money is authorized against the order. */
+function customerPays(orderId) {
+  const order = rzp.orders.get(orderId);
+  const id = `pay_${++rzp.seq}`;
+  rzp.payments.set(id, { id, order_id: orderId, amount: order.amount, status: "authorized" });
+  return { id, signature: createHmac("sha256", RZP_SECRET).update(`${orderId}|${id}`).digest("hex") };
+}
+
+async function sendWebhook(event, payload, secret = RZP_WEBHOOK_SECRET) {
+  const raw = JSON.stringify({ event, payload });
+  const res = await fetch(`${BASE}/api/payments/webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Razorpay-Signature": createHmac("sha256", secret).update(raw).digest("hex") },
+    body: raw,
+  });
+  return res.status;
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
@@ -78,6 +152,11 @@ async function startServer() {
       WHATSAPP_PHONE_NUMBER_ID: "",
       WHATSAPP_NOTIFY_TO: "",
       WHATSAPP_TEMPLATE: "",
+      RAZORPAY_KEY_ID: "rzp_test_smoke",
+      RAZORPAY_KEY_SECRET: RZP_SECRET,
+      RAZORPAY_WEBHOOK_SECRET: RZP_WEBHOOK_SECRET,
+      RAZORPAY_API_BASE: rzp.base,
+      SRIJAN_PROOF_DRIVE_URL: DRIVE_URL,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -96,7 +175,7 @@ async function startServer() {
 
 // ── Throwaway store (JSON file, or the local test database) ─────────────────
 
-const PG_TABLES = ["users", "creators", "bookings", "offers", "ledger", "campaigns", "sign_in_codes"];
+const PG_TABLES = ["users", "creators", "bookings", "offers", "ledger", "campaigns", "sign_in_codes", "notifications"];
 
 async function connectTestDb() {
   if (!SMOKE_DB) return;
@@ -189,7 +268,7 @@ class Agent {
     return r.data.role;
   }
   /** Signs up at /join with an email code. Returns the new creator's id. */
-  async joinAsCreator(cityId, zoneId) {
+  async joinAsCreator(cityId, zoneId, services = [{ key: "videography" }]) {
     const r = await this.req("/api/creators", {
       code: await issueCode(this.email),
       email: this.email,
@@ -197,13 +276,21 @@ class Agent {
       phone: this.phone,
       cityId,
       zoneId,
-      services: [{ key: "videography" }],
+      services,
       onDemand: true,
       maxTravelKm: 10,
-      upiId: `${this.name.split(" ")[0].toLowerCase()}@ybl`,
     });
     ok(r.ok, `${this.name} joins as a creator in ${zoneId}`);
     return r.data.creatorId;
+  }
+  /** Creates the booking and pays for it the way the /book page does. Returns the paid booking. */
+  async bookAndPay(input) {
+    const made = await this.req("/api/bookings", input);
+    if (!made.ok) return made;
+    const { id, signature } = customerPays(made.data.checkout.orderId);
+    const r = await this.req("/api/payments/verify", { bookingId: made.data.booking.id, razorpay_payment_id: id, razorpay_signature: signature });
+    if (!r.ok) return r;
+    return this.req(`/api/bookings/${made.data.booking.id}`);
   }
 }
 
@@ -223,6 +310,7 @@ function slotFrom(serverNow) {
 
 async function run() {
   await connectTestDb();
+  await startFakeRazorpay();
   await startServer();
   console.log(`Server running at ${BASE} with ${sql ? "the local test database (Postgres)" : "a throwaway data file"}\n`);
 
@@ -253,11 +341,21 @@ async function run() {
 
   const cr = {};
   cr.ankita = await ankita.joinAsCreator("guwahati", "zoo-road");
-  cr.rituraj = await rituraj.joinAsCreator("guwahati", "chandmari");
+  cr.rituraj = await rituraj.joinAsCreator("guwahati", "chandmari", [{ key: "videography" }, { key: "video_editing" }]);
   cr.dhruba = await dhruba.joinAsCreator("guwahati", "ganeshguri");
-  cr.nilakshi = await nilakshi.joinAsCreator("jorhat", "jorhat-town");
+  cr.nilakshi = await nilakshi.joinAsCreator("jorhat", "jorhat-town", [{ key: "videography" }, { key: "video_editing" }]);
   r = await ankita.req("/api/me/creator", { available: true }, "PATCH");
   ok(r.status === 400, "a creator can’t go online before verification");
+  r = await ankita.req("/api/session");
+  ok(r.data.creator.payout === null, "a new creator has no bank or UPI linked yet");
+  r = await ankita.req("/api/me/creator", { payout: { method: "upi", upiId: "not-a-upi" } }, "PATCH");
+  ok(r.status === 400, "a badly formed UPI ID is refused");
+  r = await ankita.req("/api/me/creator", { payout: { method: "upi", upiId: "ankita@ybl" } }, "PATCH");
+  ok(r.ok && r.data.payout.upiId === "ankita@ybl", "Ankita links her UPI ID on the page after sign-up");
+  r = await dhruba.req("/api/me/creator", { payout: { method: "bank", accountName: "Dhruba Kalita", accountNumber: "123456789012", ifsc: "SBIN0001234" } }, "PATCH");
+  ok(r.ok && r.data.payout.accountLast4 === "9012" && !JSON.stringify(r.data).includes("123456789012"), "Dhruba links a bank account and only sees its last 4 digits back");
+  r = await nilakshi.req("/api/me/creator", { payout: { method: "upi", upiId: "nilakshi@ybl" } }, "PATCH");
+  ok(r.ok, "Nilakshi links her UPI ID");
   r = await ops.req("/api/admin");
   ok(r.data.pendingCreators.length === 4, "ops sees the 4 new creators waiting for review");
   r = await ops.req("/api/admin", { action: "verify", creatorId: cr.ankita, decision: "verified" });
@@ -266,6 +364,10 @@ async function run() {
     r = await ops.req("/api/admin", { action: "verify", creatorId: id, decision: "verified", kycChecked: true });
     ok(r.ok, `ops approves ${who}`);
   }
+  r = await rituraj.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.status === 400 && /bank account or UPI/.test(r.error), "a verified creator can’t go online until they link a bank or UPI");
+  r = await rituraj.req("/api/me/creator", { payout: { method: "upi", upiId: "rituraj@ybl" } }, "PATCH");
+  ok(r.ok, "Rituraj links his UPI ID");
   for (const c of [ankita, rituraj, dhruba, nilakshi]) {
     r = await c.req("/api/me/creator", { available: true }, "PATCH");
     ok(r.ok && r.data.available, `${c.name} goes online`);
@@ -278,18 +380,43 @@ async function run() {
   // --- Auto-assign shoot in Guwahati ------------------------------------------
   r = await priya.req("/api/session");
   const scheduledAt = slotFrom(r.serverNow);
-  r = await priya.req("/api/bookings", {
+  const shootInput = {
     packageId: "quick_reel",
     cityId: "guwahati",
     zoneId: "zoo-road",
     address: "Café Brahma, RG Baruah Road",
     scheduledAt,
     brief: "Opening-week reel for our café, warm look",
-  });
-  ok(r.ok && r.data.status === "searching", `booking created for ${scheduledAt} IST and searching`);
+  };
+  r = await priya.req("/api/bookings", shootInput);
+  ok(r.ok && r.data.booking.status === "awaiting_payment" && r.data.checkout.amount === 250000, "booking waits for a ₹2,500 payment, with no GST added");
+  const unpaid = r.data;
+  ok(unpaid.booking.dispatch.notified === 0, "nobody is alerted before the client pays");
+  r = await priya.req("/api/bookings");
+  ok(!r.data.some((b) => b.id === unpaid.booking.id), "an unpaid booking stays out of the client’s list");
+  let fakePay = customerPays(unpaid.checkout.orderId);
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: "forged" });
+  ok(r.status === 400, "a forged payment signature is refused");
+  r = await priya.req(`/api/bookings/${unpaid.booking.id}`);
+  ok(r.data.status === "awaiting_payment", "a forged payment doesn’t start the job");
+  r = await rituraj.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.status === 403, "nobody else can confirm someone’s payment");
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.ok && r.data.outcome === "paid", "a real payment is verified");
+  ok(rzp.payments.get(fakePay.id).status === "captured", "the authorized payment is captured");
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.ok && r.data.outcome === "already", "confirming the same payment twice changes nothing");
+  r = await priya.req(`/api/bookings/${unpaid.booking.id}`);
+  ok(r.ok && r.data.status === "searching", `booking paid for ${scheduledAt} IST and searching`);
   const b1 = r.data;
   ok(b1.dispatch.notified === 3 && b1.dispatch.radiusKm === 10, "the 3 Guwahati creators are alerted within 10 km");
-  ok(b1.total === 2950, "total is ₹2,950 incl. GST");
+  ok(b1.total === 2500, "the client paid exactly ₹2,500");
+
+  r = await rituraj.req("/api/notifications");
+  const alertNote = r.data.find((n) => n.lines.join(" ").includes("Opening-week reel"));
+  ok(alertNote && /Quick Reel/.test(alertNote.lines[0]) && /Zoo Road/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, area, time and brief, not the address");
+  r = await nilakshi.req("/api/notifications");
+  ok(r.data.length === 0, "a creator far away gets no notification");
 
   r = await rituraj.req("/api/offers");
   const ritOffer = r.data.find((o) => o.bookingId === b1.id);
@@ -303,28 +430,30 @@ async function run() {
   r = await rituraj.req(`/api/offers/${ritOffer.id}`, { action: "accept" });
   ok(r.status === 409, "Rituraj’s late accept is rejected (409)");
 
-  r = await priya.req(`/api/bookings/${b1.id}`);
-  ok(r.data.status === "assigned" && r.data.otp?.length === 4, "client sees creator assigned and a start code");
-  const otp = r.data.otp;
-  r = await ankita.req(`/api/bookings/${b1.id}`);
-  ok(r.data.otp === undefined && r.data.address.includes("Café Brahma"), "creator sees address but not the code");
+  r = await rituraj.req("/api/notifications");
+  ok(!r.data.some((n) => n.id === alertNote.id), "the alert disappears for creators who lost the job");
 
-  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "checkin", otp: "0000", lat: b1.lat, lng: b1.lng });
-  ok(r.status === 400, "wrong start code is refused");
-  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "checkin", otp, lat: b1.lat + 0.02, lng: b1.lng });
-  ok(r.status === 400 && /from the address/.test(r.error), "check-in 2 km away is refused");
-  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "checkin", otp, lat: b1.lat, lng: b1.lng });
-  ok(r.ok && r.data.status === "shooting", "check-in at the address starts the shoot");
+  r = await priya.req(`/api/bookings/${b1.id}`);
+  ok(r.data.status === "assigned" && r.data.creatorPhone === "+91 9864011111", "client sees the creator’s phone number");
+  r = await ankita.req(`/api/bookings/${b1.id}`);
+  ok(r.data.address.includes("Café Brahma") && r.data.clientPhone === "+91 9854012345", "creator sees the address and the client’s number");
+  ok(r.data.proofUploadUrl === DRIVE_URL, "creator gets the Drive link for proof of work");
+  r = await rituraj.req(`/api/bookings/${b1.id}`);
+  ok(r.status === 404, "another creator can’t open the job");
+
   r = await ankita.req(`/api/bookings/${b1.id}`, { action: "finish" });
-  ok(r.data.status === "editing", "shoot finished");
-  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "deliver", videoUrl: "https://drive.example.com/v1" });
-  ok(r.data.status === "delivered" && r.data.latePenaltyPct === 0, "delivered on time");
-  r = await priya.req(`/api/bookings/${b1.id}`, { action: "revision", note: "Brighter colour grade please" });
-  ok(r.data.status === "revision_requested" && r.data.revisionsLeft === 0, "client uses the free revision");
-  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "deliver", videoUrl: "https://drive.example.com/v2" });
-  ok(r.data.status === "delivered", "revision delivered");
+  ok(r.status === 400 && /start time/.test(r.error), "an on-site job can’t be marked finished before it starts");
   r = await priya.req(`/api/bookings/${b1.id}`, { action: "approve" });
-  ok(r.data.status === "completed" && !r.data.rating, "client approves without having to review");
+  ok(r.status === 400, "the client can’t approve before the creator finishes");
+  await advance(28 * 60);
+  r = await ankita.req(`/api/bookings/${b1.id}`, { action: "finish" });
+  ok(r.ok && r.data.status === "delivered", "Ankita presses Mark As Finished");
+  r = await priya.req("/api/notifications");
+  ok(r.data.some((n) => n.title === "Your job is finished"), "the client is notified to approve");
+  r = await ops.req("/api/admin");
+  ok(r.data.payoutsDue.length === 0, "nothing is owed before the client approves");
+  r = await priya.req(`/api/bookings/${b1.id}`, { action: "approve" });
+  ok(r.data.status === "completed" && !r.data.rating, "client presses Mark As Approved without having to review");
   r = await priya.req(`/api/bookings/${b1.id}`, { action: "review", rating: 6 });
   ok(r.status === 400, "a 6-star review is refused");
   r = await ankita.req(`/api/bookings/${b1.id}`, { action: "review", rating: 5 });
@@ -337,12 +466,75 @@ async function run() {
   ok(r.data.clientRating?.rating === 5 && r.data.clientRating.count === 1, "creator sees the client’s rating");
   r = await priya.req(`/api/bookings/${b1.id}`);
   ok(r.data.clientRating === undefined, "client doesn’t get their own rating summary");
-  r = await ankita.req("/api/wallet");
-  ok(r.data.available === 2000, "Ankita’s wallet gets her 80%: ₹2,000");
+  r = await ops.req("/api/admin");
+  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 2000 && r.data.payoutsDue[0].upiId === "ankita@ybl", "ops is told to pay Ankita her 80%: ₹2,000, with her UPI ID");
+  const shootPayout = r.data.payoutsDue[0].id;
+  r = await ankita.req(`/api/bookings/${b1.id}`);
+  ok(r.data.payoutStatus === "owed", "Ankita sees that payment is on its way");
+  r = await ankita.req("/api/admin", { action: "mark_paid", payoutId: shootPayout });
+  ok(r.status === 403, "a creator can’t mark their own payout as paid");
+  r = await ops.req("/api/admin", { action: "mark_paid", payoutId: shootPayout, reference: "UTR-1" });
+  ok(r.ok && r.data.status === "paid", "ops pays by hand and marks it paid");
+  r = await ops.req("/api/admin", { action: "mark_paid", payoutId: shootPayout });
+  ok(r.status === 409, "the same payout can’t be marked paid twice");
+  r = await ankita.req(`/api/bookings/${b1.id}`);
+  ok(r.data.payoutStatus === "paid", "Ankita sees the payment was sent");
+
+  // --- Webhook: the client closes the page right after paying -------------------
+  r = await priya.req("/api/session");
+  r = await priya.req("/api/bookings", { ...shootInput, scheduledAt: slotFrom(r.serverNow), brief: "Reel paid for and confirmed by webhook" });
+  const viaHook = r.data;
+  fakePay = customerPays(viaHook.checkout.orderId);
+  const hookPayload = { payment: { entity: { id: fakePay.id, order_id: viaHook.checkout.orderId } } };
+  ok((await sendWebhook("payment.authorized", hookPayload, "wrong-secret")) === 400, "a webhook with a bad signature is refused");
+  r = await priya.req(`/api/bookings/${viaHook.booking.id}`);
+  ok(r.data.status === "awaiting_payment", "a forged webhook doesn’t start the job");
+  ok((await sendWebhook("payment.authorized", hookPayload)) === 200, "Razorpay’s webhook is accepted");
+  ok((await sendWebhook("payment.captured", hookPayload)) === 200 && (await sendWebhook("order.paid", hookPayload)) === 200, "repeat webhook events are accepted");
+  r = await priya.req(`/api/bookings/${viaHook.booking.id}`);
+  ok(r.data.status === "searching" && r.data.events.filter((e) => e.text.startsWith("Paid")).length === 1, "the webhook alone confirms the booking, once");
+  r = await priya.req(`/api/bookings/${viaHook.booking.id}`, { action: "cancel" });
+  ok(r.data.status === "cancelled" && r.data.refund?.status === "processed", "cancelling sends a real refund to Razorpay");
+  ok(rzp.refunds.filter((x) => x.payment_id === fakePay.id).length === 1 && rzp.refunds.at(-1).amount === 250000, "Razorpay refunded the full ₹2,500, once");
+
+  // --- Online job: video editing ------------------------------------------------
+  r = await priya.req("/api/session");
+  r = await priya.bookAndPay({ packageId: "video_edit", scheduledAt: slotFrom(r.serverNow), brief: "Edit my café clips into a 30 second reel" });
+  ok(r.ok && r.data.online && r.data.area === "Online" && r.data.total === 1500, "an online job needs no address");
+  const online = r.data;
+  ok(online.dispatch.notified === 2, "only the 2 video editors are alerted, wherever they live");
+  r = await ankita.req("/api/offers");
+  ok(!r.data.some((o) => o.bookingId === online.id), "a creator in another field isn’t alerted");
+  r = await nilakshi.req("/api/offers");
+  const onlineOffer = r.data.find((o) => o.bookingId === online.id);
+  ok(onlineOffer && onlineOffer.online, "an editor in Jorhat gets the online job");
+  ok(onlineOffer.clientPhone === undefined, "the alert doesn’t show the client’s number");
+  r = await nilakshi.req(`/api/offers/${onlineOffer.id}`, { action: "accept" });
+  ok(r.ok, "Nilakshi accepts the online job");
+  r = await nilakshi.req(`/api/bookings/${online.id}`);
+  ok(r.data.clientPhone === "+91 9854012345", "after accepting, the editor sees the client’s number");
+  r = await priya.req(`/api/bookings/${online.id}`);
+  ok(r.data.clientPhone === "+91 9854012345" && r.data.creatorPhone === "+91 9864044444" && r.data.brief.includes("café clips"), "the client’s approval page shows both numbers and the job details");
+  r = await nilakshi.req(`/api/bookings/${online.id}`, { action: "finish" });
+  ok(r.ok && r.data.status === "delivered", "an online job can be marked finished at any time");
+  r = await priya.req(`/api/bookings/${online.id}`, { action: "report", note: "The edit was never sent to me" });
+  ok(r.ok && r.data.status === "disputed", "the client reports a problem");
+  r = await priya.req(`/api/bookings/${online.id}`, { action: "approve" });
+  ok(r.status === 400, "a reported job can’t be approved by accident");
+  r = await ops.req("/api/admin");
+  ok(r.data.payoutsDue.length === 0, "a reported job owes nothing yet");
+  r = await priya.req(`/api/bookings/${online.id}`, { action: "release" });
+  ok(r.status === 403, "only ops can release a reported job");
+  r = await ops.req(`/api/bookings/${online.id}`, { action: "release" });
+  ok(r.ok && r.data.status === "completed", "ops sides with the creator");
+  r = await ops.req("/api/admin");
+  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 1200, "ops is told to pay the editor 80% of ₹1,500");
+  r = await ops.req("/api/admin", { action: "mark_paid", payoutId: r.data.payoutsDue[0].id });
+  ok(r.ok, "ops pays the editor");
 
   // --- No taker → ops ----------------------------------------------------------
   r = await priya.req("/api/session");
-  r = await priya.req("/api/bookings", {
+  r = await priya.bookAndPay({
     packageId: "event_highlights",
     cityId: "silchar",
     zoneId: "silchar-town",
@@ -355,15 +547,22 @@ async function run() {
   await advance(6);
   r = await priya.req(`/api/bookings/${b2.id}`);
   ok(r.data.status === "needs_ops", "after 5 minutes the booking goes to ops");
+  rzp.failNextRefund = true;
   r = await ops.req("/api/admin");
   const row = r.data.dispatch.find((x) => x.id === b2.id);
   ok(row && row.candidates.length > 0, "ops sees candidates to assign by hand");
   r = await ops.req(`/api/bookings/${b2.id}`, { action: "refund", reason: "no creator in Silchar yet" });
-  ok(r.data.status === "refunded", "ops refunds the client");
+  ok(r.data.status === "refunded" && r.data.refund?.status === "failed", "when Razorpay fails, the refund is marked failed, not lost");
+  r = await ops.req("/api/admin");
+  ok(r.data.refundsStuck.some((x) => x.id === b2.id), "ops sees the stuck refund");
+  r = await ops.req(`/api/bookings/${b2.id}`, { action: "retry_refund" });
+  ok(r.data.refund?.status === "processed", "ops retries and the refund goes through");
+  r = await ops.req(`/api/bookings/${b2.id}`, { action: "retry_refund" });
+  ok(r.status === 400, "a finished refund can’t be sent again");
 
   // --- Client picks a creator who declines -------------------------------------
   r = await priya.req("/api/session");
-  r = await priya.req("/api/bookings", {
+  r = await priya.bookAndPay({
     packageId: "quick_reel",
     cityId: "jorhat",
     zoneId: "jorhat-town",
@@ -375,7 +574,7 @@ async function run() {
   const b3 = r.data;
   ok(b3.dispatch.phase === "direct" && b3.dispatch.notified === 1, "chosen creator gets it first");
   r = await nilakshi.req("/api/offers");
-  r = await nilakshi.req(`/api/offers/${r.data[0].id}`, { action: "decline" });
+  r = await nilakshi.req(`/api/offers/${r.data.find((o) => o.bookingId === b3.id).id}`, { action: "decline" });
   r = await priya.req(`/api/bookings/${b3.id}`);
   ok(r.data.dispatch.phase === "broadcast", "after decline everyone nearby is alerted");
   await advance(6);
@@ -419,22 +618,19 @@ async function run() {
   await ops.req(`/api/campaigns/${cid}`, { action: "update", stage: "report_settle", balancePaid: true });
   r = await ops.req(`/api/campaigns/${cid}`, { action: "settle" });
   ok(r.data.stage === "closed", "campaign settled and closed");
-  r = await ankita.req("/api/wallet");
-  ok(r.data.available === 22000, "Ankita’s campaign fee is in her wallet");
+  r = await ops.req("/api/admin");
+  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 20000, "ops is told to pay Ankita her ₹20,000 campaign fee");
   r = await brand.req("/api/campaigns");
   const done = r.data.find((c) => c.id === cid);
   ok(done?.stage === "closed" && done.budget === 300000 && done.settledAt, "the brand sees the finished campaign and its budget");
   ok(done.creators.length === 1 && done.creators[0].name && done.creators[0].fee === undefined, "the brand sees who worked on it, but not their fee");
   ok(done.math === undefined && done.commissionRate === undefined, "the brand doesn’t see Srijan’s commission");
 
-  // --- Payouts -----------------------------------------------------------------
-  r = await ankita.req("/api/wallet", { amount: 5000, instant: false });
-  ok(r.ok && r.data.status === "processing", "Ankita requests a Friday payout");
-  r = await ops.req("/api/admin", { action: "payout_run" });
-  ok(r.data.count === 1 && r.data.total === 5000, "ops runs the payout");
+  r = await ankita.req("/api/wallet");
+  ok(r.status === 404 || r.status === 405, "the wallet is gone");
 
   // --- Pages render ------------------------------------------------------------
-  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/wallet", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
+  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
     const res = await fetch(BASE + p);
     ok(res.status === 200, `page ${p} renders`);
   }
@@ -450,6 +646,7 @@ try {
   if (serverLog.trim()) console.error(`\nServer output:\n${serverLog.trim().split("\n").slice(-30).join("\n")}`);
 } finally {
   server?.kill();
+  rzp.server?.close();
   await sql?.end({ timeout: 5 });
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }

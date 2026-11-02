@@ -5,10 +5,7 @@ import {
   CITIES,
   CREATOR_SHARE,
   DISPATCH,
-  FREE_REVISIONS,
-  GST_RATE,
   PACKAGES,
-  PAYOUT,
   SERVICES,
 } from "@/lib/domain/config";
 
@@ -20,13 +17,10 @@ export async function GET() {
       packages: PACKAGES,
       cities: CITIES,
       services: SERVICES,
-      gstRate: GST_RATE,
       creatorShare: CREATOR_SHARE,
       dispatch: DISPATCH,
-      freeRevisions: FREE_REVISIONS,
       campaignStages: CAMPAIGN_STAGES,
       campaignCommission: CAMPAIGN_COMMISSION,
-      payout: PAYOUT,
     },
     // No serverNow here: it comes from data routes.
   });

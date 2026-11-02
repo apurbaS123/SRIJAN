@@ -34,6 +34,12 @@ export interface CreatorService {
   price: number | null;
 }
 
+export interface BankDetails {
+  accountName: string;
+  accountNumber: string;
+  ifsc: string;
+}
+
 export type Verification = "pending" | "verified" | "rejected";
 
 export interface Creator {
@@ -63,7 +69,10 @@ export interface Creator {
   maxTravelKm: number;
   verification: Verification;
   kyc: { aadhaar: boolean; pan: boolean };
+  /** How this creator gets paid. Older accounts have only upiId, which means UPI. */
+  payoutMethod?: "upi" | "bank";
   upiId?: string;
+  bank?: BankDetails;
   ratingSum: number;
   ratingCount: number;
   jobsDone: number;
@@ -71,14 +80,13 @@ export interface Creator {
 }
 
 export type BookingStatus =
+  | "awaiting_payment" // created, Razorpay hasn't confirmed payment yet; nobody is alerted
   | "searching" // paid, alerts going out
   | "needs_ops" // nobody accepted in time; ops must assign or refund
-  | "assigned" // creator accepted, travelling
-  | "shooting" // checked in with client's code
-  | "editing" // shoot finished, editing
-  | "delivered" // video uploaded, waiting for client
-  | "revision_requested"
-  | "completed" // approved (by client or automatically), money settled
+  | "assigned" // creator accepted and is doing the job
+  | "delivered" // creator pressed Mark As Finished, waiting for the client
+  | "disputed" // client reported a problem; payout stopped until ops decides
+  | "completed" // approved (by client or automatically), creator payout owed
   | "refunded"
   | "cancelled";
 
@@ -103,8 +111,11 @@ export interface Booking {
   clientId: string;
   packageId: string;
   price: number;
-  gst: number;
+  /** What the client pays. Same as price: Srijan adds nothing on top. */
   total: number;
+  /** Done remotely (e.g. video editing): no visit, so no location or distance limit. */
+  online?: boolean;
+  /** Empty for online jobs, like cityId and zoneId. */
   address: string;
   cityId: string;
   zoneId: string;
@@ -117,20 +128,19 @@ export interface Booking {
   requestedCreatorId?: string;
   creatorId?: string;
   status: BookingStatus;
-  /** 4-digit start code the client gives the creator on arrival. */
-  otp: string;
   createdAt: number;
-  paidAt: number;
+  /** Set once Razorpay has confirmed the payment. */
+  paidAt?: number;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  /** A refund asked for through Razorpay. */
+  refund?: BookingRefund;
+  /** The client's "Report a problem" note. */
+  report?: { note: string; at: number };
   dispatch: DispatchState;
   assignedAt?: number;
-  checkInAt?: number;
-  shootEndAt?: number;
-  deliveryDueAt: number;
+  /** When the creator pressed Mark As Finished. */
   deliveredAt?: number;
-  firstDeliveredAt?: number;
-  videoUrl?: string;
-  revisionsUsed: number;
-  revisionNote?: string;
   approvedAt?: number;
   autoApproved?: boolean;
   /** The client's review of the creator: 1–5 stars, optional text. */
@@ -139,12 +149,16 @@ export interface Booking {
   reviewedAt?: number;
   /** The creator's review of the client. */
   reviewOfClient?: { rating: number; text?: string; at: number };
-  /** Percent cut from the creator's payout for late delivery. */
-  latePenaltyPct?: number;
   refundedAt?: number;
-  /** Wrong start codes entered by the creator; check-in locks after a few. */
-  checkInFailures?: number;
   events: BookingEvent[];
+}
+
+export interface BookingRefund {
+  amount: number;
+  reason: string;
+  status: "pending" | "processed" | "failed";
+  razorpayRefundId?: string;
+  error?: string;
 }
 
 export type OfferStatus = "pending" | "accepted" | "declined" | "expired" | "taken";
@@ -162,14 +176,14 @@ export interface Offer {
 }
 
 export type LedgerType =
-  | "client_payment" // client paid for a shoot (incl. GST)
-  | "gst_collected"
-  | "creator_earning" // credited to a creator wallet (shoot or campaign)
+  | "client_payment" // client paid for a job
+  | "gst_collected" // older bookings only
+  | "creator_earning" // owed to a creator (shoot or campaign); ops pays it by hand
   | "platform_fee" // Srijan's 20% on shoots
   | "client_refund"
   | "campaign_payment" // brand paid campaign budget
   | "campaign_commission" // Srijan's share of a campaign
-  | "withdrawal"; // creator moved money to UPI
+  | "withdrawal"; // older wallet withdrawals only
 
 export interface LedgerEntry {
   id: string;
@@ -180,9 +194,12 @@ export interface LedgerEntry {
   campaignId?: string;
   creatorId?: string;
   note?: string;
-  /** For withdrawals. */
+  /** creator_earning: "processing" = ops still has to pay it. Older entries have no status. */
   status?: "processing" | "paid";
   fee?: number;
+  /** When ops paid it, and the bank or UPI reference they noted. */
+  paidAt?: number;
+  paymentRef?: string;
 }
 
 export type CampaignStage =
@@ -238,6 +255,19 @@ export interface OtpChallenge {
   attempts: number;
 }
 
+/** A message for one user, shown by the on-site demo notification. */
+export interface Notification {
+  id: string;
+  userId: string;
+  at: number;
+  title: string;
+  lines: string[];
+  href: string;
+  /** Job alerts disappear once the offer is no longer open. */
+  offerId?: string;
+  readAt?: number;
+}
+
 export interface DB {
   version: 1;
   seq: number;
@@ -248,4 +278,5 @@ export interface DB {
   ledger: LedgerEntry[];
   campaigns: Campaign[];
   otps?: OtpChallenge[];
+  notifications?: Notification[];
 }
