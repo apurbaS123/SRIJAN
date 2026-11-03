@@ -1,7 +1,10 @@
+import { NextResponse } from "next/server";
 import { api, readJson } from "@/lib/server/api";
+import { fetchPayment } from "@/lib/server/razorpay";
 import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
 import { setVerification } from "@/lib/domain/creators";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
+import { markRefundSent, refundsDue } from "@/lib/domain/bookings";
 import { canTakeJob, isCreatorBusy, jobService } from "@/lib/domain/dispatch";
 import { haversineKm, DomainError } from "@/lib/domain/util";
 
@@ -30,10 +33,7 @@ export async function GET() {
               : [],
         })),
         payoutsDue: payoutsDue(db),
-        // Refunds that failed, or that never reached Razorpay.
-        refundsStuck: db.bookings
-          .filter((b) => b.refund?.status === "failed" || (b.refund?.status === "pending" && !b.refund.razorpayRefundId))
-          .map((b) => ({ id: b.id, code: b.code, amount: b.refund!.amount, status: b.refund!.status, error: b.refund!.error })),
+        refundsDue: refundsDue(db),
         pendingCreators: db.creators
           .filter((c) => c.verification === "pending")
           .map((c) => {
@@ -49,10 +49,41 @@ export async function GET() {
 
 type Action =
   | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean }
-  | { action: "mark_paid"; payoutId: string; reference?: string };
+  | { action: "mark_paid"; payoutId: string; reference?: string }
+  | { action: "mark_refund_sent"; bookingId: string; reference?: string };
+
+/** Asks Razorpay what was really refunded, outside the database lock, then records it. */
+async function markRefundSentChecked(bookingId: string, reference: unknown) {
+  let paymentId: string | undefined;
+  const allowed = await api(
+    ({ db }) => {
+      paymentId = db.bookings.find((b) => b.id === bookingId)?.razorpayPaymentId;
+    },
+    { role: "ops" },
+  );
+  if (!allowed.ok) return allowed;
+
+  let refunded = 0;
+  if (paymentId) {
+    try {
+      refunded = (await fetchPayment(paymentId)).amount_refunded / 100;
+    } catch (e) {
+      console.error(`Couldn't check the refund on ${paymentId}`, e);
+      return NextResponse.json({ ok: false, error: "Couldn’t check this refund with Razorpay. Please try again." }, { status: 502 });
+    }
+  }
+  return api(
+    ({ db, now }) => {
+      markRefundSent(db, bookingId, refunded, reference, now);
+      return { ok: true };
+    },
+    { role: "ops" },
+  );
+}
 
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
+  if (body.action === "mark_refund_sent") return markRefundSentChecked(body.bookingId, body.reference);
   return api(
     ({ db, now }) => {
       switch (body.action) {

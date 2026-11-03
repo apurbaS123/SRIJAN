@@ -36,13 +36,9 @@ export interface RazorpayPayment {
   id: string;
   order_id: string | null;
   amount: number;
+  /** In paise, across all refunds on this payment. */
+  amount_refunded: number;
   status: string;
-}
-
-export interface RazorpayRefund {
-  id: string;
-  receipt?: string | null;
-  status: "pending" | "processed" | "failed";
 }
 
 /** Amounts go to Razorpay in paise. */
@@ -56,16 +52,6 @@ export function fetchPayment(paymentId: string) {
 
 export function capturePayment(paymentId: string, paise: number) {
   return request<RazorpayPayment>("POST", `/payments/${encodeURIComponent(paymentId)}/capture`, { amount: paise, currency: "INR" });
-}
-
-/** Razorpay refuses a second refund with the same receipt, so a retry can't pay out twice. */
-export function createRefund(paymentId: string, rupees: number, receipt: string) {
-  return request<RazorpayRefund>("POST", `/payments/${encodeURIComponent(paymentId)}/refund`, { amount: rupees * 100, receipt });
-}
-
-export async function findRefundByReceipt(paymentId: string, receipt: string) {
-  const list = await request<{ items: RazorpayRefund[] }>("GET", `/payments/${encodeURIComponent(paymentId)}/refunds`);
-  return list.items.find((r) => r.receipt === receipt);
 }
 
 function hmacEquals(secret: string, message: string, given: unknown) {

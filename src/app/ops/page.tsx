@@ -4,14 +4,15 @@ import Link from "next/link";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
 import type { PayoutDue } from "@/lib/domain/payouts";
-import { ErrorNote, Guard, StatusBadge } from "@/components/ui";
+import type { RefundDue } from "@/lib/domain/bookings";
+import { Guard, StatusBadge } from "@/components/ui";
 import { countdown, inr, lakh, time, when } from "@/lib/client/format";
 
 interface Overview {
   kpis: { shootsToday: number; liveNow: number; searching: number; needsOps: number; pipelineValue: number; revenueMonth: number; pendingVerification: number };
   money: { month: string; shootGmv: number; platformFee: number; campaignBilled: number; campaignCommission: number; refunds: number };
   payoutsDue: PayoutDue[];
-  refundsStuck: { id: string; code: string; amount: number; status: string; error?: string }[];
+  refundsDue: RefundDue[];
   dispatch: (BookingView & { candidates: { id: string; name: string; available: boolean; km: number }[] })[];
   pendingCreators: CreatorPublic[];
 }
@@ -78,7 +79,7 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
           </button>
         )}
         {!["completed", "refunded", "cancelled"].includes(b.status) && (
-          <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={act.busy} onClick={() => confirm(`Refund ${inr(b.total)} for ${b.code}?`) && post({ action: "refund", reason: "refunded by Srijan team" })}>
+          <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={act.busy} onClick={() => confirm(`Stop ${b.code} and refund ${inr(b.total)}? You’ll then send the money from the Razorpay dashboard.`) && post({ action: "refund", reason: "refunded by Srijan team" })}>
             Refund
           </button>
         )}
@@ -135,18 +136,52 @@ function PayoutRow({ p, onChange }: { p: PayoutDue; onChange: () => void }) {
   );
 }
 
+function RefundRow({ r, onChange }: { r: RefundDue; onChange: () => void }) {
+  const act = useAction();
+  const [reference, setReference] = useState("");
+
+  async function markSent() {
+    if (!confirm(`Have you refunded ${inr(r.amount)} for ${r.code} in Razorpay?`)) return;
+    const ok = await act.run(() => call("/api/admin", { action: "mark_refund_sent", bookingId: r.id, reference }));
+    if (ok) onChange();
+  }
+
+  return (
+    <article className="card card-tight stack" style={{ background: "var(--bg)" }}>
+      <div className="row between">
+        <b>
+          {inr(r.amount)} ·{" "}
+          <Link href={`/bookings/${r.id}`} className="strong">
+            {r.code}
+          </Link>
+        </b>
+        <span className="small muted">
+          {r.reason} · {when(r.at)}
+        </span>
+      </div>
+      <div className="small">
+        Razorpay payment: <b>{r.paymentId}</b>
+      </div>
+      <div className="row">
+        <label className="sr-only" htmlFor={`refund-ref-${r.id}`}>
+          Refund reference
+        </label>
+        <input id={`refund-ref-${r.id}`} className="input grow" style={{ minHeight: 36 }} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Razorpay refund ID (optional)" />
+        <button className="btn btn-sm btn-primary" disabled={act.busy} onClick={markSent}>
+          Mark as sent
+        </button>
+      </div>
+      {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
+    </article>
+  );
+}
+
 function Dashboard() {
   const { data, reload } = useData<Overview>("/api/admin", 3000);
-  const act = useAction();
   const now = useTick(30000);
   if (!data) return null;
   const k = data.kpis;
   const m = data.money;
-
-  async function retryRefund(id: string) {
-    const ok = await act.run(() => call(`/api/bookings/${id}`, { action: "retry_refund" }));
-    if (ok) void reload();
-  }
 
   return (
     <div className="container page" style={{ maxWidth: 1280 }}>
@@ -156,7 +191,6 @@ function Dashboard() {
           <h1>Dispatch</h1>
         </div>
       </div>
-      <ErrorNote error={act.error} />
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(170px,100%),1fr))" }}>
         <div className="card stack" style={{ gap: 4 }}>
@@ -228,24 +262,16 @@ function Dashboard() {
         ))}
       </section>
 
-      {data.refundsStuck.length > 0 && (
-        <section className="card card-orange stack">
-          <h2>Refunds that need attention</h2>
-          {data.refundsStuck.map((r) => (
-            <div key={r.id} className="row between">
-              <span className="small">
-                <Link href={`/bookings/${r.id}`} className="strong">
-                  {r.code}
-                </Link>{" "}
-                · {inr(r.amount)} · {r.error ?? "Not sent to Razorpay yet"}
-              </span>
-              <button className="btn btn-sm" disabled={act.busy} onClick={() => retryRefund(r.id)}>
-                Retry refund
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
+      <section className={`card stack${data.refundsDue.length ? " card-orange" : ""}`}>
+        <div className="row between">
+          <h2>Refunds to send ({data.refundsDue.length})</h2>
+          <span className="small muted">Refund the payment in the Razorpay dashboard, then mark it as sent</span>
+        </div>
+        {data.refundsDue.length === 0 && <p className="small muted">No refunds waiting.</p>}
+        {data.refundsDue.map((r) => (
+          <RefundRow key={r.id} r={r} onChange={reload} />
+        ))}
+      </section>
 
       <div className="grid-2">
         <section className="card stack">

@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { recordPayment } from "@/lib/domain/bookings";
 import { withDb } from "./store";
-import { capturePayment, createRefund, fetchPayment, findRefundByReceipt, RazorpayError, type RazorpayPayment } from "./razorpay";
+import { capturePayment, fetchPayment, RazorpayError, type RazorpayPayment } from "./razorpay";
 import { bookingAlertLines, sendWhatsAppAlert } from "./whatsapp";
 
 /** Asks Razorpay what really happened and captures the money if it's only authorized. */
@@ -47,54 +47,5 @@ export async function confirmPayment(orderId: string, paymentId: string) {
     const lines = result.alert;
     after(() => sendWhatsAppAlert(lines));
   }
-  if (result.outcome === "refund") await processRefund(found.id);
   return result.outcome;
-}
-
-/** Sends a pending refund to Razorpay. Never throws: a failure is saved for ops to retry. */
-export async function processRefund(bookingId: string) {
-  const { result: job } = await withDb((db) => {
-    const b = db.bookings.find((x) => x.id === bookingId);
-    return b?.refund?.status === "pending" && !b.refund.razorpayRefundId && b.razorpayPaymentId
-      ? { paymentId: b.razorpayPaymentId, amount: b.refund.amount, receipt: `refund_${b.code}` }
-      : null;
-  });
-  if (!job) return;
-
-  let update: { status: "pending" | "processed" | "failed"; razorpayRefundId?: string; error?: string };
-  try {
-    const r = await createRefund(job.paymentId, job.amount, job.receipt);
-    update = { status: r.status, razorpayRefundId: r.id };
-  } catch (e) {
-    update = await afterRefundError(job.paymentId, job.receipt, e);
-  }
-  await withDb((db, now) => {
-    const b = db.bookings.find((x) => x.id === bookingId);
-    if (!b?.refund) return;
-    Object.assign(b.refund, { error: undefined }, update);
-    if (update.status === "failed") b.events.push({ at: now, text: "Refund failed at Razorpay · Srijan team notified" });
-  });
-}
-
-/** An earlier try may have gone through even though we never saw the reply. */
-async function afterRefundError(paymentId: string, receipt: string, e: unknown) {
-  console.error(`Refund ${receipt} failed`, e);
-  try {
-    const existing = await findRefundByReceipt(paymentId, receipt);
-    if (existing) return { status: existing.status, razorpayRefundId: existing.id };
-  } catch {
-    /* report the original error */
-  }
-  return { status: "failed" as const, error: (e as Error).message.slice(0, 300) };
-}
-
-/** Razorpay's webhook reports how a refund ended. */
-export async function recordRefundResult(paymentId: string, refundId: string, status: "processed" | "failed") {
-  await withDb((db, now) => {
-    const b = db.bookings.find((x) => x.razorpayPaymentId === paymentId);
-    if (!b?.refund || b.refund.status === status) return;
-    b.refund.status = status;
-    b.refund.razorpayRefundId = refundId;
-    if (status === "failed") b.events.push({ at: now, text: "Refund failed at Razorpay · Srijan team notified" });
-  });
 }

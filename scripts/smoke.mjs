@@ -49,7 +49,7 @@ function ok(cond, msg) {
 
 // ── Fake Razorpay ─────────────────────────────────────────────────────────────
 
-const rzp = { orders: new Map(), payments: new Map(), refunds: [], seq: 0, server: null, base: "" };
+const rzp = { orders: new Map(), payments: new Map(), seq: 0, server: null, base: "" };
 
 function startFakeRazorpay() {
   return new Promise((resolve) => {
@@ -63,13 +63,14 @@ function startFakeRazorpay() {
       };
       const fail = (status, description) => reply(status, { error: { description } });
       if (req.headers.authorization !== `Basic ${Buffer.from(`rzp_test_smoke:${RZP_SECRET}`).toString("base64")}`) return fail(401, "Bad key");
+      if (rzp.down) return fail(502, "Razorpay is having trouble");
       const path = req.url.replace(/^\/v1/, "");
       if (req.method === "POST" && path === "/orders") {
         const order = { id: `order_${++rzp.seq}`, amount: body.amount, currency: body.currency, receipt: body.receipt };
         rzp.orders.set(order.id, order);
         return reply(200, order);
       }
-      const m = path.match(/^\/payments\/([^/]+)(?:\/(capture|refund|refunds))?$/);
+      const m = path.match(/^\/payments\/([^/]+)(?:\/(capture))?$/);
       const p = m && rzp.payments.get(m[1]);
       if (!p) return fail(404, "Not found");
       if (req.method === "GET" && !m[2]) return reply(200, p);
@@ -78,17 +79,6 @@ function startFakeRazorpay() {
         p.status = "captured";
         return reply(200, p);
       }
-      if (req.method === "POST" && m[2] === "refund") {
-        if (rzp.failNextRefund) {
-          rzp.failNextRefund = false;
-          return fail(502, "Razorpay is having trouble");
-        }
-        if (rzp.refunds.some((r) => r.payment_id === p.id && r.receipt === body.receipt)) return fail(400, "Duplicate receipt found for this refund request");
-        const refund = { id: `rfnd_${++rzp.seq}`, payment_id: p.id, amount: body.amount, receipt: body.receipt, status: "processed" };
-        rzp.refunds.push(refund);
-        return reply(200, refund);
-      }
-      if (req.method === "GET" && m[2] === "refunds") return reply(200, { items: rzp.refunds.filter((r) => r.payment_id === p.id) });
       fail(404, "Not found");
     });
     rzp.server.listen(0, "127.0.0.1", () => {
@@ -102,7 +92,7 @@ function startFakeRazorpay() {
 function customerPays(orderId) {
   const order = rzp.orders.get(orderId);
   const id = `pay_${++rzp.seq}`;
-  rzp.payments.set(id, { id, order_id: orderId, amount: order.amount, status: "authorized" });
+  rzp.payments.set(id, { id, order_id: orderId, amount: order.amount, amount_refunded: 0, status: "authorized" });
   return { id, signature: createHmac("sha256", RZP_SECRET).update(`${orderId}|${id}`).digest("hex") };
 }
 
@@ -494,8 +484,26 @@ async function run() {
   r = await priya.req(`/api/bookings/${viaHook.booking.id}`);
   ok(r.data.status === "searching" && r.data.events.filter((e) => e.text.startsWith("Paid")).length === 1, "the webhook alone confirms the booking, once");
   r = await priya.req(`/api/bookings/${viaHook.booking.id}`, { action: "cancel" });
-  ok(r.data.status === "cancelled" && r.data.refund?.status === "processed", "cancelling sends a real refund to Razorpay");
-  ok(rzp.refunds.filter((x) => x.payment_id === fakePay.id).length === 1 && rzp.refunds.at(-1).amount === 250000, "Razorpay refunded the full ₹2,500, once");
+  ok(r.data.status === "cancelled" && r.data.refund?.status === "pending" && r.data.refund.amount === 2500, "cancelling leaves the full ₹2,500 waiting to be refunded");
+  const dueAfterCancel = (await ops.req("/api/admin")).data.refundsDue.find((x) => x.paymentId === fakePay.id);
+  ok(dueAfterCancel?.amount === 2500, "ops is told to refund it, with the Razorpay payment ID");
+  const markSent = () => ops.req("/api/admin", { action: "mark_refund_sent", bookingId: dueAfterCancel.id, reference: "rfnd_manual_1" });
+  r = await markSent();
+  ok(r.status === 409, "a refund can’t be marked as sent before it’s made in Razorpay");
+  rzp.payments.get(fakePay.id).amount_refunded = 200000;
+  r = await markSent();
+  ok(r.status === 409 && r.error.includes("₹2,000 of ₹2,500"), "a partial refund is refused and says what’s missing");
+  rzp.payments.get(fakePay.id).amount_refunded = 250000;
+  rzp.down = true;
+  r = await markSent();
+  rzp.down = false;
+  ok(r.status === 502, "if Razorpay can’t be reached, the refund isn’t marked as sent");
+  r = await priya.req(`/api/bookings/${dueAfterCancel.id}`);
+  ok(r.data.refund?.status === "pending", "the client still sees the refund as waiting");
+  r = await markSent();
+  ok(r.ok, "once Razorpay shows the full amount, ops can mark it as sent");
+  r = await ops.req("/api/admin");
+  ok(!r.data.refundsDue.some((x) => x.paymentId === fakePay.id), "a sent refund leaves the list");
 
   // --- Online job: video editing ------------------------------------------------
   r = await priya.req("/api/session");
@@ -547,18 +555,23 @@ async function run() {
   await advance(6);
   r = await priya.req(`/api/bookings/${b2.id}`);
   ok(r.data.status === "needs_ops", "after 5 minutes the booking goes to ops");
-  rzp.failNextRefund = true;
   r = await ops.req("/api/admin");
   const row = r.data.dispatch.find((x) => x.id === b2.id);
   ok(row && row.candidates.length > 0, "ops sees candidates to assign by hand");
   r = await ops.req(`/api/bookings/${b2.id}`, { action: "refund", reason: "no creator in Silchar yet" });
-  ok(r.data.status === "refunded" && r.data.refund?.status === "failed", "when Razorpay fails, the refund is marked failed, not lost");
+  ok(r.data.status === "refunded" && r.data.refund?.status === "pending", "ops refunding a booking leaves the money to be sent");
   r = await ops.req("/api/admin");
-  ok(r.data.refundsStuck.some((x) => x.id === b2.id), "ops sees the stuck refund");
-  r = await ops.req(`/api/bookings/${b2.id}`, { action: "retry_refund" });
-  ok(r.data.refund?.status === "processed", "ops retries and the refund goes through");
-  r = await ops.req(`/api/bookings/${b2.id}`, { action: "retry_refund" });
-  ok(r.status === 400, "a finished refund can’t be sent again");
+  const b2Due = r.data.refundsDue.find((x) => x.id === b2.id);
+  ok(b2Due, "ops sees the refund to send");
+  rzp.payments.get(b2Due.paymentId).amount_refunded = b2Due.amount * 100;
+  r = await priya.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
+  ok(r.status === 403, "only ops can mark a refund as sent");
+  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
+  ok(r.ok, "ops marks it as sent");
+  r = await priya.req(`/api/bookings/${b2.id}`);
+  ok(r.data.refund?.status === "sent", "the client sees the refund was sent");
+  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
+  ok(r.status === 409, "a sent refund can’t be marked twice");
 
   // --- Client picks a creator who declines -------------------------------------
   r = await priya.req("/api/session");

@@ -50,9 +50,10 @@ Without Brevo set up, `npm run dev` prints each sign-in code in the server log. 
 
 1. **/book** creates an unpaid booking and a Razorpay order, then opens Razorpay Checkout. Nobody is alerted yet.
 2. Razorpay's confirmation arrives two ways: from the browser (`/api/payments/verify`) and from Razorpay's servers (`/api/payments/webhook`), so a client who closes the page right after paying is still covered. Either one starts the search for a creator, once.
-3. Unpaid bookings are dropped after 30 minutes. A payment that lands after that is refunded automatically.
-4. Client cancellations and ops refunds send a real refund to Razorpay. A failed one shows on the ops page with a retry button.
+3. Unpaid bookings are dropped after 30 minutes. A payment that lands after that goes under **Refunds to send**.
+4. Client cancellations and ops refunds go under **Refunds to send** too. Nothing is sent to Razorpay automatically (see step 6).
 5. **Creator payouts are manual:** approved jobs and settled campaigns appear under **Creators to pay** on the ops page with the creator's bank or UPI details. Send the money, then mark it paid. To automate this later with RazorpayX or Route, start at `src/lib/domain/payouts.ts`.
+6. **Refunds are manual too:** a cancelled or refunded booking appears under **Refunds to send** on the ops page with its Razorpay payment ID. Refund it in the Razorpay dashboard, then mark it as sent. The site checks with Razorpay and refuses if less than the full amount has gone back. Completed jobs aren't listed: refund those in the dashboard directly.
 
 Add to `.env.local` and to Vercel:
 
@@ -63,7 +64,7 @@ RAZORPAY_WEBHOOK_SECRET=...        # any long random string; enter the same one 
 SRIJAN_PROOF_DRIVE_URL=https://drive.google.com/...   # where creators upload proof of work
 ```
 
-In the Razorpay dashboard, add a webhook pointing to `https://YOUR-DOMAIN/api/payments/webhook` with the events `payment.authorized`, `payment.captured`, `order.paid`, `refund.processed` and `refund.failed`. Test mode and live mode have separate keys and webhooks.
+In the Razorpay dashboard, add a webhook pointing to `https://YOUR-DOMAIN/api/payments/webhook` with the events `payment.authorized`, `payment.captured` and `order.paid`. Test mode and live mode have separate keys and webhooks.
 
 Until the keys are set, the site refuses new bookings rather than taking them unpaid.
 

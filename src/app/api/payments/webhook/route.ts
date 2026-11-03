@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { confirmPayment, recordRefundResult } from "@/lib/server/payments";
+import { confirmPayment } from "@/lib/server/payments";
 import { webhookSignatureValid } from "@/lib/server/razorpay";
 
 interface WebhookEvent {
   event?: string;
   payload?: {
     payment?: { entity?: { id?: string; order_id?: string | null } };
-    refund?: { entity?: { id?: string; payment_id?: string } };
   };
 }
 
@@ -29,11 +28,8 @@ export async function POST(req: Request) {
   }
   try {
     const payment = event.payload?.payment?.entity;
-    const refund = event.payload?.refund?.entity;
     if (["payment.authorized", "payment.captured", "order.paid"].includes(event.event ?? "") && payment?.id && payment.order_id) {
       await confirmPayment(payment.order_id, payment.id);
-    } else if ((event.event === "refund.processed" || event.event === "refund.failed") && refund?.id && refund.payment_id) {
-      await recordRefundResult(refund.payment_id, refund.id, event.event === "refund.processed" ? "processed" : "failed");
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

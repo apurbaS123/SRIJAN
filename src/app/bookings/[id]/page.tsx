@@ -25,9 +25,8 @@ function Progress({ status }: { status: string }) {
 }
 
 const REFUND_TEXT = {
-  pending: "Your refund is on its way. Banks usually take a few working days.",
-  processed: "Your refund has been sent to your original payment method.",
-  failed: "Your refund hit a problem. The Srijan team has been alerted and will sort it out.",
+  pending: "The Srijan team will send your refund to your original payment method. Your bank usually takes a few working days after that.",
+  sent: "Your refund has been sent to your original payment method. Banks usually take a few working days to show it.",
 };
 
 function Tracking() {
@@ -115,7 +114,6 @@ function Tracking() {
         <section className="card card-orange stack">
           <h2>Refund of {inr(b.refund.amount)}</h2>
           <p className="small">{REFUND_TEXT[b.refund.status]}</p>
-          {b.refund.error && <p className="small">{b.refund.error}</p>}
         </section>
       )}
 

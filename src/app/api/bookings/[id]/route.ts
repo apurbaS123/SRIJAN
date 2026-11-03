@@ -1,5 +1,4 @@
 import { api, readJson } from "@/lib/server/api";
-import { processRefund } from "@/lib/server/payments";
 import { bookingView } from "@/lib/domain/views";
 import { approve, cancelByClient, markFinished, refund, releaseDisputed, reportProblem, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { manualAssign } from "@/lib/domain/dispatch";
@@ -32,14 +31,12 @@ type Action =
   | { action: "finish" }
   | { action: "assign"; creatorId: string }
   | { action: "release" }
-  | { action: "refund"; reason?: string }
-  | { action: "retry_refund" };
+  | { action: "refund"; reason?: string };
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await readJson<Action>(req);
-  let refundFor: string | undefined;
-  const res = await api(
+  return api(
     ({ db, now, user, viewer }) => {
       const u = user!;
       const b = find(db, id, u);
@@ -61,7 +58,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         case "cancel":
           as("client");
           cancelByClient(db, b.id, u.id, now);
-          refundFor = b.id;
           break;
         case "finish":
           as("creator");
@@ -78,14 +74,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         case "refund":
           as("ops");
           refund(db, b, cleanText(body.reason, 200, "the reason", true) || "refunded by Srijan team", now);
-          refundFor = b.id;
-          break;
-        case "retry_refund":
-          as("ops");
-          assert(b.refund && (b.refund.status === "failed" || (b.refund.status === "pending" && !b.refund.razorpayRefundId)), "This refund doesn’t need a retry");
-          b.refund.status = "pending";
-          b.refund.razorpayRefundId = undefined;
-          refundFor = b.id;
           break;
         default:
           throw new DomainError("Unknown action");
@@ -94,8 +82,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
     { role: ["client", "creator", "ops"] },
   );
-  if (!res.ok || !refundFor) return res;
-  // Saved first, so a crash here leaves a refund ops can see and retry, never a lost one.
-  await processRefund(refundFor);
-  return api(({ db, user, viewer }) => bookingView(db, find(db, id, user!), viewer), { role: ["client", "creator", "ops"] });
 }

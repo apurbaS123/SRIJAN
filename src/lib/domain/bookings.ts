@@ -236,8 +236,8 @@ export function clientRating(db: DB, clientId: string) {
 }
 
 /**
- * Marks the booking refunded. If real money was taken the refund is left "pending" and the caller
- * sends it to Razorpay after saving (see src/lib/server/payments.ts).
+ * Refunds are manual for now: this marks the booking refunded and, if real money was taken, leaves
+ * the refund "pending" for ops to send from the Razorpay dashboard and then mark as sent.
  */
 export function refund(db: DB, b: Booking, reason: string, now: number) {
   assert(!["completed", "refunded", "cancelled"].includes(b.status), "This booking can’t be refunded now");
@@ -246,7 +246,33 @@ export function refund(db: DB, b: Booking, reason: string, now: number) {
   b.refundedAt = now;
   if (b.razorpayPaymentId) b.refund = { amount: b.total, reason, status: "pending" };
   db.ledger.push({ id: newId("led"), at: now, type: "client_refund", amount: b.total, bookingId: b.id, note: `${b.code} · ${reason}` });
-  log(b, now, `Full refund of ₹${b.total.toLocaleString("en-IN")} · ${reason}`);
+  log(b, now, `Full refund of ₹${b.total.toLocaleString("en-IN")} due · ${reason}`);
+  return b;
+}
+
+/** For the ops page: refunds still to be sent from the Razorpay dashboard. */
+export function refundsDue(db: DB) {
+  return db.bookings
+    .filter((b) => b.refund?.status === "pending")
+    .map((b) => ({ id: b.id, code: b.code, amount: b.refund!.amount, reason: b.refund!.reason, paymentId: b.razorpayPaymentId, at: b.refundedAt! }));
+}
+export type RefundDue = ReturnType<typeof refundsDue>[number];
+
+/** Ops has refunded the money in the Razorpay dashboard. `refunded` is what Razorpay says went back, in rupees. */
+export function markRefundSent(db: DB, bookingId: string, refunded: number, reference: unknown, now: number) {
+  const b = db.bookings.find((x) => x.id === bookingId);
+  assert(b?.refund, "Refund not found", 404);
+  assert(b.refund.status === "pending", "This refund is already marked as sent", 409);
+  assert(refunded >= b.refund.amount, `Razorpay shows ₹${refunded.toLocaleString("en-IN")} of ₹${b.refund.amount.toLocaleString("en-IN")} refunded. Refund the rest in the Razorpay dashboard first.`, 409);
+  b.refund.status = "sent";
+  b.refund.sentAt = now;
+  b.refund.paymentRef = cleanText(reference, 100, "the refund reference", true) || undefined;
+  log(b, now, `Refund of ₹${b.refund.amount.toLocaleString("en-IN")} sent`);
+  notifyUser(db, b.clientId, now, {
+    title: "Your refund has been sent",
+    lines: [b.code, "Banks usually take a few working days to show it."],
+    href: `/bookings/${b.id}`,
+  });
   return b;
 }
 

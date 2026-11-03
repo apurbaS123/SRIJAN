@@ -156,9 +156,10 @@ export interface Booking {
 export interface BookingRefund {
   amount: number;
   reason: string;
-  status: "pending" | "processed" | "failed";
-  razorpayRefundId?: string;
-  error?: string;
+  /** "pending" until ops has refunded it in the Razorpay dashboard and marked it sent. */
+  status: "pending" | "sent";
+  sentAt?: number;
+  paymentRef?: string;
 }
 
 export type OfferStatus = "pending" | "accepted" | "declined" | "expired" | "taken";

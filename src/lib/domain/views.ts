@@ -102,7 +102,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     proofUploadUrl: isJobCreator && b.status === "assigned" ? process.env.SRIJAN_PROOF_DRIVE_URL || null : undefined,
     /** Has Srijan sent the creator their share yet? */
     payoutStatus: (isOps || isJobCreator) && earning ? (earning.status === "processing" ? ("owed" as const) : ("paid" as const)) : undefined,
-    refund: isOps || isClient ? (b.refund ? { amount: b.refund.amount, status: b.refund.status, error: isOps ? b.refund.error : undefined } : null) : undefined,
+    refund: isOps || isClient ? (b.refund ? { amount: b.refund.amount, status: b.refund.status } : null) : undefined,
     report: b.report ?? null,
     requestedCreatorId: b.requestedCreatorId,
     creator: creator ? creatorPublic(creator) : null,
