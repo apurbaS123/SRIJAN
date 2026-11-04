@@ -740,7 +740,7 @@ a.gh-item, button.gh-item { cursor: pointer; }
 }
 .brand-title {
   margin: 0;
-  font: 800 clamp(44px, 6vw, 96px) / 1 "Syne", system-ui, sans-serif;
+  font: 800 clamp(30px, 4.6vw, 80px) / 1.05 "Syne", system-ui, sans-serif;
   letter-spacing: -0.035em;
   background: linear-gradient(90deg, #a78bfa, #e879f9, #f5d0fe);
   -webkit-background-clip: text;
