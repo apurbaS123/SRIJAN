@@ -109,7 +109,7 @@ export const COPY = {
   h1: ["Create it", "today."],
   sub: [
     "Verified videographers, editors and influencers across the Northeast.",
-    "Same-day shoots, fixed prices, paid safely through Srijan.",
+    "Same-day services, fixed prices, paid safely through Srijan.",
   ],
   cta: { label: "Join as creator", href: "/join" },
   link: "How it works →",

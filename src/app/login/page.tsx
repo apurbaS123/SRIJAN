@@ -169,7 +169,7 @@ function SignIn() {
             <div className="field">
               <label htmlFor="phone">Mobile number</label>
               <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
-              <span className="small muted">{newRole === "ops" ? "So creators and clients can reach the team." : "So your creator can reach you on shoot day."}</span>
+              <span className="small muted">{newRole === "ops" ? "So creators and clients can reach the team." : "So your creator can reach you on the day of your service."}</span>
             </div>
             <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint={NEW_PASSWORD_HINT} />
           </>

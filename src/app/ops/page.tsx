@@ -195,7 +195,7 @@ function Dashboard() {
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(170px,100%),1fr))" }}>
         <div className="card stack" style={{ gap: 4 }}>
-          <span className="small muted strong">Shoots today</span>
+          <span className="small muted strong">Services today</span>
           <span className="big-num">{k.shootsToday}</span>
         </div>
         <div className="card stack" style={{ gap: 4 }}>

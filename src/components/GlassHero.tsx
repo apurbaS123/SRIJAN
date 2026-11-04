@@ -22,8 +22,8 @@ const ACCOUNT = {
 function terms(from: number) {
   return [
     {
-      term: "Same-day shoot",
-      body: "a verified videographer comes to your place, shoots and edits. Online jobs like video editing need no visit at all.",
+      term: "Same-day service",
+      body: "a verified creator comes to your place and gets the job done. Online jobs like video editing need no visit at all.",
     },
     {
       term: "Five-minute dispatch",
@@ -31,7 +31,7 @@ function terms(from: number) {
     },
     {
       term: "Fixed price",
-      body: `packages from ${inr(from)}, with no haggling. Creators keep 80% of every shoot.`,
+      body: `packages from ${inr(from)}, with no haggling. Creators keep 80% of every service.`,
     },
     {
       term: "Safe payment",
