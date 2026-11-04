@@ -36,8 +36,6 @@ export interface RazorpayPayment {
   id: string;
   order_id: string | null;
   amount: number;
-  /** In paise, across all refunds on this payment. */
-  amount_refunded: number;
   status: string;
 }
 

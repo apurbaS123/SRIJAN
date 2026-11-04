@@ -14,7 +14,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     data: {
-      packages: PACKAGES,
+      packages: PACKAGES.filter((p) => !p.retired),
       cities: CITIES,
       services: SERVICES,
       creatorShare: CREATOR_SHARE,

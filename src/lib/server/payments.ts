@@ -24,9 +24,10 @@ async function capturedPayment(paymentId: string, paise: number): Promise<Razorp
  * search for a creator once, and only if Razorpay confirms the right amount for this order.
  */
 export async function confirmPayment(orderId: string, paymentId: string) {
+  // One order can hold several services, and so several bookings.
   const { result: found } = await withDb((db) => {
-    const b = db.bookings.find((x) => x.razorpayOrderId === orderId);
-    return b ? { id: b.id, paise: b.total * 100, known: !!b.razorpayPaymentId } : null;
+    const list = db.bookings.filter((x) => x.razorpayOrderId === orderId);
+    return list.length ? { paise: list.reduce((sum, b) => sum + b.total * 100, 0), known: list.some((b) => b.razorpayPaymentId) } : null;
   });
   if (!found) return "unknown_order" as const;
   if (found.known) return "already" as const;
@@ -39,13 +40,10 @@ export async function confirmPayment(orderId: string, paymentId: string) {
   if (p.status !== "captured") return "not_captured" as const;
 
   const { result } = await withDb((db, now) => {
-    const b = db.bookings.find((x) => x.id === found.id)!;
-    const outcome = recordPayment(db, b, paymentId, now);
-    return { outcome, alert: outcome === "paid" ? bookingAlertLines(db, b) : undefined };
+    const list = db.bookings.filter((x) => x.razorpayOrderId === orderId);
+    const outcomes = list.map((b) => recordPayment(db, b, paymentId, now));
+    return { outcomes, alerts: list.filter((_, i) => outcomes[i] === "paid").map((b) => bookingAlertLines(db, b)) };
   });
-  if (result.alert) {
-    const lines = result.alert;
-    after(() => sendWhatsAppAlert(lines));
-  }
-  return result.outcome;
+  for (const lines of result.alerts) after(() => sendWhatsAppAlert(lines));
+  return result.outcomes.includes("refund") ? ("refund" as const) : result.outcomes[0]!;
 }

@@ -4,7 +4,7 @@ import { assertRazorpayConfigured, createOrder, razorpayKeyId } from "@/lib/serv
 import { limitByIp } from "@/lib/server/rateLimit";
 import { withDb } from "@/lib/server/store";
 import { bookingView } from "@/lib/domain/views";
-import { createBooking, type NewBookingInput } from "@/lib/domain/bookings";
+import { createBookings, type NewOrderInput } from "@/lib/domain/bookings";
 import { findPackage } from "@/lib/domain/config";
 import type { Booking } from "@/lib/domain/types";
 
@@ -27,21 +27,22 @@ export async function GET() {
   );
 }
 
-/** Creates an unpaid booking and its Razorpay order. The browser then opens Razorpay Checkout. */
+/** Creates one unpaid booking per service and a single Razorpay order for their total. The browser then opens Razorpay Checkout. */
 export async function POST(req: Request) {
   const limited = await limitByIp("booking", 20, 60 * 60_000);
   if (limited) return limited;
-  const input = await readJson<NewBookingInput>(req);
-  let made: { id: string; code: string; total: number; packageName: string; prefill: { name: string; email?: string; contact?: string } } | undefined;
+  const input = await readJson<NewOrderInput>(req);
+  let made: { ids: string[]; code: string; total: number; description: string; prefill: { name: string; email?: string; contact?: string } } | undefined;
   const first = await api(
     ({ db, now, user }) => {
       assertRazorpayConfigured();
-      const b = createBooking(db, user!.id, input, now);
+      const list = createBookings(db, user!.id, input, now);
+      const code = list[0]!.code;
       made = {
-        id: b.id,
-        code: b.code,
-        total: b.total,
-        packageName: findPackage(b.packageId)?.name ?? "Srijan job",
+        ids: list.map((b) => b.id),
+        code,
+        total: list.reduce((sum, b) => sum + b.total, 0),
+        description: `${list.length === 1 ? (findPackage(list[0]!.packageId)?.name ?? "Srijan job") : `${list.length} services`} · ${code}`,
         prefill: { name: user!.name, email: user!.email, contact: user!.phone?.replace(/\s/g, "") },
       };
       return null;
@@ -50,31 +51,30 @@ export async function POST(req: Request) {
   );
   if (!first.ok || !made) return first;
 
-  const booking = made;
+  const order = made;
   let orderId: string;
   try {
-    orderId = (await createOrder(booking.total, booking.code, { bookingId: booking.id })).id;
+    orderId = (await createOrder(order.total, order.code, { bookingId: order.ids[0]! })).id;
   } catch (e) {
     console.error("Razorpay order failed", e);
     await withDb((db) => {
-      const b = db.bookings.find((x) => x.id === booking.id);
-      if (b) b.status = "cancelled";
+      for (const b of db.bookings) if (order.ids.includes(b.id)) b.status = "cancelled";
     });
     return NextResponse.json({ ok: false, error: "We couldn’t start the payment. You haven’t been charged. Please try again." }, { status: 502 });
   }
   return api(
     ({ db, viewer }) => {
-      const b = db.bookings.find((x) => x.id === booking.id)!;
-      b.razorpayOrderId = orderId;
+      const list = db.bookings.filter((b) => order.ids.includes(b.id));
+      for (const b of list) b.razorpayOrderId = orderId;
       return {
-        booking: bookingView(db, b, viewer),
+        bookings: list.map((b) => bookingView(db, b, viewer)),
         checkout: {
           key: razorpayKeyId(),
           orderId,
-          amount: booking.total * 100,
+          amount: order.total * 100,
           currency: "INR",
-          description: `${booking.packageName} · ${booking.code}`,
-          prefill: booking.prefill,
+          description: order.description,
+          prefill: order.prefill,
         },
       };
     },

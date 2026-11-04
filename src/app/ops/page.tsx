@@ -141,7 +141,7 @@ function RefundRow({ r, onChange }: { r: RefundDue; onChange: () => void }) {
   const [reference, setReference] = useState("");
 
   async function markSent() {
-    if (!confirm(`Have you refunded ${inr(r.amount)} for ${r.code} in Razorpay?`)) return;
+    if (!confirm(`Have you sent ${inr(r.amount)} back to the client for ${r.code}?`)) return;
     const ok = await act.run(() => call("/api/admin", { action: "mark_refund_sent", bookingId: r.id, reference }));
     if (ok) onChange();
   }
@@ -160,13 +160,14 @@ function RefundRow({ r, onChange }: { r: RefundDue; onChange: () => void }) {
         </span>
       </div>
       <div className="small">
-        Razorpay payment: <b>{r.paymentId}</b>
+        Client: <b>{r.clientName}</b> · {r.clientPhone ?? "no phone"} · {r.clientEmail ?? "no email"}
       </div>
+      <div className="small muted">Razorpay payment: {r.paymentId}</div>
       <div className="row">
         <label className="sr-only" htmlFor={`refund-ref-${r.id}`}>
           Refund reference
         </label>
-        <input id={`refund-ref-${r.id}`} className="input grow" style={{ minHeight: 36 }} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Razorpay refund ID (optional)" />
+        <input id={`refund-ref-${r.id}`} className="input grow" style={{ minHeight: 36 }} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="UPI or bank reference (optional)" />
         <button className="btn btn-sm btn-primary" disabled={act.busy} onClick={markSent}>
           Mark as sent
         </button>
@@ -265,7 +266,7 @@ function Dashboard() {
       <section className={`card stack${data.refundsDue.length ? " card-orange" : ""}`}>
         <div className="row between">
           <h2>Refunds to send ({data.refundsDue.length})</h2>
-          <span className="small muted">Refund the payment in the Razorpay dashboard, then mark it as sent</span>
+          <span className="small muted">Send the client the amount shown, then mark it as sent. A payment can cover several services, so send only this amount</span>
         </div>
         {data.refundsDue.length === 0 && <p className="small muted">No refunds waiting.</p>}
         {data.refundsDue.map((r) => (

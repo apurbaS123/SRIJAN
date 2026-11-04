@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { api, readJson } from "@/lib/server/api";
-import { fetchPayment } from "@/lib/server/razorpay";
 import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
 import { setVerification } from "@/lib/domain/creators";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
@@ -52,38 +50,8 @@ type Action =
   | { action: "mark_paid"; payoutId: string; reference?: string }
   | { action: "mark_refund_sent"; bookingId: string; reference?: string };
 
-/** Asks Razorpay what was really refunded, outside the database lock, then records it. */
-async function markRefundSentChecked(bookingId: string, reference: unknown) {
-  let paymentId: string | undefined;
-  const allowed = await api(
-    ({ db }) => {
-      paymentId = db.bookings.find((b) => b.id === bookingId)?.razorpayPaymentId;
-    },
-    { role: "ops" },
-  );
-  if (!allowed.ok) return allowed;
-
-  let refunded = 0;
-  if (paymentId) {
-    try {
-      refunded = (await fetchPayment(paymentId)).amount_refunded / 100;
-    } catch (e) {
-      console.error(`Couldn't check the refund on ${paymentId}`, e);
-      return NextResponse.json({ ok: false, error: "Couldn’t check this refund with Razorpay. Please try again." }, { status: 502 });
-    }
-  }
-  return api(
-    ({ db, now }) => {
-      markRefundSent(db, bookingId, refunded, reference, now);
-      return { ok: true };
-    },
-    { role: "ops" },
-  );
-}
-
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
-  if (body.action === "mark_refund_sent") return markRefundSentChecked(body.bookingId, body.reference);
   return api(
     ({ db, now }) => {
       switch (body.action) {
@@ -91,6 +59,9 @@ export async function POST(req: Request) {
           return setVerification(db, body.creatorId, body.decision, body.kycChecked === true);
         case "mark_paid":
           return markPayoutPaid(db, body.payoutId, body.reference, now);
+        case "mark_refund_sent":
+          markRefundSent(db, body.bookingId, body.reference, now);
+          return { ok: true };
         default:
           throw new DomainError("Unknown action");
       }

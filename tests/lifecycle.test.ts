@@ -5,12 +5,12 @@ import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { campaignMath, inviteCreator, respondToInvite, settleCampaign, updateCampaign } from "@/lib/domain/campaigns";
-import { HOUR, MIN } from "@/lib/domain/config";
+import { CREATOR_SHARE, HOUR, MIN, PACKAGES } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
-const JOB = { packageId: "quick_reel", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
+const JOB = { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
 function paid(db: DB) {
   const b = createBooking(db, "u_priya", JOB, T0);
@@ -37,7 +37,7 @@ const ledger = (db: DB, bookingId: string, type: string) =>
 describe("paying for a job", () => {
   it("charges exactly the package price, with no GST", () => {
     const b = createBooking(seedDb(T0), "u_priya", JOB, T0);
-    expect(b.total).toBe(2500);
+    expect(b.total).toBe(2499);
   });
 
   it("alerts nobody until the payment is confirmed", () => {
@@ -49,7 +49,7 @@ describe("paying for a job", () => {
     expect(recordPayment(db, b, "pay_1", T0)).toBe("paid");
     expect(b.status).toBe("searching");
     expect(db.offers.filter((o) => o.bookingId === b.id).length).toBeGreaterThan(0);
-    expect(ledger(db, b.id, "client_payment")).toBe(2500);
+    expect(ledger(db, b.id, "client_payment")).toBe(2499);
   });
 
   it("counts a payment once when checkout and the webhook both report it", () => {
@@ -58,7 +58,7 @@ describe("paying for a job", () => {
     recordPayment(db, b, "pay_1", T0);
     const offers = db.offers.length;
     expect(recordPayment(db, b, "pay_1", T0 + 1000)).toBe("already");
-    expect(ledger(db, b.id, "client_payment")).toBe(2500);
+    expect(ledger(db, b.id, "client_payment")).toBe(2499);
     expect(db.offers.length).toBe(offers);
   });
 
@@ -71,7 +71,7 @@ describe("paying for a job", () => {
     expect(b.status).toBe("cancelled");
     expect(recordPayment(db, b, "pay_late", T0 + 31 * MIN)).toBe("refund");
     expect(b.status).toBe("refunded");
-    expect(b.refund).toMatchObject({ amount: 2500, status: "pending" });
+    expect(b.refund).toMatchObject({ amount: 2499, status: "pending" });
     expect(db.offers.filter((o) => o.bookingId === b.id)).toEqual([]);
   });
 
@@ -80,9 +80,35 @@ describe("paying for a job", () => {
     const b = paid(db);
     cancelByClient(db, b.id, "u_priya", T0 + MIN);
     expect(b.status).toBe("cancelled");
-    expect(b.refund).toMatchObject({ amount: 2500, status: "pending" });
+    expect(b.refund).toMatchObject({ amount: 2499, status: "pending" });
     expect(() => refund(db, b, "again", T0 + 2 * MIN)).toThrow(/can’t be refunded/);
-    expect(ledger(db, b.id, "client_refund")).toBe(2500);
+    expect(ledger(db, b.id, "client_refund")).toBe(2499);
+  });
+});
+
+describe("the service menu", () => {
+  const sold = PACKAGES.filter((p) => !p.retired);
+
+  it("sells the 31 services from the pricing matrices", () => {
+    expect(sold.filter((p) => !p.online)).toHaveLength(15);
+    expect(sold.filter((p) => p.online)).toHaveLength(16);
+    expect(new Set(sold.map((p) => p.id)).size).toBe(sold.length);
+  });
+
+  it("gives the creator the net shown in the matrices", () => {
+    const net = (price: number) => Math.round(price * CREATOR_SHARE);
+    expect([799, 899, 999, 1199, 1299, 1499, 1999, 2499, 2999, 3499, 3999, 5999, 6499].map(net)).toEqual([639, 719, 799, 959, 1039, 1199, 1599, 1999, 2399, 2799, 3199, 4799, 5199]);
+  });
+
+  it("charges exactly the listed price, with no travel fee", () => {
+    const db = seedDb(T0);
+    const b = createBooking(db, "u_priya", { ...JOB, packageId: "photo_click_drop" }, T0);
+    expect(b.total).toBe(1999);
+  });
+
+  it("refuses a service that is no longer sold", () => {
+    const db = seedDb(T0);
+    expect(() => createBooking(db, "u_priya", { ...JOB, packageId: "quick_reel" }, T0)).toThrow(/Unknown package/);
   });
 });
 
@@ -95,7 +121,7 @@ describe("finishing and approving a job", () => {
     expect(ledger(db, b.id, "creator_earning")).toBe(0);
     approve(db, b.id, "u_priya", SHOOT + 2 * HOUR);
     expect(b.status).toBe("completed");
-    expect(ledger(db, b.id, "creator_earning")).toBe(2000);
+    expect(ledger(db, b.id, "creator_earning")).toBe(1999);
     expect(ledger(db, b.id, "platform_fee")).toBe(500);
   });
 
@@ -121,7 +147,7 @@ describe("finishing and approving a job", () => {
     tickAll(db, SHOOT + 5 * HOUR + 48 * HOUR);
     expect(b.status).toBe("completed");
     expect(b.autoApproved).toBe(true);
-    expect(ledger(db, b.id, "creator_earning")).toBe(2000);
+    expect(ledger(db, b.id, "creator_earning")).toBe(1999);
   });
 
   it("stops the payout when the client reports a problem, until ops decides", () => {
@@ -135,7 +161,7 @@ describe("finishing and approving a job", () => {
     expect(ledger(db, b.id, "creator_earning")).toBe(0);
     releaseDisputed(db, b, SHOOT + 101 * HOUR);
     expect(b.status).toBe("completed");
-    expect(ledger(db, b.id, "creator_earning")).toBe(2000);
+    expect(ledger(db, b.id, "creator_earning")).toBe(1999);
   });
 
   it("can refund a reported job instead, and then owes the creator nothing", () => {
@@ -155,7 +181,7 @@ describe("manual payouts", () => {
     const b = finished(db);
     approve(db, b.id, "u_priya", SHOOT + 6 * HOUR);
     const [due] = payoutsDue(db);
-    expect(due).toMatchObject({ amount: 2000, creatorName: "Ankita Baruah", method: "upi", upiId: "ankita@okaxis", bookingId: b.id });
+    expect(due).toMatchObject({ amount: 1999, creatorName: "Ankita Baruah", method: "upi", upiId: "ankita@okaxis", bookingId: b.id });
     markPayoutPaid(db, due!.id, "UTR123", SHOOT + 7 * HOUR);
     expect(payoutsDue(db)).toEqual([]);
     expect(db.ledger.find((l) => l.id === due!.id)).toMatchObject({ status: "paid", paymentRef: "UTR123", paidAt: SHOOT + 7 * HOUR });

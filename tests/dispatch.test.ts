@@ -14,7 +14,7 @@ function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, 
     db,
     "u_priya",
     {
-      packageId: "quick_reel",
+      packageId: "video_milestone",
       cityId: "guwahati",
       zoneId: "zoo-road",
       address: "Café Brahma, RG Baruah Road",
@@ -127,7 +127,7 @@ describe("only the right field is alerted", () => {
 
   it("alerts an online job to its field wherever they are, skipping everyone else", () => {
     const db = seedDb(T0);
-    const b = book(db, { packageId: "video_edit", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    const b = book(db, { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
     expect(b.online).toBe(true);
     expect(b.status).toBe("searching");
     // The editors, including Pallab in Dibrugarh and Wanphrang in Shillong. Nilakshi only shoots.
@@ -137,7 +137,7 @@ describe("only the right field is alerted", () => {
 
   it("doesn't let an online job block a creator's on-site shoot", () => {
     const db = seedDb(T0);
-    const online = book(db, { packageId: "video_edit", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    const online = book(db, { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
     acceptOffer(db, db.offers.find((o) => o.bookingId === online.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
     const shoot = book(db, {}, T0 + 2 * MIN);
     expect(pendingFor(db, shoot.id)).toContain("cr_ankita");
@@ -157,7 +157,7 @@ describe("demo notifications", () => {
     const db = seedDb(T0);
     book(db);
     const [n] = unread(db, "u_ankita");
-    expect(n!.lines.join(" ")).toMatch(/Quick Reel.*Zoo Road, Guwahati.*26 Oct 2026.*Opening-week reel/);
+    expect(n!.lines.join(" ")).toMatch(/Milestone Capture.*Zoo Road, Guwahati.*26 Oct 2026.*Opening-week reel/);
     expect(unread(db, "u_nilakshi")).toEqual([]);
     expect(unread(db, "u_bhaswati")).toEqual([]);
   });
@@ -173,8 +173,12 @@ describe("demo notifications", () => {
 });
 
 describe("booking rules", () => {
-  it("needs 2 hours' notice", () => {
+  it("needs 1 hour's notice on site, none online, and no time that has passed", () => {
     const db = seedDb(T0);
-    expect(() => book(db, { scheduledAt: "2026-10-26T11:00" })).toThrow(/2 hours/);
+    expect(() => book(db, { scheduledAt: "2026-10-26T10:55" })).toThrow(/1 hour/);
+    expect(book(db, { scheduledAt: "2026-10-26T11:00" }).status).toBe("searching");
+    const job = { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" };
+    expect(book(db, { ...job, scheduledAt: "2026-10-26T10:00" }).status).toBe("searching");
+    expect(() => book(db, { ...job, scheduledAt: "2026-10-26T09:55" })).toThrow(/has passed/);
   });
 });

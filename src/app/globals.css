@@ -148,7 +148,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Light surfaces inside a page keep the dark-on-light palette. Zero specificity
    so each surface's own colour (.card-dark, .btn-primary, .error…) still wins. */
-:where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success) {
+:where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success, .time-wheel) {
   --ink:           #1a002e;
   --ink-2:         #3d1a5c;
   --muted:         #7b5ea7;
@@ -442,6 +442,75 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--violet-soft);
   box-shadow: var(--shadow-glow);
 }
+.menu-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.menu-section summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.menu-section summary::-webkit-details-marker { display: none; }
+.menu-chevron { flex-shrink: 0; color: var(--violet); transition: transform 0.15s; }
+.menu-section[open] .menu-chevron { transform: rotate(180deg); }
+.menu-items { padding: 0 12px 12px; gap: 8px; }
+/* 24-hour time picker. 5 rows of 44px, padded so the first and last rows can reach the middle. */
+.time-wheel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+  box-sizing: content-box;
+  height: 220px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.time-wheel-band {
+  position: absolute;
+  inset: 88px 10px;
+  border-radius: 10px;
+  background: var(--violet-soft);
+  pointer-events: none;
+}
+.time-wheel-colon { position: relative; font-size: 24px; font-weight: 700; color: var(--violet); }
+.wheel {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  padding: 88px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent);
+  mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent);
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+.wheel-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  scroll-snap-align: center;
+}
+.wheel-item.on { font-size: 26px; font-weight: 700; color: var(--violet-ink); }
 .check {
   display: flex;
   align-items: center;

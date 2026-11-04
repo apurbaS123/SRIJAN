@@ -25,8 +25,8 @@ function Progress({ status }: { status: string }) {
 }
 
 const REFUND_TEXT = {
-  pending: "The Srijan team will send your refund to your original payment method. Your bank usually takes a few working days after that.",
-  sent: "Your refund has been sent to your original payment method. Banks usually take a few working days to show it.",
+  pending: "The Srijan team will contact you and send your refund.",
+  sent: "Your refund has been sent. Please contact us if it hasn’t reached you in a few working days.",
 };
 
 function Tracking() {

@@ -5,7 +5,7 @@ import { updateOwnCreator, hasPayoutDetails, payoutSummary, signUpCreator } from
 import { checkoutSignatureValid, createOrder, webhookSignatureValid } from "@/lib/server/razorpay";
 import { bookingView, creatorPublic } from "@/lib/domain/views";
 import { acceptOffer } from "@/lib/domain/dispatch";
-import { createBooking, recordPayment } from "@/lib/domain/bookings";
+import { createBooking, createBookings, markRefundSent, recordPayment, refund, refundsDue } from "@/lib/domain/bookings";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const hmac = (secret: string, message: string) => createHmac("sha256", secret).update(message).digest("hex");
@@ -85,7 +85,7 @@ describe("creator bank and UPI details", () => {
     updateOwnCreator(db, creator.id, { payout: bank });
     expect(JSON.stringify(creatorPublic(creator))).not.toContain("123456789012");
 
-    const b = createBooking(db, "u_priya", { packageId: "quick_reel", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" }, T0);
+    const b = createBooking(db, "u_priya", { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" }, T0);
     recordPayment(db, b, "pay_1", T0);
     b.creatorId = creator.id;
     const seen = JSON.stringify(bookingView(db, b, { userId: "u_priya", role: "client" }));
@@ -96,7 +96,7 @@ describe("creator bank and UPI details", () => {
 describe("who sees which phone number", () => {
   it("shares the client's number only with the creator who took the job", () => {
     const db = seedDb(T0);
-    const b = createBooking(db, "u_priya", { packageId: "video_edit", scheduledAt: "2026-10-26T15:00", brief: "Edit my café clips into one reel" }, T0);
+    const b = createBooking(db, "u_priya", { packageId: "edit_reel", scheduledAt: "2026-10-26T15:00", brief: "Edit my café clips into one reel" }, T0);
     recordPayment(db, b, "pay_1", T0);
     const asRituraj = { userId: "u_rituraj", role: "creator" as const, creatorId: "cr_rituraj" };
     const asAnkita = { userId: "u_ankita", role: "creator" as const, creatorId: "cr_ankita" };
@@ -113,5 +113,41 @@ describe("who sees which phone number", () => {
     expect(client.clientPhone).toBe(phone);
     expect(client.creatorPhone).toBe("+91 98640 22222");
     expect(bookingView(db, b, asAnkita).creatorPhone).toBeUndefined();
+  });
+});
+
+describe("several services in one order", () => {
+  const ORDER = { cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Shoot our café and edit a separate reel" };
+
+  it("makes one job per service, each with its own price", () => {
+    const db = seedDb(T0);
+    const list = createBookings(db, "u_priya", { ...ORDER, packageIds: ["video_tour", "edit_reel", "video_tour"] }, T0);
+    expect(list.map((b) => [b.packageId, b.total, !!b.online])).toEqual([["video_tour", 1499, false], ["edit_reel", 999, true]]);
+    expect(new Set(list.map((b) => b.code)).size).toBe(2);
+  });
+
+  it("applies the on-site notice to the whole order", () => {
+    const db = seedDb(T0);
+    const soon = { ...ORDER, scheduledAt: "2026-10-26T10:30" };
+    expect(() => createBookings(db, "u_priya", { ...soon, packageIds: ["edit_reel", "video_tour"] }, T0)).toThrow(/1 hour/);
+    expect(createBookings(db, "u_priya", { ...soon, packageIds: ["edit_reel"] }, T0)).toHaveLength(1);
+  });
+
+  it("refuses an empty order", () => {
+    const db = seedDb(T0);
+    expect(() => createBookings(db, "u_priya", { ...ORDER, packageIds: [] }, T0)).toThrow(/at least one/);
+  });
+
+  it("refunds each service on a shared payment separately", () => {
+    const db = seedDb(T0);
+    const [a, b] = createBookings(db, "u_priya", { ...ORDER, packageIds: ["video_tour", "edit_reel"] }, T0);
+    recordPayment(db, a!, "pay_1", T0);
+    recordPayment(db, b!, "pay_1", T0);
+    refund(db, b!, "cancelled by client", T0);
+    expect(refundsDue(db).map((r) => [r.id, r.amount])).toEqual([[b!.id, 999]]);
+    expect(a!.status).toBe("searching");
+    markRefundSent(db, b!.id, "UTR123", T0);
+    expect(b!.refund).toMatchObject({ status: "sent", paymentRef: "UTR123" });
+    expect(() => markRefundSent(db, b!.id, undefined, T0)).toThrow(/already/);
   });
 });

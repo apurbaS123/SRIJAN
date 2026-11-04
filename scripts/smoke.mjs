@@ -92,7 +92,7 @@ function startFakeRazorpay() {
 function customerPays(orderId) {
   const order = rzp.orders.get(orderId);
   const id = `pay_${++rzp.seq}`;
-  rzp.payments.set(id, { id, order_id: orderId, amount: order.amount, amount_refunded: 0, status: "authorized" });
+  rzp.payments.set(id, { id, order_id: orderId, amount: order.amount, status: "authorized" });
   return { id, signature: createHmac("sha256", RZP_SECRET).update(`${orderId}|${id}`).digest("hex") };
 }
 
@@ -278,9 +278,9 @@ class Agent {
     const made = await this.req("/api/bookings", input);
     if (!made.ok) return made;
     const { id, signature } = customerPays(made.data.checkout.orderId);
-    const r = await this.req("/api/payments/verify", { bookingId: made.data.booking.id, razorpay_payment_id: id, razorpay_signature: signature });
+    const r = await this.req("/api/payments/verify", { bookingId: made.data.bookings[0].id, razorpay_payment_id: id, razorpay_signature: signature });
     if (!r.ok) return r;
-    return this.req(`/api/bookings/${made.data.booking.id}`);
+    return this.req(`/api/bookings/${made.data.bookings[0].id}`);
   }
 }
 
@@ -364,14 +364,14 @@ async function run() {
   }
   ankita.cookie = "";
   ok((await ankita.signIn()) === "creator", "a creator signing in at /login keeps the creator role");
-  r = await ankita.req("/api/bookings", { packageId: "quick_reel" });
+  r = await ankita.req("/api/bookings", { packageIds: ["video_milestone"] });
   ok(r.status === 403, "a creator can’t book shoots");
 
   // --- Auto-assign shoot in Guwahati ------------------------------------------
   r = await priya.req("/api/session");
   const scheduledAt = slotFrom(r.serverNow);
   const shootInput = {
-    packageId: "quick_reel",
+    packageIds: ["video_milestone"],
     cityId: "guwahati",
     zoneId: "zoo-road",
     address: "Café Brahma, RG Baruah Road",
@@ -379,38 +379,38 @@ async function run() {
     brief: "Opening-week reel for our café, warm look",
   };
   r = await priya.req("/api/bookings", shootInput);
-  ok(r.ok && r.data.booking.status === "awaiting_payment" && r.data.checkout.amount === 250000, "booking waits for a ₹2,500 payment, with no GST added");
+  ok(r.ok && r.data.bookings[0].status === "awaiting_payment" && r.data.checkout.amount === 249900, "booking waits for a ₹2,499 payment, with no GST added");
   const unpaid = r.data;
-  ok(unpaid.booking.dispatch.notified === 0, "nobody is alerted before the client pays");
+  ok(unpaid.bookings[0].dispatch.notified === 0, "nobody is alerted before the client pays");
   r = await priya.req("/api/bookings");
-  ok(!r.data.some((b) => b.id === unpaid.booking.id), "an unpaid booking stays out of the client’s list");
+  ok(!r.data.some((b) => b.id === unpaid.bookings[0].id), "an unpaid booking stays out of the client’s list");
   let fakePay = customerPays(unpaid.checkout.orderId);
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: "forged" });
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: "forged" });
   ok(r.status === 400, "a forged payment signature is refused");
-  r = await priya.req(`/api/bookings/${unpaid.booking.id}`);
+  r = await priya.req(`/api/bookings/${unpaid.bookings[0].id}`);
   ok(r.data.status === "awaiting_payment", "a forged payment doesn’t start the job");
-  r = await rituraj.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  r = await rituraj.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
   ok(r.status === 403, "nobody else can confirm someone’s payment");
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
   ok(r.ok && r.data.outcome === "paid", "a real payment is verified");
   ok(rzp.payments.get(fakePay.id).status === "captured", "the authorized payment is captured");
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.booking.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
   ok(r.ok && r.data.outcome === "already", "confirming the same payment twice changes nothing");
-  r = await priya.req(`/api/bookings/${unpaid.booking.id}`);
+  r = await priya.req(`/api/bookings/${unpaid.bookings[0].id}`);
   ok(r.ok && r.data.status === "searching", `booking paid for ${scheduledAt} IST and searching`);
   const b1 = r.data;
   ok(b1.dispatch.notified === 3 && b1.dispatch.radiusKm === 10, "the 3 Guwahati creators are alerted within 10 km");
-  ok(b1.total === 2500, "the client paid exactly ₹2,500");
+  ok(b1.total === 2499, "the client paid exactly ₹2,499");
 
   r = await rituraj.req("/api/notifications");
   const alertNote = r.data.find((n) => n.lines.join(" ").includes("Opening-week reel"));
-  ok(alertNote && /Quick Reel/.test(alertNote.lines[0]) && /Zoo Road/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, area, time and brief, not the address");
+  ok(alertNote && /Milestone Capture/.test(alertNote.lines[0]) && /Zoo Road/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, area, time and brief, not the address");
   r = await nilakshi.req("/api/notifications");
   ok(r.data.length === 0, "a creator far away gets no notification");
 
   r = await rituraj.req("/api/offers");
   const ritOffer = r.data.find((o) => o.bookingId === b1.id);
-  ok(ritOffer && ritOffer.payout === 2000 && ritOffer.expiresAt - ritOffer.sentAt === 5 * MIN, "Rituraj sees the alert: ₹2,000 payout, 5 min to accept");
+  ok(ritOffer && ritOffer.payout === 1999 && ritOffer.expiresAt - ritOffer.sentAt === 5 * MIN, "Rituraj sees the alert: ₹1,999 payout, 5 min to accept");
   ok(!("address" in ritOffer), "alert hides the exact address");
 
   r = await ankita.req("/api/offers");
@@ -457,7 +457,7 @@ async function run() {
   r = await priya.req(`/api/bookings/${b1.id}`);
   ok(r.data.clientRating === undefined, "client doesn’t get their own rating summary");
   r = await ops.req("/api/admin");
-  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 2000 && r.data.payoutsDue[0].upiId === "ankita@ybl", "ops is told to pay Ankita her 80%: ₹2,000, with her UPI ID");
+  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 1999 && r.data.payoutsDue[0].upiId === "ankita@ybl", "ops is told to pay Ankita her 80%: ₹1,999, with her UPI ID");
   const shootPayout = r.data.payoutsDue[0].id;
   r = await ankita.req(`/api/bookings/${b1.id}`);
   ok(r.data.payoutStatus === "owed", "Ankita sees that payment is on its way");
@@ -477,38 +477,30 @@ async function run() {
   fakePay = customerPays(viaHook.checkout.orderId);
   const hookPayload = { payment: { entity: { id: fakePay.id, order_id: viaHook.checkout.orderId } } };
   ok((await sendWebhook("payment.authorized", hookPayload, "wrong-secret")) === 400, "a webhook with a bad signature is refused");
-  r = await priya.req(`/api/bookings/${viaHook.booking.id}`);
+  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`);
   ok(r.data.status === "awaiting_payment", "a forged webhook doesn’t start the job");
   ok((await sendWebhook("payment.authorized", hookPayload)) === 200, "Razorpay’s webhook is accepted");
   ok((await sendWebhook("payment.captured", hookPayload)) === 200 && (await sendWebhook("order.paid", hookPayload)) === 200, "repeat webhook events are accepted");
-  r = await priya.req(`/api/bookings/${viaHook.booking.id}`);
+  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`);
   ok(r.data.status === "searching" && r.data.events.filter((e) => e.text.startsWith("Paid")).length === 1, "the webhook alone confirms the booking, once");
-  r = await priya.req(`/api/bookings/${viaHook.booking.id}`, { action: "cancel" });
-  ok(r.data.status === "cancelled" && r.data.refund?.status === "pending" && r.data.refund.amount === 2500, "cancelling leaves the full ₹2,500 waiting to be refunded");
+  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`, { action: "cancel" });
+  ok(r.data.status === "cancelled" && r.data.refund?.status === "pending" && r.data.refund.amount === 2499, "cancelling leaves the full ₹2,499 waiting to be refunded");
   const dueAfterCancel = (await ops.req("/api/admin")).data.refundsDue.find((x) => x.paymentId === fakePay.id);
-  ok(dueAfterCancel?.amount === 2500, "ops is told to refund it, with the Razorpay payment ID");
+  ok(dueAfterCancel?.amount === 2499 && dueAfterCancel.clientPhone?.replace(/\D/g, "").endsWith(priya.phone), "ops is told to refund it, with the client’s phone number");
   const markSent = () => ops.req("/api/admin", { action: "mark_refund_sent", bookingId: dueAfterCancel.id, reference: "rfnd_manual_1" });
-  r = await markSent();
-  ok(r.status === 409, "a refund can’t be marked as sent before it’s made in Razorpay");
-  rzp.payments.get(fakePay.id).amount_refunded = 200000;
-  r = await markSent();
-  ok(r.status === 409 && r.error.includes("₹2,000 of ₹2,500"), "a partial refund is refused and says what’s missing");
-  rzp.payments.get(fakePay.id).amount_refunded = 250000;
+  r = await priya.req(`/api/bookings/${dueAfterCancel.id}`);
+  ok(r.data.refund?.status === "pending", "the client sees the refund as waiting");
   rzp.down = true;
   r = await markSent();
   rzp.down = false;
-  ok(r.status === 502, "if Razorpay can’t be reached, the refund isn’t marked as sent");
-  r = await priya.req(`/api/bookings/${dueAfterCancel.id}`);
-  ok(r.data.refund?.status === "pending", "the client still sees the refund as waiting");
-  r = await markSent();
-  ok(r.ok, "once Razorpay shows the full amount, ops can mark it as sent");
+  ok(r.ok, "ops marks a refund sent outside Razorpay, without asking Razorpay");
   r = await ops.req("/api/admin");
   ok(!r.data.refundsDue.some((x) => x.paymentId === fakePay.id), "a sent refund leaves the list");
 
   // --- Online job: video editing ------------------------------------------------
   r = await priya.req("/api/session");
-  r = await priya.bookAndPay({ packageId: "video_edit", scheduledAt: slotFrom(r.serverNow), brief: "Edit my café clips into a 30 second reel" });
-  ok(r.ok && r.data.online && r.data.area === "Online" && r.data.total === 1500, "an online job needs no address");
+  r = await priya.bookAndPay({ packageIds: ["edit_reel"], scheduledAt: slotFrom(r.serverNow), brief: "Edit my café clips into a 30 second reel" });
+  ok(r.ok && r.data.online && r.data.area === "Online" && r.data.total === 999, "an online job needs no address");
   const online = r.data;
   ok(online.dispatch.notified === 2, "only the 2 video editors are alerted, wherever they live");
   r = await ankita.req("/api/offers");
@@ -536,14 +528,14 @@ async function run() {
   r = await ops.req(`/api/bookings/${online.id}`, { action: "release" });
   ok(r.ok && r.data.status === "completed", "ops sides with the creator");
   r = await ops.req("/api/admin");
-  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 1200, "ops is told to pay the editor 80% of ₹1,500");
+  ok(r.data.payoutsDue.length === 1 && r.data.payoutsDue[0].amount === 799, "ops is told to pay the editor 80% of ₹999");
   r = await ops.req("/api/admin", { action: "mark_paid", payoutId: r.data.payoutsDue[0].id });
   ok(r.ok, "ops pays the editor");
 
   // --- No taker → ops ----------------------------------------------------------
   r = await priya.req("/api/session");
   r = await priya.bookAndPay({
-    packageId: "event_highlights",
+    packageIds: ["video_tour"],
     cityId: "silchar",
     zoneId: "silchar-town",
     address: "Hotel Kanishka, Silchar",
@@ -563,7 +555,6 @@ async function run() {
   r = await ops.req("/api/admin");
   const b2Due = r.data.refundsDue.find((x) => x.id === b2.id);
   ok(b2Due, "ops sees the refund to send");
-  rzp.payments.get(b2Due.paymentId).amount_refunded = b2Due.amount * 100;
   r = await priya.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
   ok(r.status === 403, "only ops can mark a refund as sent");
   r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
@@ -576,7 +567,7 @@ async function run() {
   // --- Client picks a creator who declines -------------------------------------
   r = await priya.req("/api/session");
   r = await priya.bookAndPay({
-    packageId: "quick_reel",
+    packageIds: ["video_milestone"],
     cityId: "jorhat",
     zoneId: "jorhat-town",
     address: "Gar-Ali, Jorhat",
@@ -593,6 +584,33 @@ async function run() {
   await advance(6);
   r = await ops.req(`/api/bookings/${b3.id}`, { action: "assign", creatorId: cr.nilakshi });
   ok(r.data.status === "assigned", "ops assigns by hand after the window");
+
+  // --- Two services in one order -------------------------------------------------
+  r = await priya.req("/api/session");
+  r = await priya.req("/api/bookings", {
+    packageIds: ["video_tour", "edit_reel"],
+    cityId: "guwahati",
+    zoneId: "zoo-road",
+    address: "Café Brahma, RG Baruah Road",
+    scheduledAt: slotFrom(r.serverNow),
+    brief: "Shoot our café and edit a separate reel",
+  });
+  ok(r.ok && r.data.bookings.length === 2 && r.data.checkout.amount === 249800, "two services add up to one ₹2,498 payment");
+  const pair = r.data;
+  ok(pair.bookings[0].online === false && pair.bookings[1].online === true, "each service is its own job");
+  const pairPay = customerPays(pair.checkout.orderId);
+  r = await priya.req("/api/payments/verify", { bookingId: pair.bookings[0].id, razorpay_payment_id: pairPay.id, razorpay_signature: pairPay.signature });
+  ok(r.ok && r.data.outcome === "paid", "one payment confirms the order");
+  r = await priya.req(`/api/bookings/${pair.bookings[1].id}`);
+  ok(r.data.status !== "awaiting_payment", "the second service starts its search too");
+  r = await priya.req(`/api/bookings/${pair.bookings[1].id}`, { action: "cancel" });
+  ok(r.ok && r.data.refund?.amount === 999, "cancelling one service leaves only its price to refund");
+  r = await ops.req(`/api/bookings/${pair.bookings[0].id}`);
+  ok(r.data.status !== "cancelled" && r.data.status !== "refunded", "the other service carries on");
+  r = await ops.req("/api/admin");
+  ok(r.data.refundsDue.find((x) => x.id === pair.bookings[1].id)?.amount === 999, "ops is told to send back only that service’s price");
+  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: pair.bookings[1].id });
+  ok(r.ok, "ops marks that one refund as sent");
 
   // --- Campaign from a brand that isn't signed in --------------------------------
   const brand = new Agent("Mitali (brand)", "mitali@kazorganics.test", "9876543210");

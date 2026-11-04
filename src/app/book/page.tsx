@@ -2,9 +2,12 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { call, serverNow, useAction, useData } from "@/lib/client/api";
+import type { ShootPackage } from "@/lib/domain/config";
+import type { ServiceKey } from "@/lib/domain/types";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
 import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
 import { ErrorNote, Guard, Loading } from "@/components/ui";
+import { TimeWheel } from "@/components/TimeWheel";
 import { useMeta, type Meta } from "@/components/useMeta";
 import { inr } from "@/lib/client/format";
 import dynamic from "next/dynamic";
@@ -15,16 +18,18 @@ const LocationPickerModal = dynamic(
 );
 
 const IST = 5.5 * 3600_000;
+const SLOT_MINUTES = 5;
+/** Where the wheel starts, so nobody books midnight just by not touching it. */
+const DEFAULT_SLOT = "10:00";
 
 /** Bookable start times for a date, as "HH:mm", respecting notice and hours. */
-function slotsFor(date: string, meta: Meta) {
+function slotsFor(date: string, meta: Meta, noticeMs: number) {
   const out: string[] = [];
   for (let h = meta.dispatch.firstStartHour; h <= meta.dispatch.lastStartHour; h++) {
-    for (const m of [0, 30]) {
-      if (h === meta.dispatch.lastStartHour && m === 30) continue;
-      const hh = `${String(h).padStart(2, "0")}:${m ? "30" : "00"}`;
+    for (let m = 0; m < 60; m += SLOT_MINUTES) {
+      const hh = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
       const ms = Date.parse(`${date}T${hh}:00Z`) - IST;
-      if (ms >= serverNow() + meta.dispatch.minNoticeMs) out.push(hh);
+      if (ms >= serverNow() + noticeMs) out.push(hh);
     }
   }
   return out;
@@ -34,20 +39,73 @@ function istDate(offsetDays: number) {
   return new Date(serverNow() + IST + offsetDays * 86400_000).toISOString().slice(0, 10);
 }
 
+/** The services as a menu: one drop-down per kind of creator, with the deliverable under each name. Tap to add or remove. */
+function ServiceMenu({ meta, selected, onToggle }: { meta: Meta; selected: ShootPackage[]; onToggle: (id: string) => void }) {
+  const sections = [...new Set(meta.packages.map((p) => p.service))];
+  const [open, setOpen] = useState<ServiceKey[]>(sections.slice(0, 1));
+
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      {sections.map((service) => {
+        const items = meta.packages.filter((p) => p.service === service);
+        const isOpen = open.includes(service);
+        const picked = selected.filter((p) => p.service === service);
+        return (
+          <details key={service} className="menu-section" open={isOpen}>
+            <summary
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen(isOpen ? open.filter((s) => s !== service) : [...open, service]);
+              }}
+            >
+              <span className="grow stack" style={{ gap: 2 }}>
+                <b>{meta.services.find((s) => s.key === service)?.label ?? service}</b>
+                <span className="small muted">{picked.length ? `Selected: ${picked.map((p) => p.name).join(", ")}` : `${items.length} services`}</span>
+              </span>
+              <svg className="menu-chevron" width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </summary>
+            <div className="stack menu-items">
+              {items.map((p) => (
+                <button key={p.id} className={`option${picked.includes(p) ? " on" : ""}`} aria-pressed={picked.includes(p)} onClick={() => onToggle(p.id)}>
+                  <span className="grow stack" style={{ gap: 4 }}>
+                    <span className="row" style={{ gap: 8 }}>
+                      <b>{p.name}</b>
+                      <span className={`badge ${p.online ? "badge-green" : "badge-violet"}`}>{p.online ? "Online" : "On-site"}</span>
+                    </span>
+                    <span className="small muted">{p.summary}</span>
+                  </span>
+                  <b>{inr(p.price)}</b>
+                </button>
+              ))}
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
 function BookForm({ meta }: { meta: Meta }) {
   const router = useRouter();
   const params = useSearchParams();
   const [creatorId, setCreatorId] = useState(params.get("creator") ?? "");
   const { data: chosen } = useData<CreatorPublic>(creatorId ? `/api/creators/${creatorId}` : null);
 
-  const [packageId, setPackageId] = useState(meta.packages[0]!.id);
   const [cityId, setCityId] = useState(chosen?.cityId ?? "guwahati");
   const city = meta.cities.find((c) => c.id === cityId)!;
   const [zoneId, setZoneId] = useState(city.zones[0]!.id);
   const [address, setAddress] = useState("");
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [date, setDate] = useState(() => (slotsFor(istDate(0), meta).length ? istDate(0) : istDate(1)));
-  const slots = useMemo(() => slotsFor(date, meta), [date, meta]);
+  const [packageIds, setPackageIds] = useState<string[]>([]);
+  const selected = meta.packages.filter((p) => packageIds.includes(p.id));
+  const online = selected.length > 0 && selected.every((p) => p.online);
+  const onSite = selected.some((p) => !p.online);
+  // Everything in an order shares one time, so one on-site service sets the notice for all of it.
+  const noticeMs = onSite ? meta.dispatch.onSiteNoticeMs : 0;
+  const [date, setDate] = useState(() => (slotsFor(istDate(0), meta, 0).length ? istDate(0) : istDate(1)));
+  const slots = useMemo(() => slotsFor(date, meta, noticeMs), [date, meta, noticeMs]);
   const [slot, setSlot] = useState("");
   const [brief, setBrief] = useState("");
   const [referenceUrl, setReferenceUrl] = useState("");
@@ -61,18 +119,16 @@ function BookForm({ meta }: { meta: Meta }) {
     }
   }, [chosen]);
   useEffect(() => {
-    if (!slots.includes(slot)) setSlot(slots[0] ?? "");
+    if (!slots.includes(slot)) setSlot(slots.includes(DEFAULT_SLOT) ? DEFAULT_SLOT : (slots[0] ?? ""));
   }, [slots, slot]);
 
-  const pkg = meta.packages.find((p) => p.id === packageId)!;
-  const online = !!pkg.online;
-  const total = pkg.price;
-  const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta).length);
+  const total = selected.reduce((sum, p) => sum + p.price, 0);
+  const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta, noticeMs).length);
 
   async function pay() {
-    const paidBookingId = await run(async () => {
-      const { booking, checkout } = await call<{ booking: BookingView; checkout: CheckoutDetails }>("/api/bookings", {
-        packageId,
+    const paidPage = await run(async () => {
+      const { bookings, checkout } = await call<{ bookings: BookingView[]; checkout: CheckoutDetails }>("/api/bookings", {
+        packageIds,
         cityId,
         zoneId,
         address,
@@ -85,10 +141,10 @@ function BookForm({ meta }: { meta: Meta }) {
       const paid = await openCheckout(checkout);
       if (!paid) return undefined; // closed without paying; they can simply try again
       // If this call is lost, Razorpay's webhook still confirms the payment.
-      await call("/api/payments/verify", { bookingId: booking.id, ...paid }).catch(() => undefined);
-      return booking.id;
+      await call("/api/payments/verify", { bookingId: bookings[0]!.id, ...paid }).catch(() => undefined);
+      return bookings.length === 1 ? `/bookings/${bookings[0]!.id}` : "/bookings";
     });
-    if (paidBookingId) router.push(`/bookings/${paidBookingId}`);
+    if (paidPage) router.push(paidPage);
   }
 
   return (
@@ -106,16 +162,13 @@ function BookForm({ meta }: { meta: Meta }) {
       )}
 
       <section className="stack">
-        <h2>1. Package</h2>
-        {meta.packages.map((p) => (
-          <button key={p.id} className={`option${p.id === packageId ? " on" : ""}`} aria-pressed={p.id === packageId} onClick={() => setPackageId(p.id)}>
-            <span className="grow stack" style={{ gap: 2 }}>
-              <b>{p.name}</b>
-              <span className="small muted">{p.summary}</span>
-            </span>
-            <b>{inr(p.price)}</b>
-          </button>
-        ))}
+        <h2>1. Service</h2>
+        <ServiceMenu
+          meta={meta}
+          selected={selected}
+          onToggle={(id) => setPackageIds(packageIds.includes(id) ? packageIds.filter((x) => x !== id) : [...packageIds, id])}
+        />
+        <span className="hint">Pick as many as you need. Each service goes to its own creator, at the same date and time, and you pay once for all of them. Online services include 1 standard revision.</span>
       </section>
 
       {!online && (
@@ -224,42 +277,53 @@ function BookForm({ meta }: { meta: Meta }) {
             </button>
           ))}
         </div>
-        <div className="chips" role="group" aria-label="Start time">
-          {slots.map((s) => (
-            <button key={s} className={`chip${s === slot ? " on" : ""}`} onClick={() => setSlot(s)}>
-              {s}
-            </button>
-          ))}
+        <div className="field">
+          <label htmlFor="other-date">Or pick another date</label>
+          <input
+            id="other-date"
+            className="input"
+            type="date"
+            min={istDate(0)}
+            max={istDate(meta.dispatch.maxDaysAhead - 1)}
+            value={date}
+            onChange={(e) => {
+              if (e.target.value) setDate(e.target.value);
+            }}
+          />
         </div>
-        <span className="hint">
-          Jobs need {meta.dispatch.minNoticeMs / 3600_000} hours’ notice. Times {meta.dispatch.firstStartHour}:00–{meta.dispatch.lastStartHour}:00.
-        </span>
+        {slot ? <TimeWheel slots={slots} value={slot} onChange={setSlot} /> : <span className="small">No times left on this date. Please pick another.</span>}
+        <span className="hint">Scroll to set the time (24-hour clock).{onSite && " On-site jobs need 1 hour’s notice, so the creator can reach you on time."}</span>
       </section>
 
       <section className="stack">
         <h2>{online ? "3. Brief" : "4. Brief"}</h2>
         <div className="field">
-          <label htmlFor="brief">{online ? "What do you need done?" : "What should the video show?"}</label>
-          <textarea id="brief" className="textarea" value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. Opening-week reel for our café: interiors, coffee being made, happy customers. Warm look." />
+          <label htmlFor="brief">What do you need done?</label>
+          <textarea id="brief" className="textarea" value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. Opening week at our café: interiors, coffee being made, happy customers. Warm look." />
         </div>
         <div className="field">
-          <label htmlFor="ref">Reference video link (optional)</label>
+          <label htmlFor="ref">Reference link (optional)</label>
           <input id="ref" className="input" type="url" value={referenceUrl} onChange={(e) => setReferenceUrl(e.target.value)} placeholder="Instagram or YouTube link" />
         </div>
-        <div className="chips" role="group" aria-label="Format">
-          {(["9:16", "16:9", "1:1"] as const).map((a) => (
-            <button key={a} className={`chip${a === aspect ? " on" : ""}`} onClick={() => setAspect(a)}>
-              {a === "9:16" ? "9:16 Reel" : a === "16:9" ? "16:9 YouTube" : "1:1 Post"}
-            </button>
-          ))}
-        </div>
+        {selected.some((p) => p.service === "videography" || p.service === "video_editing") && (
+          <div className="chips" role="group" aria-label="Format">
+            {(["9:16", "16:9", "1:1"] as const).map((a) => (
+              <button key={a} className={`chip${a === aspect ? " on" : ""}`} onClick={() => setAspect(a)}>
+                {a === "9:16" ? "9:16 Reel" : a === "16:9" ? "16:9 YouTube" : "1:1 Post"}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card stack">
-        <div className="row between">
-          <span>{pkg.name}</span>
-          <span>{inr(pkg.price)}</span>
-        </div>
+        {selected.length === 0 && <span className="muted">Pick at least one service.</span>}
+        {selected.map((p) => (
+          <div key={p.id} className="row between">
+            <span>{p.name}</span>
+            <span>{inr(p.price)}</span>
+          </div>
+        ))}
         <hr className="divider" />
         <div className="row between strong" style={{ fontSize: 18 }}>
           <span>Total</span>
@@ -271,7 +335,7 @@ function BookForm({ meta }: { meta: Meta }) {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot} onClick={pay}>
+      <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot || selected.length === 0} onClick={pay}>
         {busy ? "Processing…" : `Pay ${inr(total)}`}
       </button>
     </div>

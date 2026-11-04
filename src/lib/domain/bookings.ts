@@ -3,7 +3,9 @@
 import {
   AUTO_APPROVE_MS,
   CREATOR_SHARE,
+  DAY,
   DISPATCH,
+  MAX_SERVICES_PER_ORDER,
   PAYMENT_WINDOW_MS,
   PLATFORM_SHARE,
   findPackage,
@@ -22,7 +24,7 @@ function log(b: Booking, at: number, text: string) {
 
 export function quote(packageId: string) {
   const pkg = findPackage(packageId);
-  assert(pkg, "Unknown package");
+  assert(pkg && !pkg.retired, "Unknown package");
   return { pkg, price: pkg.price, total: pkg.price, creatorPayout: rupees(pkg.price * CREATOR_SHARE) };
 }
 
@@ -55,13 +57,14 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
   assert(ASPECTS.includes(aspect), "Pick a video format");
   const scheduledAt = parseIstLocal(String(input.scheduledAt ?? ""));
   assert(!Number.isNaN(scheduledAt), "Pick a date and time");
-  assert(scheduledAt >= now + DISPATCH.minNoticeMs - 60_000, "Jobs need at least 2 hours’ notice");
+  const noticeMs = online ? 0 : DISPATCH.onSiteNoticeMs;
+  assert(scheduledAt >= now + noticeMs - 60_000, online ? "That time has passed. Please pick a later time." : "On-site jobs need at least 1 hour’s notice, so the creator can reach you on time");
   const h = istHour(scheduledAt);
   assert(
     h >= DISPATCH.firstStartHour && h <= DISPATCH.lastStartHour,
     `Pick a time between ${DISPATCH.firstStartHour}:00 and ${DISPATCH.lastStartHour}:00`,
   );
-  assert(scheduledAt <= now + 90 * 24 * 60 * 60_000, "Jobs can be booked up to 90 days ahead");
+  assert(scheduledAt <= now + DISPATCH.maxDaysAhead * DAY, `Jobs can be booked up to ${DISPATCH.maxDaysAhead} days ahead`);
   if (input.requestedCreatorId) {
     assert(db.creators.some((c) => c.id === input.requestedCreatorId && c.verification === "verified"), "Creator not found");
   }
@@ -91,6 +94,18 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
   };
   db.bookings.push(b);
   return b;
+}
+
+export interface NewOrderInput extends Omit<NewBookingInput, "packageId"> {
+  packageIds: string[];
+}
+
+/** One order on /book: each service is its own job for its own creator, all paid with one Razorpay payment. */
+export function createBookings(db: DB, clientId: string, input: NewOrderInput, now: number) {
+  const ids = Array.isArray(input.packageIds) ? [...new Set(input.packageIds)] : [];
+  assert(ids.length > 0, "Pick at least one service");
+  assert(ids.length <= MAX_SERVICES_PER_ORDER, `You can book up to ${MAX_SERVICES_PER_ORDER} services at a time`);
+  return ids.map((packageId) => createBooking(db, clientId, { ...input, packageId }, now));
 }
 
 /**
@@ -236,8 +251,8 @@ export function clientRating(db: DB, clientId: string) {
 }
 
 /**
- * Refunds are manual for now: this marks the booking refunded and, if real money was taken, leaves
- * the refund "pending" for ops to send from the Razorpay dashboard and then mark as sent.
+ * Refunds are manual: this marks the booking refunded and, if real money was taken, leaves the refund
+ * "pending" for ops to send by hand, outside Razorpay, and then mark as sent.
  */
 export function refund(db: DB, b: Booking, reason: string, now: number) {
   assert(!["completed", "refunded", "cancelled"].includes(b.status), "This booking can’t be refunded now");
@@ -250,27 +265,39 @@ export function refund(db: DB, b: Booking, reason: string, now: number) {
   return b;
 }
 
-/** For the ops page: refunds still to be sent from the Razorpay dashboard. */
+/** For the ops page: refunds still to be sent by hand, with who to contact for their bank or UPI details. */
 export function refundsDue(db: DB) {
   return db.bookings
     .filter((b) => b.refund?.status === "pending")
-    .map((b) => ({ id: b.id, code: b.code, amount: b.refund!.amount, reason: b.refund!.reason, paymentId: b.razorpayPaymentId, at: b.refundedAt! }));
+    .map((b) => {
+      const client = db.users.find((u) => u.id === b.clientId);
+      return {
+        id: b.id,
+        code: b.code,
+        amount: b.refund!.amount,
+        reason: b.refund!.reason,
+        paymentId: b.razorpayPaymentId,
+        at: b.refundedAt!,
+        clientName: client?.name,
+        clientPhone: client?.phone,
+        clientEmail: client?.email,
+      };
+    });
 }
 export type RefundDue = ReturnType<typeof refundsDue>[number];
 
-/** Ops has refunded the money in the Razorpay dashboard. `refunded` is what Razorpay says went back, in rupees. */
-export function markRefundSent(db: DB, bookingId: string, refunded: number, reference: unknown, now: number) {
+/** Ops has sent the client their money by hand, outside Razorpay, so there is nothing to check it against. */
+export function markRefundSent(db: DB, bookingId: string, reference: unknown, now: number) {
   const b = db.bookings.find((x) => x.id === bookingId);
   assert(b?.refund, "Refund not found", 404);
   assert(b.refund.status === "pending", "This refund is already marked as sent", 409);
-  assert(refunded >= b.refund.amount, `Razorpay shows ₹${refunded.toLocaleString("en-IN")} of ₹${b.refund.amount.toLocaleString("en-IN")} refunded. Refund the rest in the Razorpay dashboard first.`, 409);
   b.refund.status = "sent";
   b.refund.sentAt = now;
   b.refund.paymentRef = cleanText(reference, 100, "the refund reference", true) || undefined;
   log(b, now, `Refund of ₹${b.refund.amount.toLocaleString("en-IN")} sent`);
   notifyUser(db, b.clientId, now, {
     title: "Your refund has been sent",
-    lines: [b.code, "Banks usually take a few working days to show it."],
+    lines: [b.code, "Please contact us if it hasn’t reached you in a few working days."],
     href: `/bookings/${b.id}`,
   });
   return b;
