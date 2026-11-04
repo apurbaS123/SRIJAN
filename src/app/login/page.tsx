@@ -1,14 +1,16 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { call, useAction } from "@/lib/client/api";
 import { useSession } from "@/components/Session";
+import { PasswordField } from "@/components/PasswordField";
 import { ErrorNote, Loading, SessionError } from "@/components/ui";
 import type { Role } from "@/lib/domain/types";
 
 const HOME: Record<Role, string> = { client: "/bookings", creator: "/creator", ops: "/ops" };
 const ROLE_NAME: Record<Role, string> = { client: "client / brand", creator: "creator", ops: "Srijan team" };
+const NEW_PASSWORD_HINT = "At least 8 characters. Next time, sign in with your email and this password.";
 
 /** Where to go after signing in: the page that sent you here if your role can open it, else your home. */
 function destination(role: Role, next: string | null) {
@@ -32,31 +34,62 @@ function SignIn() {
   const { session, error: sessionError, refresh } = useSession();
   const router = useRouter();
   const next = useSearchParams().get("next");
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [step, setStep] = useState<"email" | "code" | "name">("email");
+  const [step, setStep] = useState<"password" | "code" | "name" | "newPassword">("password");
   const [newRole, setNewRole] = useState<Role>("client");
   if (!session) return sessionError ? <SessionError /> : <Loading />;
 
-  async function sendCode() {
-    if (await run(() => call("/api/session/otp", { email }))) setStep("code");
+  async function finish(role: Role) {
+    await refresh();
+    router.push(destination(role, next));
   }
 
-  async function verify() {
+  async function sendCode() {
+    if (await run(() => call("/api/session/otp", { email }))) {
+      setPassword("");
+      setStep("code");
+    }
+  }
+
+  async function signInWithPassword() {
+    const r = await run(() => call<{ role: Role }>("/api/session/password", { email, password }));
+    if (r) await finish(r.role);
+  }
+
+  async function signInWithCode() {
     const r = await run(() =>
-      call<{ needsName?: boolean; newRole?: Role; role?: Role }>("/api/session", { email, code, ...(step === "name" ? { name, phone } : {}) }),
+      call<{ needsName?: boolean; needsPassword?: boolean; newRole?: Role; role?: Role }>("/api/session", {
+        email,
+        code,
+        ...(password ? { password } : {}),
+        ...(step === "name" ? { name, phone } : {}),
+      }),
     );
     if (r?.needsName) {
       setNewRole(r.newRole ?? "client");
       setStep("name");
+    } else if (r?.needsPassword) {
+      setStep("newPassword");
+    } else if (r?.role) {
+      await finish(r.role);
     }
-    else if (r?.role) {
-      await refresh();
-      router.push(destination(r.role, next));
-    }
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    void (step === "password" ? signInWithPassword() : signInWithCode());
+  }
+
+  function startOver() {
+    setStep("password");
+    setCode("");
+    setPassword("");
+    setError(null);
   }
 
   async function signOut() {
@@ -86,22 +119,38 @@ function SignIn() {
       </div>
     );
 
+  const needsNewPassword = step === "newPassword" || step === "name";
+  const ready =
+    step === "password"
+      ? !!email && !!password
+      : !!code && (step !== "name" || (!!name.trim() && !!phone.trim())) && (!needsNewPassword || !!password);
+
   return (
     <div className="container page">
-      <section className="card stack" style={{ maxWidth: 420 }}>
+      <form className="card stack" style={{ maxWidth: 420 }} onSubmit={submit}>
         <h1>Sign in</h1>
         <p className="muted small">
-          Clients, brands, creators and the Srijan team all sign in here. We’ll email you a 6-digit code and open the right dashboard for your account.
+          {step === "password"
+            ? "Clients, brands, creators and the Srijan team all sign in here with their email and password. We’ll open the right dashboard for your account."
+            : `We’ve emailed a 6-digit code to ${email}.`}
         </p>
         <div className="field">
           <label htmlFor="email">Email</label>
-          <input id="email" className="input" type="email" autoComplete="email" value={email} disabled={step !== "email"} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          <input id="email" className="input" type="email" autoComplete="email" value={email} disabled={step !== "password"} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </div>
-        {step !== "email" && (
+        {step === "password" && <PasswordField id="password" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />}
+        {step !== "password" && (
           <div className="field">
             <label htmlFor="code">Code sent to your email</label>
             <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
           </div>
+        )}
+        {step === "code" && <PasswordField id="new-password" label="New password (optional)" value={password} onChange={setPassword} autoComplete="new-password" hint="Forgot your password? Set a new one here. Otherwise leave this blank." />}
+        {step === "newPassword" && (
+          <>
+            <p className="small muted">Your account doesn’t have a password yet. Add one to finish signing in.</p>
+            <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint={NEW_PASSWORD_HINT} />
+          </>
         )}
         {step === "name" && (
           <>
@@ -122,24 +171,26 @@ function SignIn() {
               <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
               <span className="small muted">{newRole === "ops" ? "So creators and clients can reach the team." : "So your creator can reach you on shoot day."}</span>
             </div>
+            <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint={NEW_PASSWORD_HINT} />
           </>
         )}
         <ErrorNote error={error} />
-        {step === "email" ? (
-          <button className="btn btn-primary" disabled={busy || !email} onClick={sendCode}>
-            Send code
+        <div className="row">
+          <button type="submit" className="btn btn-primary" disabled={busy || !ready}>
+            {step === "name" ? (newRole === "ops" ? "Create team account" : "Create account") : "Sign in"}
           </button>
-        ) : (
-          <div className="row">
-            <button className="btn btn-primary" disabled={busy || !code || (step === "name" && (!name.trim() || !phone.trim()))} onClick={verify}>
-              {step === "name" ? (newRole === "ops" ? "Create team account" : "Create account") : "Sign in"}
+          {step === "password" ? (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !email} onClick={sendCode}>
+              Email me a code
             </button>
-            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setStep("email"); setCode(""); }}>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={startOver}>
               Change email
             </button>
-          </div>
-        )}
-      </section>
+          )}
+        </div>
+        {step === "password" && <span className="small muted">First time here, or forgot your password? Enter your email and choose “Email me a code”.</span>}
+      </form>
       <p className="small muted">
         New creator? <Link href="/join">Create a creator profile</Link>.
       </p>

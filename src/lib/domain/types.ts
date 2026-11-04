@@ -24,6 +24,10 @@ export interface User {
   /** Set when role === "creator". */
   creatorId?: string;
   createdAt: number;
+  /** Salted scrypt hash. Never send this to a browser. */
+  passwordHash?: string;
+  passwordFails?: number;
+  passwordLockedUntil?: number;
 }
 
 export interface CreatorService {

@@ -177,6 +177,7 @@ async function connectTestDb() {
   await sql`drop schema if exists srijan cascade`;
 }
 
+const readDbSafe = () => (sql ? { users: [] } : readDb());
 const readDb = () => JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
 function writeDb(db) {
   const tmp = `${DATA_FILE}.smoke.tmp`;
@@ -229,6 +230,7 @@ class Agent {
     this.name = name;
     this.email = email;
     this.phone = phone;
+    this.password = `test-password-${email}`;
     this.cookie = "";
     // Own address per person, like real users, so the per-IP rate limits don't trip.
     this.ip = `10.0.0.${ipSeq++}`;
@@ -253,7 +255,8 @@ class Agent {
   async signIn() {
     let r = await this.req("/api/session", { email: this.email, code: await issueCode(this.email) });
     this.newRole = r.data?.newRole;
-    if (r.data?.needsName) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), name: this.name, phone: this.phone });
+    if (r.data?.needsName) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), name: this.name, phone: this.phone, password: this.password });
+    else if (r.data?.needsPassword) r = await this.req("/api/session", { email: this.email, code: codes.get(this.email), password: this.password });
     ok(r.ok, `${this.name} signs in with an email code`);
     return r.data.role;
   }
@@ -261,6 +264,7 @@ class Agent {
   async joinAsCreator(cityId, zoneId, services = [{ key: "videography" }]) {
     const r = await this.req("/api/creators", {
       code: await issueCode(this.email),
+      password: this.password,
       email: this.email,
       name: this.name,
       phone: this.phone,
@@ -328,6 +332,56 @@ async function run() {
   ok(priya.newRole === "client", "a new client email is told it’s setting up a client account");
   r = await priya.req("/api/admin");
   ok(r.status === 403, "a client can’t open the ops dashboard");
+
+  // --- Passwords ------------------------------------------------------------------
+  const browser2 = new Agent("Priya on another device", priya.email, priya.phone);
+  const withPassword = (agent, password, email = agent.email) => agent.req("/api/session/password", { email, password });
+  r = await withPassword(browser2, "wrong-password");
+  ok(r.status === 400 && r.error === "Wrong email or password", "a wrong password is refused");
+  r = await withPassword(browser2, priya.password, "nobody@example.com");
+  ok(r.status === 400 && r.error === "Wrong email or password", "an unknown email gets the same answer");
+  r = await withPassword(browser2, "");
+  ok(r.status === 400, "an empty password is refused");
+  r = await browser2.req("/api/session");
+  ok(r.data.user === null, "a refused password doesn’t sign anyone in");
+  r = await withPassword(browser2, priya.password);
+  ok(r.ok && r.data.role === "client", "the password from the first sign-in works next time");
+  r = await browser2.req("/api/session");
+  ok(r.data.user?.email === priya.email && !JSON.stringify(r.data).includes("scrypt"), "signed in, and the password hash never reaches the browser");
+  ok(!JSON.stringify(await ops.req("/api/admin")).includes("scrypt"), "the ops dashboard never gets the hash either");
+  ok(readDbSafe().users.find((u) => u.email === priya.email)?.passwordHash?.startsWith("scrypt$") && !JSON.stringify(readDbSafe()).includes(priya.password), "only a hash is stored, never the password");
+  r = await new Agent("x", "short@example.com", "9876500001").req("/api/session", { email: "short@example.com", code: await issueCode("short@example.com"), name: "Short", phone: "9876500001", password: "1234567" });
+  ok(r.status === 400 && /at least 8/.test(r.error), "a password under 8 characters is refused");
+  r = await new Agent("x", "nopass@example.com", "9876500002").req("/api/session", { email: "nopass@example.com", code: await issueCode("nopass@example.com"), name: "No Pass", phone: "9876500002" });
+  ok(r.status === 400 && /at least 8/.test(r.error), "a new client must choose a password");
+  const teamBrowser2 = new Agent("Team on another device", OPS_EMAIL, ops.phone);
+  r = await withPassword(teamBrowser2, "wrong-password");
+  ok(r.status === 400, "a team account refuses a wrong password");
+  r = await withPassword(teamBrowser2, ops.password);
+  ok(r.ok && r.data.role === "ops", "a team account signs in with its password");
+  ok((await teamBrowser2.req("/api/admin")).ok, "and opens the ops dashboard");
+  r = await new Agent("x", OPS_EMAIL, ops.phone).req("/api/session", { email: OPS_EMAIL, code: await issueCode(OPS_EMAIL), name: "Nobody" });
+  ok(r.ok && r.data.role === "ops", "an email code still works for a team account");
+
+  const forgot = new Agent("Priya forgot", priya.email, priya.phone);
+  r = await forgot.req("/api/session", { email: priya.email, code: await issueCode(priya.email), password: "a-brand-new-password" });
+  ok(r.ok, "a forgotten password can be replaced with an email code");
+  r = await withPassword(new Agent("x", priya.email, priya.phone), priya.password);
+  ok(r.status === 400, "the old password stops working");
+  priya.password = "a-brand-new-password";
+  r = await withPassword(new Agent("x", priya.email, priya.phone), priya.password);
+  ok(r.ok, "the new password works");
+  r = await new Agent("x", priya.email, priya.phone).req("/api/session", { email: priya.email, code: await issueCode(priya.email) });
+  ok(r.ok && r.data.role === "client", "an email code still signs in without touching the password");
+
+  const locked = new Agent("Locked Out", "locked@example.com", "9876500004");
+  await locked.signIn();
+  locked.cookie = "";
+  for (let i = 0; i < 10; i++) r = await withPassword(locked, "wrong-password");
+  r = await withPassword(locked, locked.password);
+  ok(r.status === 429, "10 wrong passwords lock the account, even for the right one");
+  r = await locked.req("/api/session", { email: locked.email, code: await issueCode(locked.email), password: "unlocked-password" });
+  ok(r.ok, "an email code gets a locked-out person back in");
 
   const cr = {};
   cr.ankita = await ankita.joinAsCreator("guwahati", "zoo-road");
@@ -630,6 +684,8 @@ async function run() {
   r = await brand.req("/api/campaigns", { ...campaign, code: await issueCode(brand.email) });
   ok(r.ok, "brand books a strategy call with an email code");
   const cid = r.data.id;
+  r = await new Agent("x", brand.email, brand.phone).req("/api/session", { email: brand.email, code: await issueCode(brand.email) });
+  ok(r.ok && r.data.needsPassword === true, "a brand account made from a call request is asked for a password at its next code sign-in");
   r = await brand.req("/api/session");
   ok(r.data.user?.role === "client", "the brand is signed in to a new client account");
   r = await brand.req("/api/campaigns");

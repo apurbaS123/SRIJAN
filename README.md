@@ -26,7 +26,7 @@ Data is stored in `.data/db.json`. Delete it any time to start fresh.
 
 ## Sign-in and roles
 
-Everyone signs in at **/login** with a 6-digit code sent to their email (through [Brevo](https://www.brevo.com)). New accounts also give a mobile number, used only so clients, creators and the team can call each other. The account decides what they can open:
+Everyone signs in at **/login**. The first time, they prove their email with a 6-digit code (sent through [Brevo](https://www.brevo.com)) and choose a password; after that they can use their email and password. An email code always works too, and is how a forgotten password gets replaced. Older accounts, and brand accounts made from a call request, are asked to add a password at their next code sign-in. Only a salted scrypt hash is stored, and 10 wrong passwords lock password sign-in for 15 minutes. New accounts also give a mobile number, used only so clients, creators and the team can call each other. The account decides what they can open:
 
 | Account | How it's created | Lands on |
 | --- | --- | --- |

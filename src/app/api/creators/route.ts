@@ -5,6 +5,7 @@ import { signUpCreator, type SignupInput } from "@/lib/domain/creators";
 import { assert } from "@/lib/domain/util";
 import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
+import { hashNewPassword, passwordProblem } from "@/lib/server/password";
 import { limitByIp } from "@/lib/server/rateLimit";
 import type { ServiceKey } from "@/lib/domain/types";
 
@@ -31,17 +32,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: Request) {
   const limited = await limitByIp("signup", 10, 60 * 60_000);
   if (limited) return limited;
-  const input = await readJson<SignupInput & { code?: string }>(req);
+  const input = await readJson<SignupInput & { code?: string; password?: string }>(req);
+  // Hashing is slow, so it happens here, before the database is locked.
+  const passwordHash = await hashNewPassword(input.password);
   let newUserId: string | null = null;
   const res = await api(({ db, now }) => {
     const email = normalizeEmail(input.email);
     assert(email, "Enter a valid email address");
     const phone = normalizePhone(input.phone);
     assert(phone, "Enter a valid 10-digit Indian mobile number");
+    assert(passwordHash, passwordProblem(input.password)!);
     // Check the code first without using it up, then again once the profile is valid.
     verifyOtp(db, email, input.code, now, false);
     const { user, creator } = signUpCreator(db, input, { email, phone }, now);
     verifyOtp(db, email, input.code, now);
+    user.passwordHash = passwordHash;
     newUserId = user.id;
     return { userId: user.id, creatorId: creator.id };
   });

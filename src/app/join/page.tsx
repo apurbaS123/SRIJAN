@@ -5,6 +5,7 @@ import { call, useAction } from "@/lib/client/api";
 import { ErrorNote, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 import { useSession } from "@/components/Session";
+import { PasswordField } from "@/components/PasswordField";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
 
@@ -30,6 +31,7 @@ export default function JoinPage() {
   const [maxTravelKm, setMaxTravelKm] = useState(10);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
+  const [password, setPassword] = useState("");
 
   if (!meta) return <Loading />;
   const city = meta.cities.find((c) => c.id === cityId)!;
@@ -52,6 +54,7 @@ export default function JoinPage() {
         email,
         phone,
         code,
+        password,
         cityId,
         zoneId,
         bio,
@@ -93,6 +96,7 @@ export default function JoinPage() {
           <label htmlFor="code">Code sent to your email</label>
           <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
         </div>
+        <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Next time, sign in with your email and this password." />
         <div className="field">
           <label htmlFor="phone">Mobile number</label>
           <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
@@ -209,7 +213,7 @@ export default function JoinPage() {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code} onClick={submit}>
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
         Submit for verification
       </button>
       <p className="tiny muted">Next, you’ll link your bank account or UPI ID. The Srijan team reviews your profile before you can go online.</p>

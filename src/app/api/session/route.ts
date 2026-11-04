@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { api, readJson, setSession } from "@/lib/server/api";
 import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
+import { hashNewPassword, passwordProblem } from "@/lib/server/password";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorPublic } from "@/lib/domain/views";
 import { payoutSummary } from "@/lib/domain/creators";
@@ -25,15 +26,19 @@ export async function GET() {
  * addresses in SRIJAN_OPS_EMAILS are the Srijan team (ops), creator accounts stay creators,
  * everyone else is a client (people booking shoots and brands). New addresses also send
  * { name, phone }; the phone is a contact number for shoot day, not used to sign in.
+ * They also send { password }: to set their first one, or to replace a forgotten one. The code proves they own the email, which is why a signed-in session alone can't change it.
  */
 export async function POST(req: Request) {
   const limited = await limitByIp("signin", 20, 10 * 60_000);
   if (limited) return limited;
-  const body = await readJson<{ email?: string; code?: string; name?: string; phone?: string }>(req);
+  const body = await readJson<{ email?: string; code?: string; name?: string; phone?: string; password?: string }>(req);
+  // Hashing is slow, so it happens here, before the database is locked.
+  const passwordHash = await hashNewPassword(body.password);
   let signedIn: string | null = null;
   const res = await api(({ db, now }) => {
     const email = normalizeEmail(body.email);
     assert(email, "Enter a valid email address");
+    if (body.password) assert(passwordHash, passwordProblem(body.password)!);
     let user = db.users.find((u) => normalizeEmail(u.email) === email);
     if (!user && !body.name?.trim()) {
       // Check the code without using it up, then ask for a name and phone. Once the code is
@@ -46,11 +51,22 @@ export async function POST(req: Request) {
       const name = cleanText(body.name, 80, "your name");
       const phone = normalizePhone(body.phone);
       assert(phone, "Enter a valid 10-digit Indian mobile number");
+      assert(passwordHash, passwordProblem(body.password)!);
       verifyOtp(db, email, body.code, now);
-      user = { id: newId("u"), role: "client", name, email, phone: `+91 ${phone}`, createdAt: now } satisfies User;
+      user = { id: newId("u"), role: "client", name, email, phone: `+91 ${phone}`, createdAt: now, passwordHash } satisfies User;
       db.users.push(user);
     } else {
+      // An account from before passwords, or from a brand's call request: it adds one now.
+      if (!user.passwordHash && !passwordHash) {
+        verifyOtp(db, email, body.code, now, false);
+        return { needsPassword: true };
+      }
       verifyOtp(db, email, body.code, now);
+      if (passwordHash) {
+        user.passwordHash = passwordHash;
+        user.passwordFails = undefined;
+        user.passwordLockedUntil = undefined;
+      }
     }
     syncOpsRole(user, email);
     signedIn = user.id;
