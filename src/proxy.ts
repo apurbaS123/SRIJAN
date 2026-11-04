@@ -2,16 +2,30 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+/** The live site's one address. A login belongs to one address, so everyone should be on the same one. */
+const PRIMARY_HOST = "srijan-rho.vercel.app";
+/** Razorpay's servers call this one, not a browser. The route checks Razorpay's signature instead. */
+const WEBHOOK_PATH = "/api/payments/webhook";
+
 /**
- * API guard: state-changing requests must come from this site (blocks cross-site form posts,
- * on top of the SameSite session cookie) and be reasonably small.
+ * Runs before every page and API route.
+ * 1. On the live site, sends every other address to PRIMARY_HOST. Preview deployments and local runs stay put.
+ * 2. API guard: state-changing requests must come from this site (blocks cross-site form posts,
+ *    on top of the SameSite session cookie) and be reasonably small.
  */
 export function proxy(req: NextRequest) {
-  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return NextResponse.next();
-  // Razorpay's servers call this one, not a browser. The route checks Razorpay's signature instead.
-  if (req.nextUrl.pathname === "/api/payments/webhook") return NextResponse.next();
-  const origin = req.headers.get("origin");
+  const { pathname, search } = req.nextUrl;
+  // Razorpay doesn't follow redirects, so a webhook aimed at another address must still work.
+  if (pathname === WEBHOOK_PATH) return NextResponse.next();
+
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (process.env.VERCEL_ENV === "production" && host !== PRIMARY_HOST) {
+    return NextResponse.redirect(new URL(`${pathname}${search}`, `https://${PRIMARY_HOST}`), 308);
+  }
+
+  if (!pathname.startsWith("/api/")) return NextResponse.next();
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return NextResponse.next();
+  const origin = req.headers.get("origin");
   let sameSite = false;
   try {
     sameSite = !!origin && !!host && new URL(origin).host === host;
@@ -24,5 +38,6 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  // Everything except Next's own files and Vercel's internal paths.
+  matcher: "/((?!_next/static|_next/image|_vercel).*)",
 };
