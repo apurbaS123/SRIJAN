@@ -203,6 +203,7 @@ export default function LocationPickerModal({ onConfirm, onClose }: Props) {
 
       {/* ── Modal sheet ── */}
       <div
+        className="map-sheet"
         style={{
           position: "fixed",
           inset: 0,

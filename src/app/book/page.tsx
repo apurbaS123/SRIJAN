@@ -149,7 +149,7 @@ function BookForm({ meta }: { meta: Meta }) {
 
   return (
     <div className="container page narrow">
-      <h1>Book a job</h1>
+      <h1>Book a shoot</h1>
       {chosen && (
         <div className="card card-violet row between">
           <span>
@@ -238,7 +238,7 @@ function BookForm({ meta }: { meta: Meta }) {
             </svg>
             <span>
               {address
-                ? <span style={{ color: "var(--ink)" }}>{address}</span>
+                ? <span style={{ color: "var(--violet-ink)" }}>{address}</span>
                 : <span style={{ color: "var(--violet)" }}>📍 Pin on map</span>}
             </span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginLeft: "auto", flexShrink: 0 }}>

@@ -148,7 +148,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Light surfaces inside a page keep the dark-on-light palette. Zero specificity
    so each surface's own colour (.card-dark, .btn-primary, .error…) still wins. */
-:where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success, .time-wheel) {
+:where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success, .time-wheel, .menu-section, .map-sheet) {
   --ink:           #1a002e;
   --ink-2:         #3d1a5c;
   --muted:         #7b5ea7;
