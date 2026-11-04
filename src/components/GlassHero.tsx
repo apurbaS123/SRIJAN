@@ -8,7 +8,7 @@ import { inr } from "@/lib/client/format";
 
 const NAV_LINKS = [
   { label: "Explore", href: "/creators" },
-  { label: "Book a shoot", href: "/book" },
+  { label: "Book a service", href: "/book" },
   { label: "For brands", href: "/brands" },
 ];
 

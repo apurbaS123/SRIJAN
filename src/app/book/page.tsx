@@ -149,7 +149,7 @@ function BookForm({ meta }: { meta: Meta }) {
 
   return (
     <div className="container page narrow">
-      <h1>Book a shoot</h1>
+      <h1>Book a service</h1>
       {chosen && (
         <div className="card card-violet row between">
           <span>

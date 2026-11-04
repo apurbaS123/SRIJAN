@@ -158,7 +158,7 @@ function SignIn() {
               <p className="small muted">Welcome to the Srijan team. Add your name and number to finish setting up your team account — you’ll go straight to the ops dashboard.</p>
             ) : (
               <p className="small muted">
-                New here? We’ll create a client account for booking shoots and brand campaigns. Are you a creator?{" "}
+                New here? We’ll create a client account for booking services and brand campaigns. Are you a creator?{" "}
                 <Link href="/join">Create a creator profile</Link> instead.
               </p>
             )}

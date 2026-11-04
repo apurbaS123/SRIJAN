@@ -7,13 +7,13 @@ import { call } from "@/lib/client/api";
 const LINKS = {
   guest: [
     { href: "/creators", label: "Explore" },
-    { href: "/book", label: "Book a shoot" },
+    { href: "/book", label: "Book a service" },
     { href: "/brands", label: "For brands" },
     { href: "/join", label: "Join as creator" },
   ],
   client: [
     { href: "/creators", label: "Explore" },
-    { href: "/book", label: "Book a shoot" },
+    { href: "/book", label: "Book a service" },
     { href: "/bookings", label: "My bookings" },
     { href: "/brands", label: "For brands" },
   ],

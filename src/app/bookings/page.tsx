@@ -13,7 +13,7 @@ function List() {
       <div className="row between">
         <h1>My bookings</h1>
         <Link href="/book" className="btn btn-accent">
-          Book a shoot
+          Book a service
         </Link>
       </div>
       {loading && !data && <p className="muted">Loading…</p>}

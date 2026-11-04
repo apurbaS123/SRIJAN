@@ -27,7 +27,7 @@ function Browse() {
       <div className="row between">
         <h1>{title}</h1>
         <Link href="/book" className="btn btn-accent">
-          Skip choosing · book a shoot
+          Skip choosing · book a service
         </Link>
       </div>
       <div className="card stack">
