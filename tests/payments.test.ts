@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedDb } from "./fixtures/seed";
 import { updateOwnCreator, hasPayoutDetails, payoutSummary, signUpCreator } from "@/lib/domain/creators";
 import { checkoutSignatureValid, createOrder, webhookSignatureValid } from "@/lib/server/razorpay";
-import { bookingView, creatorPublic } from "@/lib/domain/views";
+import { bookingView, creatorPublic, tickAll } from "@/lib/domain/views";
 import { acceptOffer } from "@/lib/domain/dispatch";
 import { createBooking, createBookings, markRefundSent, recordPayment, refund, refundsDue } from "@/lib/domain/bookings";
 
@@ -113,6 +113,24 @@ describe("who sees which phone number", () => {
     expect(client.clientPhone).toBe(phone);
     expect(client.creatorPhone).toBe("+91 98640 22222");
     expect(bookingView(db, b, asAnkita).creatorPhone).toBeUndefined();
+  });
+});
+
+describe("the videography service title", () => {
+  it("renames saved profiles and uses the new title for new creators", () => {
+    const db = seedDb(T0);
+    db.creators[0]!.services = [{ key: "videography", title: "1-day shoot", description: "x", price: 2500 }];
+    tickAll(db, T0);
+    expect(db.creators[0]!.services[0]!.title).toBe("1-day service");
+    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], onDemand: true }, { email: "title@example.com", phone: "9876511111" }, T0);
+    expect(creator.services[0]!.title).toBe("1-day service");
+  });
+
+  it("leaves a title a creator wrote themselves alone", () => {
+    const db = seedDb(T0);
+    db.creators[0]!.services = [{ key: "videography", title: "My 1-day shoot deal", description: "x", price: 2500 }];
+    tickAll(db, T0);
+    expect(db.creators[0]!.services[0]!.title).toBe("My 1-day shoot deal");
   });
 });
 

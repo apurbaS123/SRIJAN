@@ -3,7 +3,7 @@ import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from 
 import { assert, cleanText, newId } from "./util";
 
 const DEFAULT_SERVICE: Record<ServiceKey, { title: string; description: string }> = {
-  videography: { title: "1-day shoot", description: "On-location shoot and edit at Srijan’s fixed package price." },
+  videography: { title: "1-day service", description: "On-location shoot and edit at Srijan’s fixed package price." },
   video_editing: { title: "Edit my footage", description: "Send your clips, get an edited video with captions and music." },
   influencer: { title: "Brand collaboration", description: "Sponsored posts to my audience, handled by the Srijan campaign team." },
   photography: { title: "Photo shoot", description: "On-location photography with edited photos." },

@@ -15,6 +15,8 @@ export interface Viewer {
 /** Run every time-based rule up to `now`. */
 export function tickAll(db: DB, now: number) {
   for (const b of db.bookings) tickBooking(db, b, now);
+  // Profiles saved before the rename keep their own copy of this title.
+  for (const c of db.creators) for (const s of c.services) if (s.title === "1-day shoot") s.title = "1-day service";
   pruneNotifications(db, now);
 }
 
