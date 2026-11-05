@@ -1,3 +1,5 @@
+import { BrandRow } from "@/components/BrandRow";
+
 /** The logos in public/brands. Remove a line here to take that brand off the home page. */
 const BRANDS: [file: string, name: string][] = [
   ["01", "Ripuraj"], ["02", "Clocera"], ["03", "JW Prime Institute"], ["04", "NIA Skyline"], ["05", "Bhuli Devi Caterers"],
@@ -21,12 +23,12 @@ function Tiles({ brands, copy }: { brands: typeof BRANDS; copy?: boolean }) {
   return brands.map(([file, name]) => (
     <span key={file} className="brand-tile">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/brands/${file}.png`} alt={copy ? "" : name} width={150} height={84} loading="lazy" decoding="async" />
+      <img src={`/brands/${file}.png`} alt={copy ? "" : name} width={150} height={84} loading="lazy" decoding="async" draggable={false} />
     </span>
   ));
 }
 
-/** The section under the home hero: two rows of logos drifting opposite ways on a smoked-glass slab. */
+/** The section under the home hero: two rows of logos drifting opposite ways on a smoked-glass slab. Press and drag to scroll them. */
 export function BrandLogos() {
   return (
     <section className="brand-section" aria-labelledby="brands-heading">
@@ -39,7 +41,7 @@ export function BrandLogos() {
         </header>
         <div className="brand-rows">
           {ROWS.map((row, i) => (
-            <div key={i} className={`brand-row${i % 2 ? " brand-row-reverse" : ""}`}>
+            <BrandRow key={i} reverse={i % 2 === 1}>
               {/* The second copy makes the loop seamless; screen readers skip it. */}
               <div className="brand-track">
                 <div className="brand-set">
@@ -49,7 +51,7 @@ export function BrandLogos() {
                   <Tiles brands={row} copy />
                 </div>
               </div>
-            </div>
+            </BrandRow>
           ))}
         </div>
       </div>

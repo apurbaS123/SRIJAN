@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/Session";
 import { Header } from "@/components/Header";
+import { SiteFooter } from "@/components/SiteFooter";
 import { DemoNotifications } from "@/components/DemoNotifications";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Header />
           <DemoNotifications />
           <main>{children}</main>
+          <SiteFooter />
         </SessionProvider>
       </body>
     </html>
