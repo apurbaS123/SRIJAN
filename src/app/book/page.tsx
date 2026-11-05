@@ -1,6 +1,5 @@
 "use client";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { call, serverNow, useAction, useData } from "@/lib/client/api";
 import type { ShootPackage } from "@/lib/domain/config";
@@ -41,8 +40,10 @@ function istDate(offsetDays: number) {
   return new Date(serverNow() + IST + offsetDays * 86400_000).toISOString().slice(0, 10);
 }
 
-/** What a guest filled in, kept for this tab while they sign in, so they come back to the same order. */
+/** What someone filled in before pressing Pay, kept for this tab while they sign in. They come back to the same order, and payment opens. */
 const DRAFT_KEY = "srijan.book.draft";
+/** After this long, a returning visitor still gets their order back, but payment waits for them to press Pay. */
+const RESUME_PAYMENT_MS = 30 * 60_000;
 interface Draft {
   creatorId: string;
   cityId: string;
@@ -54,6 +55,7 @@ interface Draft {
   brief: string;
   referenceUrl: string;
   aspect: "9:16" | "16:9" | "1:1";
+  savedAt: number;
 }
 
 /** The saved order, if there is one that still makes sense. */
@@ -145,6 +147,8 @@ function BookForm({ meta }: { meta: Meta }) {
   const [referenceUrl, setReferenceUrl] = useState(draft?.referenceUrl ?? "");
   const [aspect, setAspect] = useState<Draft["aspect"]>(draft?.aspect ?? "9:16");
   const { busy, error, run } = useAction();
+  const payRow = useRef<HTMLDivElement>(null);
+  const resumed = useRef(false);
 
   useEffect(() => {
     // A saved order keeps the place the guest chose.
@@ -160,12 +164,14 @@ function BookForm({ meta }: { meta: Meta }) {
   const total = selected.reduce((sum, p) => sum + p.price, 0);
   const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta, noticeMs).length);
 
-  function saveDraft() {
-    const next: Draft = { creatorId, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect };
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
-  }
-
   async function pay() {
+    // Not signed in with an account that can book: sign in first. Payment opens on the way back (see below).
+    if (user?.role !== "client") {
+      const saved: Draft = { creatorId, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
+      router.push("/login?next=/book");
+      return;
+    }
     const paidPage = await run(async () => {
       const { bookings, checkout } = await call<{ bookings: BookingView[]; checkout: CheckoutDetails }>("/api/bookings", {
         packageIds,
@@ -186,6 +192,15 @@ function BookForm({ meta }: { meta: Meta }) {
     });
     if (paidPage) router.push(paidPage);
   }
+
+  // Back from signing in: carry on with the payment they already asked for.
+  useEffect(() => {
+    if (!draft || Date.now() - draft.savedAt > RESUME_PAYMENT_MS || resumed.current || user?.role !== "client" || !slot || selected.length === 0) return;
+    resumed.current = true;
+    // If the order can't go through, the reason shows here, not out of sight at the bottom of the page.
+    payRow.current?.scrollIntoView({ block: "center" });
+    void pay();
+  });
 
   return (
     <div className="container page narrow">
@@ -382,32 +397,12 @@ function BookForm({ meta }: { meta: Meta }) {
             Try again
           </button>
         </div>
-      ) : sessionLoading && !session ? (
-        <button className="btn btn-accent btn-lg btn-block" disabled>
-          Loading…
-        </button>
-      ) : !user ? (
-        <div className="stack">
-          <p className="strong" style={{ textAlign: "center", margin: 0 }}>
-            Sign in to pay
-          </p>
-          <Link href="/login?next=/book" className="btn btn-accent btn-lg btn-block" onClick={saveDraft}>
-            Sign in
-          </Link>
-        </div>
-      ) : user.role !== "client" ? (
-        <div className="stack">
-          <p className="small" style={{ margin: 0 }}>
-            You’re signed in as {user.name}, whose account can’t book services. Switch to a client account to pay.
-          </p>
-          <Link href="/login?next=/book" className="btn btn-accent btn-lg btn-block" onClick={saveDraft}>
-            Switch account
-          </Link>
-        </div>
       ) : (
-        <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot || selected.length === 0} onClick={pay}>
-          {busy ? "Processing…" : `Pay ${inr(total)}`}
-        </button>
+        <div ref={payRow}>
+          <button className="btn btn-accent btn-lg btn-block" disabled={busy || (sessionLoading && !session) || !slot || selected.length === 0} onClick={pay}>
+            {busy ? "Processing…" : `Pay ${inr(total)}`}
+          </button>
+        </div>
       )}
     </div>
   );
