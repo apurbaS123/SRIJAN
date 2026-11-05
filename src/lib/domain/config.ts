@@ -84,9 +84,7 @@ export const CREATOR_SHARE = 0.8;
 export const PLATFORM_SHARE = 0.2;
 
 export const DISPATCH = {
-  /** Client picked a creator: that creator alone gets this long. */
-  directOfferMs: 5 * MIN,
-  /** Then (or straight away) every available creator nearby gets this long. */
+  /** Every available creator nearby gets this long. */
   broadcastWindowMs: 5 * MIN,
   /** If nobody has accepted by this point, the search area widens. */
   widenAfterMs: 3 * MIN,
@@ -215,6 +213,12 @@ export const SOCIAL_PLATFORMS: { key: SocialPlatform; label: string; hosts: stri
   { key: "facebook", label: "Facebook", hosts: ["facebook.com", "fb.com"], example: "facebook.com/yourpage" },
   { key: "other", label: "Website / portfolio", hosts: [], example: "yourwebsite.com" },
 ];
+
+/** The cheapest fixed price on the menu for a kind of service. Prices are never set per creator. */
+export function lowestPrice(service: ServiceKey) {
+  const prices = PACKAGES.filter((p) => p.service === service && !p.retired).map((p) => p.price);
+  return prices.length ? Math.min(...prices) : null;
+}
 
 export function findPackage(id: string) {
   return PACKAGES.find((p) => p.id === id);

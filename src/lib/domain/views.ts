@@ -1,5 +1,5 @@
 // What each kind of user is allowed to see. API responses are built from these.
-import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, findPackage, findZone } from "./config";
+import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, findPackage, findZone, lowestPrice } from "./config";
 import { campaignMath } from "./campaigns";
 import { clientRating, tickBooking } from "./bookings";
 import { pruneNotifications } from "./notifications";
@@ -29,7 +29,7 @@ export function creatorPublic(c: Creator) {
     zoneId: c.zoneId,
     area: placeName(c.cityId, c.zoneId),
     languages: c.languages,
-    services: c.services,
+    services: c.services.map((s) => ({ ...s, price: lowestPrice(s.key) })),
     gear: c.gear,
     instagram: c.instagram,
     social: c.social,

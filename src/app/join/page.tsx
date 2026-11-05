@@ -9,7 +9,17 @@ import { PasswordField } from "@/components/PasswordField";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
 
-const GEAR = ["Mirrorless / DSLR", "4K phone", "Gimbal", "Wireless mic", "Lights", "Drone"];
+/** What a creator might work with, by service. Optional: shown on their profile and to the Srijan team. */
+const GEAR: Record<ServiceKey, string[]> = {
+  videography: ["Mirrorless / DSLR", "Cinema camera", "4K phone", "Gimbal", "Tripod", "Wireless mic", "Lights", "Drone"],
+  photography: ["Mirrorless / DSLR", "Prime lens", "Zoom lens", "Tripod", "Flash", "Softbox", "Reflector", "Drone"],
+  video_editing: ["Editing PC / laptop", "Premiere Pro", "DaVinci Resolve", "Final Cut Pro", "After Effects", "CapCut"],
+  graphic_design: ["Photoshop", "Illustrator", "Figma", "Canva", "Drawing tablet"],
+  content_writing: ["Laptop", "Grammarly", "SEO tool"],
+  voice_over: ["Studio microphone", "Audio interface", "Pop filter", "Home booth", "Audio editing software"],
+  social_media: ["Scheduling tool", "Meta Business Suite", "Canva", "Analytics tool"],
+  influencer: ["4K phone", "Ring light", "Tripod", "Wireless mic"],
+};
 
 export default function JoinPage() {
   const meta = useMeta();
@@ -22,26 +32,21 @@ export default function JoinPage() {
   const [cityId, setCityId] = useState("guwahati");
   const [zoneId, setZoneId] = useState("zoo-road");
   const [bio, setBio] = useState("");
-  const [services, setServices] = useState<Partial<Record<ServiceKey, string>>>({ videography: "" });
+  const [services, setServices] = useState<ServiceKey[]>(["videography"]);
   const [gear, setGear] = useState<string[]>([]);
   const [platform, setPlatform] = useState<SocialPlatform>("instagram");
   const [socialUrl, setSocialUrl] = useState("");
   const [followers, setFollowers] = useState("");
   const [onDemand, setOnDemand] = useState(true);
-  const [maxTravelKm, setMaxTravelKm] = useState(10);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [password, setPassword] = useState("");
 
   if (!meta) return <Loading />;
   const city = meta.cities.find((c) => c.id === cityId)!;
-  const toggle = (k: ServiceKey) =>
-    setServices((s) => {
-      const next = { ...s };
-      if (k in next) delete next[k];
-      else next[k] = "";
-      return next;
-    });
+  const toggle = (k: ServiceKey) => setServices((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
+  // Follows the menu's order, so groups don't jump around as services are ticked.
+  const chosen = meta.services.filter((s) => services.includes(s.key));
 
   async function sendCode() {
     if (await run(() => call("/api/session/otp", { email }))) setCodeSent(true);
@@ -58,12 +63,12 @@ export default function JoinPage() {
         cityId,
         zoneId,
         bio,
-        services: Object.entries(services).map(([key, price]) => ({ key, price: price ? Number(price) : null })),
-        gear,
+        services: services.map((key) => ({ key })),
+        // Gear picked under a service they later unticked doesn't count.
+        gear: gear.filter((g) => services.some((k) => GEAR[k].includes(g))),
         social: { platform, url: socialUrl },
         followers: followers ? Number(followers) : undefined,
         onDemand,
-        maxTravelKm,
       }),
     );
     if (r) {
@@ -75,7 +80,7 @@ export default function JoinPage() {
   return (
     <div className="container page narrow">
       <h1>Join Srijan as a creator</h1>
-      <p className="muted">List everything you do. Each service gets its own price on your profile. Jobs through Srijan pay 80% of the package price.</p>
+      <p className="muted">List everything you do. Jobs through Srijan pay 80% of the package price.</p>
 
       <section className="card stack">
         <h2>You</h2>
@@ -143,51 +148,40 @@ export default function JoinPage() {
         <div className="grid">
           {meta.services.map((s) => (
             <label key={s.key} className="check">
-              <input type="checkbox" checked={s.key in services} onChange={() => toggle(s.key)} />
+              <input type="checkbox" checked={services.includes(s.key)} onChange={() => toggle(s.key)} />
               {s.label.replace(/s$/, "")}
             </label>
           ))}
         </div>
-        {Object.keys(services)
-          .filter((k) => k !== "videography" && k !== "influencer")
-          .map((k) => (
-            <div key={k} className="field">
-              <label htmlFor={`price-${k}`}>{meta.services.find((s) => s.key === k)?.label.replace(/s$/, "")} · your price (₹, blank = quote on request)</label>
-              <input id={`price-${k}`} className="input" type="number" min={0} value={services[k as ServiceKey]} onChange={(e) => setServices((s) => ({ ...s, [k]: e.target.value }))} />
-            </div>
-          ))}
-        {("videography" in services || "video_editing" in services) && (
+        {(services.includes("videography") || services.includes("video_editing")) && (
           <div className="card card-dark stack">
             <label className="row between strong">
               Get job alerts
               <input type="checkbox" checked={onDemand} onChange={(e) => setOnDemand(e.target.checked)} style={{ width: 22, height: 22, accentColor: "var(--orange)" }} />
             </label>
             <p className="small muted">Get alerts when a client books a job in your field. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert, and the first to accept gets the job.</p>
-            {"videography" in services && (
-              <>
-                <span className="label" style={{ color: "#c9cbd3" }}>How far will you travel?</span>
-                <div className="chips">
-                  {[5, 10, 15, 20, 25].map((k) => (
-                    <button key={k} className="chip" style={k === maxTravelKm ? { background: "var(--orange)", borderColor: "var(--orange)", color: "#fff" } : undefined} onClick={() => setMaxTravelKm(k)}>
-                      {k} km
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
         )}
-        <span className="label">Your gear</span>
-        <div className="chips">
-          {GEAR.map((g) => {
-            const on = gear.includes(g);
-            return (
-              <button key={g} aria-pressed={on} className={`chip${on ? " on" : ""}`} onClick={() => setGear(on ? gear.filter((x) => x !== g) : [...gear, g])}>
-                {g}
-              </button>
-            );
-          })}
-        </div>
+        {chosen.length > 0 && (
+          <div className="stack">
+            <span className="label">Your gear (optional)</span>
+            {chosen.map((s) => (
+              <div key={s.key} className="stack" style={{ gap: 6 }}>
+                <span className="small muted">{s.label.replace(/s$/, "")}</span>
+                <div className="chips">
+                  {GEAR[s.key].map((g) => {
+                    const on = gear.includes(g);
+                    return (
+                      <button key={g} type="button" aria-pressed={on} className={`chip${on ? " on" : ""}`} onClick={() => setGear(on ? gear.filter((x) => x !== g) : [...gear, g])}>
+                        {g}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card stack">

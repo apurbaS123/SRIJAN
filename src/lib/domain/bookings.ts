@@ -39,7 +39,6 @@ export interface NewBookingInput {
   brief: string;
   aspect?: Booking["aspect"];
   referenceUrl?: string;
-  requestedCreatorId?: string;
 }
 
 /** Creates the booking, unpaid. Nobody is alerted until `recordPayment`. */
@@ -65,9 +64,6 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     `Pick a time between ${DISPATCH.firstStartHour}:00 and ${DISPATCH.lastStartHour}:00`,
   );
   assert(scheduledAt <= now + DISPATCH.maxDaysAhead * DAY, `Jobs can be booked up to ${DISPATCH.maxDaysAhead} days ahead`);
-  if (input.requestedCreatorId) {
-    assert(db.creators.some((c) => c.id === input.requestedCreatorId && c.verification === "verified"), "Creator not found");
-  }
 
   const b: Booking = {
     id: newId("bkg"),
@@ -86,7 +82,6 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     brief,
     aspect,
     referenceUrl,
-    requestedCreatorId: input.requestedCreatorId || undefined,
     status: "awaiting_payment",
     createdAt: now,
     dispatch: { phase: "done", roundStartedAt: now, roundEndsAt: now, widened: false, radiusKm: 0, notifiedCreatorIds: [] },

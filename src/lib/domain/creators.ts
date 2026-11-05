@@ -1,4 +1,4 @@
-import { SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
+import { DISPATCH, SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
 import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from "./types";
 import { assert, cleanText, newId } from "./util";
 
@@ -20,7 +20,7 @@ export interface SignupInput {
   cityId: string;
   zoneId: string;
   bio?: string;
-  services: { key: ServiceKey; price?: number | null }[];
+  services: { key: ServiceKey }[];
   gear?: string[];
   languages?: string[];
   instagram?: string;
@@ -114,12 +114,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
   const given = Array.isArray(input.services) ? input.services : [];
   const keys = Array.from(new Set(given.map((s) => s?.key))).filter((k): k is ServiceKey => SERVICES.some((s) => s.key === k));
   assert(keys.length > 0, "Pick at least one service you offer");
-  const services: CreatorService[] = keys.map((key) => {
-    const raw = Number(given.find((s) => s?.key === key)?.price);
-    const price = key === "videography" || key === "influencer" || !(raw > 0) ? null : Math.round(raw);
-    if (price !== null) assert(price <= 1_000_000, "Service prices must be under ₹10,00,000");
-    return { key, ...DEFAULT_SERVICE[key], price: key === "videography" ? 2500 : price };
-  });
+  const services: CreatorService[] = keys.map((key) => ({ key, ...DEFAULT_SERVICE[key], price: null }));
   const social = cleanSocial(input.social);
   let instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
   if (instagram) assert(/^@?[\w.]{1,30}$/.test(instagram), "Enter just your Instagram handle, e.g. @yourname");
@@ -130,7 +125,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
   const followers = Math.round(Number(input.followers) || 0);
   assert(followers >= 0 && followers <= 1_000_000_000, "Follower count looks wrong");
   const bio = cleanText(input.bio, 1000, "your bio", true);
-  const gear = cleanList(input.gear, 20, 60, "gear items");
+  const gear = cleanList(input.gear, 50, 60, "gear items");
   const languages = cleanList(input.languages, 10, 30, "languages");
 
   const creatorId = newId("cr");
@@ -152,7 +147,8 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     followers: followers || undefined,
     onDemand: !!input.onDemand && keys.some((k) => ALERT_SERVICES.includes(k)),
     available: false,
-    maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : 10,
+    // Not asked at sign-up: as far as the widest search reaches, so new creators aren't left out of it.
+    maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : DISPATCH.widenedRadiusKm,
     verification: "pending",
     // Set by the Srijan team after they check the documents — never self-declared.
     kyc: { aadhaar: false, pan: false },

@@ -72,11 +72,10 @@ Until the keys are set, the site refuses new bookings rather than taking them un
 
 `src/lib/domain/dispatch.ts`
 
-1. If the client picked a creator, only that creator is alerted for **5 minutes**.
-2. Then **every** available, verified creator who offers that service, has linked a bank or UPI and is within **10 km** is alerted at once, with **5 minutes** to accept. First to accept wins. Online jobs have no distance limit.
-3. At **minute 3** the search widens to **25 km** (same window).
-4. Creators who come online during the window are alerted too.
-5. Nobody by minute 5 → booking moves to **ops**, who assign by hand or refund.
+1. **Every** available, verified creator who offers that service, has linked a bank or UPI and is within **10 km** is alerted at once, with **5 minutes** to accept. First to accept wins. Online jobs have no distance limit.
+2. At **minute 3** the search widens to **25 km** (same window).
+3. Creators who come online during the window are alerted too.
+4. Nobody by minute 5 → booking moves to **ops**, who assign by hand or refund.
 
 Creators are never alerted for a job that clashes with one they already have, or beyond their own travel distance.
 

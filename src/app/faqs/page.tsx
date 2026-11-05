@@ -12,8 +12,8 @@ const FAQS = [
     a: `Choose one or more services from the menu, pick a time and pay online. One order can hold up to ${MAX_SERVICES_PER_ORDER} services. Jobs at your location need at least ${NOTICE_HOURS} hour’s notice and can be booked up to ${DISPATCH.maxDaysAhead} days ahead. Online jobs need no notice.`,
   },
   {
-    q: "How is a creator chosen?",
-    a: `If you picked a creator, they get the first chance to accept. Otherwise every available creator within ${DISPATCH.initialRadiusKm} km is alerted, and the first to accept takes the job. If nobody has accepted after ${DISPATCH.widenAfterMs / 60_000} minutes, the search widens to ${DISPATCH.widenedRadiusKm} km.`,
+    q: "How do I get a creator?",
+    a: `You don’t need to choose one. Every available creator within ${DISPATCH.initialRadiusKm} km is alerted, and the first to accept takes the job. If nobody has accepted after ${DISPATCH.widenAfterMs / 60_000} minutes, the search widens to ${DISPATCH.widenedRadiusKm} km.`,
   },
   {
     q: "Which cities do you cover?",

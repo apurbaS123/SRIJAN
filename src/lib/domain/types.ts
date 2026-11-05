@@ -34,7 +34,7 @@ export interface CreatorService {
   key: ServiceKey;
   title: string;
   description: string;
-  /** Price in rupees; null means "quote on request". */
+  /** Only in what's sent to screens: the service's lowest menu price. Anything saved on an older profile is ignored. */
   price: number | null;
 }
 
@@ -129,6 +129,7 @@ export interface Booking {
   brief: string;
   aspect: "9:16" | "16:9" | "1:1";
   referenceUrl?: string;
+  /** Only on older bookings: clients can no longer pick a creator. */
   requestedCreatorId?: string;
   creatorId?: string;
   status: BookingStatus;

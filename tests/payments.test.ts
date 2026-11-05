@@ -5,6 +5,7 @@ import { updateOwnCreator, hasPayoutDetails, payoutSummary, signUpCreator } from
 import { checkoutSignatureValid, createOrder, webhookSignatureValid } from "@/lib/server/razorpay";
 import { bookingView, creatorPublic, tickAll } from "@/lib/domain/views";
 import { acceptOffer } from "@/lib/domain/dispatch";
+import { SERVICES, lowestPrice } from "@/lib/domain/config";
 import { createBooking, createBookings, markRefundSent, recordPayment, refund, refundsDue } from "@/lib/domain/bookings";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
@@ -131,6 +132,28 @@ describe("the videography service title", () => {
     db.creators[0]!.services = [{ key: "videography", title: "My 1-day shoot deal", description: "x", price: 2500 }];
     tickAll(db, T0);
     expect(db.creators[0]!.services[0]!.title).toBe("My 1-day shoot deal");
+  });
+});
+
+describe("fixed prices", () => {
+  it("shows the menu's lowest price on every profile, never a creator's own", () => {
+    const db = seedDb(T0);
+    const { creator } = signUpCreator(
+      db,
+      { name: "New Creator", phone: "9876511112", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "video_editing", price: 50 }, { key: "videography" }] as never },
+      { email: "fixed@example.com", phone: "9876511112" },
+      T0,
+    );
+    expect(creator.services.every((s) => s.price === null)).toBe(true);
+
+    db.creators[0]!.services = [{ key: "video_editing", title: "Old offer", description: "x", price: 50 }];
+    const shown = creatorPublic(db.creators[0]!).services[0]!;
+    expect(shown.price).toBe(lowestPrice("video_editing"));
+    expect(shown.price).toBeGreaterThan(50);
+  });
+
+  it("has a price for every kind of service", () => {
+    for (const s of SERVICES) expect(lowestPrice(s.key)).toBeGreaterThan(0);
   });
 });
 

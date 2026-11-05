@@ -1,10 +1,10 @@
 "use client";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { call, serverNow, useAction, useData } from "@/lib/client/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { call, serverNow, useAction } from "@/lib/client/api";
 import type { ShootPackage } from "@/lib/domain/config";
 import type { ServiceKey } from "@/lib/domain/types";
-import type { BookingView, CreatorPublic } from "@/lib/domain/views";
+import type { BookingView } from "@/lib/domain/views";
 import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
 import { useSession } from "@/components/Session";
 import { ErrorNote, Loading } from "@/components/ui";
@@ -45,7 +45,6 @@ const DRAFT_KEY = "srijan.book.draft";
 /** After this long, a returning visitor still gets their order back, but payment waits for them to press Pay. */
 const RESUME_PAYMENT_MS = 30 * 60_000;
 interface Draft {
-  creatorId: string;
   cityId: string;
   zoneId: string;
   address: string;
@@ -121,15 +120,11 @@ function ServiceMenu({ meta, selected, onToggle }: { meta: Meta; selected: Shoot
 
 function BookForm({ meta }: { meta: Meta }) {
   const router = useRouter();
-  const params = useSearchParams();
   const { session, loading: sessionLoading, error: sessionError, refresh } = useSession();
   const user = session?.user;
   const [draft] = useState(() => readDraft(meta));
   useEffect(() => sessionStorage.removeItem(DRAFT_KEY), []);
-  const [creatorId, setCreatorId] = useState(draft?.creatorId ?? params.get("creator") ?? "");
-  const { data: chosen } = useData<CreatorPublic>(creatorId ? `/api/creators/${creatorId}` : null);
-
-  const [cityId, setCityId] = useState(draft?.cityId ?? chosen?.cityId ?? "guwahati");
+  const [cityId, setCityId] = useState(draft?.cityId ?? "guwahati");
   const city = meta.cities.find((c) => c.id === cityId)!;
   const [zoneId, setZoneId] = useState(draft?.zoneId ?? city.zones[0]!.id);
   const [address, setAddress] = useState(draft?.address ?? "");
@@ -151,13 +146,6 @@ function BookForm({ meta }: { meta: Meta }) {
   const resumed = useRef(false);
 
   useEffect(() => {
-    // A saved order keeps the place the guest chose.
-    if (chosen && !draft) {
-      setCityId(chosen.cityId);
-      setZoneId(chosen.zoneId);
-    }
-  }, [chosen, draft]);
-  useEffect(() => {
     if (!slots.includes(slot)) setSlot(slots.includes(DEFAULT_SLOT) ? DEFAULT_SLOT : (slots[0] ?? ""));
   }, [slots, slot]);
 
@@ -167,7 +155,7 @@ function BookForm({ meta }: { meta: Meta }) {
   async function pay() {
     // Not signed in with an account that can book: sign in first. Payment opens on the way back (see below).
     if (user?.role !== "client") {
-      const saved: Draft = { creatorId, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
+      const saved: Draft = { cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
       router.push("/login?next=/book");
       return;
@@ -182,7 +170,6 @@ function BookForm({ meta }: { meta: Meta }) {
         brief,
         aspect,
         referenceUrl,
-        requestedCreatorId: creatorId || undefined,
       });
       const paid = await openCheckout(checkout);
       if (!paid) return undefined; // closed without paying; they can simply try again
@@ -205,17 +192,6 @@ function BookForm({ meta }: { meta: Meta }) {
   return (
     <div className="container page narrow">
       <h1>Book a service</h1>
-      {chosen && (
-        <div className="card card-violet row between">
-          <span>
-            <b>{chosen.name}</b> gets this job first, for 5 minutes. Then everyone nearby is alerted.
-          </span>
-          <button className="btn btn-sm btn-ghost" onClick={() => setCreatorId("")}>
-            Any creator
-          </button>
-        </div>
-      )}
-
       <section className="stack">
         <h2>1. Service</h2>
         <ServiceMenu
@@ -410,11 +386,5 @@ function BookForm({ meta }: { meta: Meta }) {
 
 export default function BookPage() {
   const meta = useMeta();
-  return meta ? (
-    <Suspense fallback={<Loading />}>
-      <BookForm meta={meta} />
-    </Suspense>
-  ) : (
-    <Loading />
-  );
+  return meta ? <BookForm meta={meta} /> : <Loading />;
 }

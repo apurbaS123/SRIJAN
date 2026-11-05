@@ -135,7 +135,7 @@ export function CreatorCard({ c, km }: { c: CreatorPublic; km?: number }) {
         {c.onDemand && c.available && <span className="badge badge-orange">Available today</span>}
       </div>
       <div className="row between">
-        <span className="small muted">{from.length ? <>From <b style={{ color: "var(--ink)", fontSize: 16 }}>{inr(Math.min(...from))}</b></> : "Quote on request"}</span>
+        <span className="small muted">{from.length > 0 && <>From <b style={{ color: "var(--ink)", fontSize: 16 }}>{inr(Math.min(...from))}</b></>}</span>
         <Link href={`/creators/${c.id}`} className="btn btn-sm btn-primary">
           View profile
         </Link>

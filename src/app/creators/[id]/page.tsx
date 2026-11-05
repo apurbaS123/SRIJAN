@@ -61,26 +61,19 @@ export default function CreatorProfile() {
             </div>
             <p className="small muted">{s.description}</p>
             <div className="row between">
-              <b>{s.key === "influencer" ? `${c.followers ? Math.round(c.followers / 1000) + "K followers" : ""}${c.engagementRate ? ` · ${c.engagementRate}% engagement` : ""}` : s.price ? `${s.key === "videography" ? "From " : ""}${inr(s.price)}` : "Quote on request"}</b>
-              {s.key === "videography" && c.onDemand ? (
-                <Link href={`/book?creator=${c.id}`} className="btn btn-accent btn-sm">
-                  Book {c.name.split(" ")[0]}
-                </Link>
-              ) : s.key === "influencer" ? (
+              <b>{s.key === "influencer" ? `${c.followers ? Math.round(c.followers / 1000) + "K followers" : ""}${c.engagementRate ? ` · ${c.engagementRate}% engagement` : ""}` : s.price ? `From ${inr(s.price)}` : ""}</b>
+              {s.key === "influencer" ? (
                 <Link href="/brands" className="btn btn-violet btn-sm">
                   Enquire
                 </Link>
               ) : (
-                <span className="tiny muted">Ordering opens soon</span>
+                <Link href="/book" className="btn btn-accent btn-sm">
+                  Book a service
+                </Link>
               )}
             </div>
           </div>
         ))}
-        {c.onDemand && (
-          <p className="small muted">
-            Booking {c.name.split(" ")[0]} sends the job to them first. If they don’t accept within 5 minutes, every available creator nearby is alerted at the same price.
-          </p>
-        )}
       </section>
 
       {c.gear.length > 0 && (

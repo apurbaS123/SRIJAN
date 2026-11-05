@@ -93,11 +93,28 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
   });
 });
 
-describe("client picked a creator", () => {
-  it("gives that creator 5 minutes alone, then alerts everyone", () => {
+describe("clients can't pick a creator", () => {
+  it("alerts everyone even if a request names one creator", () => {
     const db = seedDb(T0);
-    const b = book(db, { requestedCreatorId: "cr_rituraj" });
-    expect(pendingFor(db, b.id)).toEqual(["cr_rituraj"]);
+    const b = book(db, { requestedCreatorId: "cr_rituraj" } as never);
+    expect(b.requestedCreatorId).toBeUndefined();
+    expect(b.dispatch.phase).toBe("broadcast");
+    expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_rituraj"]);
+  });
+
+  /** A booking made before the option was removed, still waiting on the creator it was sent to. */
+  function sentToOne(db: DB) {
+    const b = book(db);
+    db.offers = db.offers.filter((o) => o.bookingId !== b.id || o.creatorId === "cr_rituraj");
+    const o = db.offers.find((x) => x.bookingId === b.id)!;
+    o.kind = "direct";
+    b.dispatch.phase = "direct";
+    return { b, o };
+  }
+
+  it("still moves an older booking on to everyone after 5 minutes", () => {
+    const db = seedDb(T0);
+    const { b } = sentToOne(db);
     tickAll(db, T0 + 5 * MIN);
     expect(b.dispatch.phase).toBe("broadcast");
     expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_rituraj"]);
@@ -105,10 +122,9 @@ describe("client picked a creator", () => {
     expect(b.status).toBe("needs_ops");
   });
 
-  it("moves to everyone immediately when the chosen creator declines", () => {
+  it("still moves an older booking on when that creator declines", () => {
     const db = seedDb(T0);
-    const b = book(db, { requestedCreatorId: "cr_rituraj" });
-    const o = db.offers.find((x) => x.bookingId === b.id)!;
+    const { b, o } = sentToOne(db);
     declineOffer(db, o.id, "cr_rituraj", T0 + MIN);
     expect(b.dispatch.phase).toBe("broadcast");
     expect(b.dispatch.roundEndsAt).toBe(T0 + 6 * MIN);
