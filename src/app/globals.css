@@ -702,6 +702,8 @@ a.gh-item, button.gh-item { cursor: pointer; }
   color: #fff;
   padding: 0 max(16px, 5.5vw) max(40px, 8.5vh);
 }
+/* Under a page's panel (For brands), it needs room above it. */
+.page + .brand-section { padding-top: max(24px, 3vw); }
 .brand-slab {
   border-radius: 16px;
   padding: clamp(28px, 4.4vw, 64px) 0;

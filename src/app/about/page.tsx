@@ -26,7 +26,7 @@ export default function AboutPage() {
           <b>Edit.</b> Lightning-fast remote cuts and polish.
         </li>
         <li>
-          <b>Design.</b> Pixels pushed to perfection.
+          <b>Design.</b> Pixels pushed to perfection, live.
         </li>
         <li>
           <b>Write &amp; Speak.</b> Words and voices that actually connect.

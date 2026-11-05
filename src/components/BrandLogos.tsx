@@ -36,7 +36,7 @@ export function BrandLogos() {
         <header className="brand-head">
           <p className="brand-eyebrow">FROM LOCAL NAMES TO NATIONAL ONES</p>
           <h2 id="brands-heading" className="brand-title">
-            WORKED WITH THESE BRANDS
+            WHERE LEADING BRANDS COME
           </h2>
         </header>
         <div className="brand-rows">

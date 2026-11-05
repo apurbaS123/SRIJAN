@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { call, serverNow, useAction } from "@/lib/client/api";
+import { BrandLogos } from "@/components/BrandLogos";
 import { ErrorNote, Loading } from "@/components/ui";
 import { when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
@@ -90,6 +91,7 @@ export default function BrandsPage() {
     );
 
   return (
+    <>
     <div className="container page narrow">
       <span className="tag" style={{ background: "var(--violet)", color: "#fff", alignSelf: "flex-start" }}>
         For brands
@@ -200,5 +202,7 @@ export default function BrandsPage() {
         Book strategy call
       </button>
     </div>
+    <BrandLogos />
+    </>
   );
 }
