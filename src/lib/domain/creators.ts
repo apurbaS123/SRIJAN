@@ -26,7 +26,6 @@ export interface SignupInput {
   instagram?: string;
   social?: { platform?: string; url?: string };
   followers?: number;
-  onDemand?: boolean;
   maxTravelKm?: number;
 }
 
@@ -54,9 +53,6 @@ function cleanSocial(input: SignupInput["social"]): Creator["social"] {
 const UPI_RE = /^[\w.\-]{2,64}@[a-zA-Z0-9]{2,32}$/;
 const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 const ACCOUNT_RE = /^\d{9,18}$/;
-
-/** Services that come with instant job alerts. */
-const ALERT_SERVICES: ServiceKey[] = ["videography", "video_editing"];
 
 /** Has the creator told us where to send their money? */
 export function hasPayoutDetails(c: Creator) {
@@ -145,7 +141,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     instagram: instagram || undefined,
     social,
     followers: followers || undefined,
-    onDemand: !!input.onDemand && keys.some((k) => ALERT_SERVICES.includes(k)),
+    onDemand: true,
     available: false,
     // Not asked at sign-up: as far as the widest search reaches, so new creators aren't left out of it.
     maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : DISPATCH.widenedRadiusKm,
@@ -164,7 +160,6 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
 
 export interface CreatorPatch {
   available?: boolean;
-  onDemand?: boolean;
   maxTravelKm?: number;
   payout?: PayoutInput;
   /** Live location from the phone (optional). */
@@ -181,10 +176,6 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
       assert(hasPayoutDetails(c), "Link your bank account or UPI ID before going online");
     }
     c.available = !!patch.available;
-  }
-  if (patch.onDemand !== undefined) {
-    if (patch.onDemand) assert(c.services.some((s) => ALERT_SERVICES.includes(s.key)), "Add videography or video editing to get job alerts");
-    c.onDemand = !!patch.onDemand;
   }
   if (patch.maxTravelKm !== undefined) {
     assert([5, 10, 15, 20, 25].includes(Number(patch.maxTravelKm)), "Travel distance must be 5, 10, 15, 20 or 25 km");

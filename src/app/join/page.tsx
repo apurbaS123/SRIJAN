@@ -37,7 +37,6 @@ export default function JoinPage() {
   const [platform, setPlatform] = useState<SocialPlatform>("instagram");
   const [socialUrl, setSocialUrl] = useState("");
   const [followers, setFollowers] = useState("");
-  const [onDemand, setOnDemand] = useState(true);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [password, setPassword] = useState("");
@@ -68,7 +67,6 @@ export default function JoinPage() {
         gear: gear.filter((g) => services.some((k) => GEAR[k].includes(g))),
         social: { platform, url: socialUrl },
         followers: followers ? Number(followers) : undefined,
-        onDemand,
       }),
     );
     if (r) {
@@ -153,15 +151,7 @@ export default function JoinPage() {
             </label>
           ))}
         </div>
-        {(services.includes("videography") || services.includes("video_editing")) && (
-          <div className="card card-dark stack">
-            <label className="row between strong">
-              Get job alerts
-              <input type="checkbox" checked={onDemand} onChange={(e) => setOnDemand(e.target.checked)} style={{ width: 22, height: 22, accentColor: "var(--orange)" }} />
-            </label>
-            <p className="small muted">Get alerts when a client books a job in your field. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert, and the first to accept gets the job.</p>
-          </div>
-        )}
+        <p className="small muted">You’ll get job alerts for the services you offer. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert, and the first to accept gets the job.</p>
         {chosen.length > 0 && (
           <div className="stack">
             <span className="label">Your gear (optional)</span>

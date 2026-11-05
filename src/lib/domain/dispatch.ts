@@ -41,9 +41,9 @@ export function jobService(b: Booking): ServiceKey {
   return findPackage(b.packageId)?.service ?? "videography";
 }
 
-/** Verified, opted in to alerts, offers this kind of work and can be paid for it. */
+/** Verified, offers this kind of work and can be paid for it. */
 export function canTakeJob(c: Creator, service: ServiceKey) {
-  return c.verification === "verified" && c.onDemand && hasPayoutDetails(c) && c.services.some((s) => s.key === service);
+  return c.verification === "verified" && hasPayoutDetails(c) && c.services.some((s) => s.key === service);
 }
 
 /** Creators who should be alerted now, nearest first. Skips anyone already alerted or who declined. */

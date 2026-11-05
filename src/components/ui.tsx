@@ -132,7 +132,7 @@ export function CreatorCard({ c, km }: { c: CreatorPublic; km?: number }) {
             {s.title}
           </span>
         ))}
-        {c.onDemand && c.available && <span className="badge badge-orange">Available today</span>}
+        {c.available && <span className="badge badge-orange">Available today</span>}
       </div>
       <div className="row between">
         <span className="small muted">{from.length > 0 && <>From <b style={{ color: "var(--ink)", fontSize: 16 }}>{inr(Math.min(...from))}</b></>}</span>

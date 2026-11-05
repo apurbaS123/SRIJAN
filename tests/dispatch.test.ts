@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
 import { createBooking, recordPayment } from "@/lib/domain/bookings";
+import { signUpCreator } from "@/lib/domain/creators";
 import { acceptOffer, declineOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { MIN } from "@/lib/domain/config";
@@ -157,6 +158,34 @@ describe("only the right field is alerted", () => {
     acceptOffer(db, db.offers.find((o) => o.bookingId === online.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
     const shoot = book(db, {}, T0 + 2 * MIN);
     expect(pendingFor(db, shoot.id)).toContain("cr_ankita");
+  });
+
+  it("alerts every field, including creators whose older profile had alerts off", () => {
+    const db = seedDb(T0);
+    // Seeded with alerts off: Bhaswati designs and Ritika writes.
+    const design = book(db, { packageId: "design_thumbnail", cityId: undefined, zoneId: undefined, address: undefined, brief: "A thumbnail for my channel" });
+    expect(pendingFor(db, design.id)).toEqual(["cr_bhaswati"]);
+    const writing = book(db, { packageId: "write_social", cityId: undefined, zoneId: undefined, address: undefined, brief: "Ten captions for our shop" });
+    expect(pendingFor(db, writing.id)).toEqual(["cr_ritika"]);
+  });
+
+  it("gives every new creator alerts, whatever they offer", () => {
+    const db = seedDb(T0);
+    const { user, creator } = signUpCreator(db, { name: "New Writer", phone: "9876511113", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "content_writing" }] }, { email: "writer@example.com", phone: "9876511113" }, T0);
+    creator.verification = "verified";
+    creator.available = true;
+    creator.upiId = "writer@okaxis";
+    creator.payoutMethod = "upi";
+    expect(user.creatorId).toBe(creator.id);
+    const b = book(db, { packageId: "write_social", cityId: undefined, zoneId: undefined, address: undefined, brief: "Ten captions for our shop" });
+    expect(pendingFor(db, b.id)).toContain(creator.id);
+  });
+
+  it("still only alerts creators who are online", () => {
+    const db = seedDb(T0);
+    db.creators.find((c) => c.id === "cr_bhaswati")!.available = false;
+    const b = book(db, { packageId: "design_thumbnail", cityId: undefined, zoneId: undefined, address: undefined, brief: "A thumbnail for my channel" });
+    expect(pendingFor(db, b.id)).not.toContain("cr_bhaswati");
   });
 
   it("skips creators who haven't linked a bank or UPI", () => {

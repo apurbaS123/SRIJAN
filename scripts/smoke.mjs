@@ -271,7 +271,6 @@ class Agent {
       cityId,
       zoneId,
       services,
-      onDemand: true,
       maxTravelKm: 10,
     });
     ok(r.ok, `${this.name} joins as a creator in ${zoneId}`);

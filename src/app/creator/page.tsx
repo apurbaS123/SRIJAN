@@ -137,8 +137,7 @@ function Home() {
         </div>
       )}
 
-      {me.onDemand && (
-        <section className={`card stack${me.available ? " card-dark" : ""}`}>
+      <section className={`card stack${me.available ? " card-dark" : ""}`}>
           <div className="row between">
             <div className="stack" style={{ gap: 2 }}>
               <h2>{me.available ? "You’re online" : "You’re offline"}</h2>
@@ -150,7 +149,7 @@ function Home() {
               {me.available ? "Go offline" : "Go online"}
             </button>
           </div>
-          {me.services.some((s) => s.key === "videography") && (
+          {/* Every kind of service has jobs at the client's place, so everyone sets a distance. */}
           <div className="row">
             <span className="small muted">Travel up to</span>
             {[5, 10, 15, 20, 25].map((k) => (
@@ -162,9 +161,7 @@ function Home() {
               Update my location
             </button>
           </div>
-          )}
-        </section>
-      )}
+      </section>
 
       <ErrorNote error={act.error} />
 

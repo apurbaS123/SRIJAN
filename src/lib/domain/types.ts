@@ -66,6 +66,7 @@ export interface Creator {
   /** Percent, e.g. 6.1 */
   engagementRate?: number;
   /** Opted in to same-day shoot jobs. */
+  /** No longer used: everyone gets alerts for the services they offer. Older profiles may still say false. */
   onDemand: boolean;
   /** Online toggle: only available creators get job alerts. */
   available: boolean;

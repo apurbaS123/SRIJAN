@@ -84,7 +84,7 @@ function Creators() {
                   <td className="strong">{c.name}</td>
                   <td>{c.area}</td>
                   <td className="small">{c.services.map((s) => s.title).join(", ")}</td>
-                  <td>{c.onDemand ? (c.available ? <span className="badge badge-green">Online · {c.maxTravelKm} km</span> : <span className="badge">Offline</span>) : <span className="muted small">—</span>}</td>
+                  <td>{c.available ? <span className="badge badge-green">Online · {c.maxTravelKm} km</span> : <span className="badge">Offline</span>}</td>
                   <td>
                     <Stars rating={c.rating} count={c.ratingCount} />
                   </td>

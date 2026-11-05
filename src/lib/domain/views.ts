@@ -35,7 +35,6 @@ export function creatorPublic(c: Creator) {
     social: c.social,
     followers: c.followers,
     engagementRate: c.engagementRate,
-    onDemand: c.onDemand,
     available: c.available,
     maxTravelKm: c.maxTravelKm,
     verified: c.verification === "verified",

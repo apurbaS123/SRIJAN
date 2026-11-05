@@ -28,7 +28,7 @@ export default function CreatorProfile() {
           </span>
           <div className="chips">
             {c.verified && <span className="badge badge-violet">ID verified</span>}
-            {c.onDemand && <span className="badge badge-violet">Same-day services</span>}
+            <span className="badge badge-violet">Same-day services</span>
             {c.available ? <span className="badge badge-green">Online now</span> : <span className="badge">Offline</span>}
           </div>
         </div>

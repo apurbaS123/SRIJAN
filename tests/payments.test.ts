@@ -47,7 +47,7 @@ describe("Razorpay signatures", () => {
 describe("creator bank and UPI details", () => {
   const fresh = () => {
     const db = seedDb(T0);
-    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], onDemand: true }, { email: "new@example.com", phone: "9876511111" }, T0);
+    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] }, { email: "new@example.com", phone: "9876511111" }, T0);
     return { db, creator };
   };
   const bank = { method: "bank" as const, accountName: "New Creator", accountNumber: "123456789012", ifsc: "sbin0001234" };
@@ -123,7 +123,7 @@ describe("the videography service title", () => {
     db.creators[0]!.services = [{ key: "videography", title: "1-day shoot", description: "x", price: 2500 }];
     tickAll(db, T0);
     expect(db.creators[0]!.services[0]!.title).toBe("1-day service");
-    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], onDemand: true }, { email: "title@example.com", phone: "9876511111" }, T0);
+    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] }, { email: "title@example.com", phone: "9876511111" }, T0);
     expect(creator.services[0]!.title).toBe("1-day service");
   });
 
