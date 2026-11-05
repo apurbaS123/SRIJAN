@@ -1,7 +1,7 @@
 /**
  * The WebGL side of the glass hero: a tilted slab of smoked-glass shards with the
- * page printed on them, a live cut pattern, hover lift, and the shatter / reassemble
- * flight. Loaded on the client only (see GlassHero).
+ * page printed on them, a live cut pattern, hover lift, and the fly-in.
+ * Loaded on the client only (see GlassHero).
  */
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -46,7 +46,6 @@ const DRIFT = (() => {
   return out;
 })();
 
-const easeInCubic = (t: number) => t * t * t;
 const easeOutBack = (t: number) => {
   const c1 = 1.70158, c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
@@ -176,7 +175,7 @@ interface Piece {
   fly: { v: THREE.Vector3; g: THREE.Vector3; axis: THREE.Vector3; ang: number };
 }
 
-type Phase = "in" | "rest" | "out" | "gone";
+type Phase = "in" | "rest" | "gone";
 
 export class GlassScene {
   private renderer: THREE.WebGLRenderer;
@@ -204,8 +203,6 @@ export class GlassScene {
 
   private phase: Phase = "gone";
   private phaseT = 0;
-  private sliver: { group: THREE.Group; mesh: THREE.Mesh; half: V2; from: number; to: number; t0: number; hover: number; tipX: number; tipY: number } | null = null;
-  private sliverHover = false;
 
   private clock = new THREE.Clock();
   private time = 0;
@@ -264,7 +261,6 @@ export class GlassScene {
       this.camera.updateProjectionMatrix();
       this.glow.uGlowR.value = 300 * L.S;
       this.buildPieces();
-      this.buildSliver();
     }
     this.redraw();
   }
@@ -281,31 +277,11 @@ export class GlassScene {
     this.pointer.active = active;
   }
 
-  setBackHover(on: boolean) {
-    this.sliverHover = on;
-  }
-
   /** Fly every piece in from off-screen. */
   intro() {
     this.randomizeFlights();
     this.phase = "in";
     this.phaseT = this.time + 0.15;
-  }
-
-  shatter() {
-    if (this.phase === "out" || this.phase === "gone") return;
-    this.randomizeFlights();
-    this.phase = "out";
-    this.phaseT = this.time;
-    this.hovered = -1;
-    if (this.sliver) Object.assign(this.sliver, { from: 0, to: 1, t0: this.time + 0.3 });
-  }
-
-  assemble() {
-    if (this.phase !== "gone" && this.phase !== "out") return;
-    this.phase = "in";
-    this.phaseT = this.time + 0.12;
-    if (this.sliver) Object.assign(this.sliver, { from: this.sliverScale(), to: 0, t0: this.time });
   }
 
   start() {
@@ -331,10 +307,6 @@ export class GlassScene {
       p.glass.geometry.dispose();
       p.print.geometry.dispose();
       p.mat.dispose();
-    }
-    if (this.sliver) {
-      this.sliver.mesh.geometry.dispose();
-      (this.sliver.mesh.material as THREE.Material).dispose();
     }
     this.printMat.dispose();
     this.texture.dispose();
@@ -481,51 +453,6 @@ export class GlassScene {
     }
   }
 
-  private buildSliver() {
-    const L = this.L!;
-    if (this.sliver) {
-      this.scene.remove(this.sliver.group);
-      this.sliver.mesh.geometry.dispose();
-      (this.sliver.mesh.material as THREE.Material).dispose();
-    }
-    const k = L.sliver.k;
-    const pts: V2[] = L.sliver.pts.map(([fx, fy]) => [(fx - 0.5) * L.W, (0.5 - fy) * L.H]);
-    const [cx, cy] = centroid(pts);
-    const local = pts.map(([x, y]) => [x - cx, y - cy] as V2);
-    let hx = 0, hy = 0;
-    for (const [x, y] of local) { hx = Math.max(hx, Math.abs(x)); hy = Math.max(hy, Math.abs(y)); }
-    const bevel = 2.4 * k;
-    const geo = new THREE.ExtrudeGeometry(roundedShape(inset(local, bevel), 7 * k), {
-      depth: 11 * k,
-      bevelEnabled: true,
-      bevelThickness: bevel,
-      bevelSize: bevel,
-      bevelSegments: 3,
-      curveSegments: 5,
-    });
-    const mat = glassMaterial();
-    mat.iridescence = 0.35;
-    mat.envMapIntensity = 1.7;
-    mat.clearcoat = 1;
-    const mesh = new THREE.Mesh(geo, mat);
-    const group = new THREE.Group();
-    group.add(mesh);
-    group.position.set(cx, cy, 0);
-    group.scale.setScalar(0.0001);
-    group.visible = false;
-    this.scene.add(group);
-    const prev = this.sliver;
-    this.sliver = { group, mesh, half: [hx, hy], from: prev?.from ?? 0, to: prev?.to ?? 0, t0: prev?.t0 ?? -10, hover: 0, tipX: 0, tipY: 0 };
-  }
-
-  private sliverScale() {
-    const s = this.sliver!;
-    const grow = s.to > s.from;
-    const p = clamp01((this.time - s.t0) / (grow ? 0.5 : 0.25));
-    const e = grow ? easeOutBack(p) : easeInCubic(p);
-    return s.from + (s.to - s.from) * e;
-  }
-
   // ── Frame ────────────────────────────────────────────────
 
   private frame() {
@@ -581,7 +508,6 @@ export class GlassScene {
     }
 
     this.updatePieces(dt);
-    this.updateSliver(dt);
 
     this.renderer.render(this.scene, this.camera);
     this.emitCorners();
@@ -602,10 +528,10 @@ export class GlassScene {
     for (const p of this.pieces) {
       // Flight progress, 0 = at rest, 1 = gone.
       let f = this.phase === "gone" ? 1 : 0;
-      if (this.phase === "out" || this.phase === "in") {
+      if (this.phase === "in") {
         const raw = clamp01((this.time - this.phaseT - p.order * STAGGER) / FLY);
         if (raw < 1) allDone = false;
-        f = this.phase === "out" ? easeInCubic(raw) : 1 - easeOutBack(raw);
+        f = 1 - easeOutBack(raw);
       }
 
       // Hover lift and tip.
@@ -640,37 +566,7 @@ export class GlassScene {
       p.group.visible = f < 0.999;
     }
 
-    if (allDone && this.phase === "out") this.phase = "gone";
     if (allDone && this.phase === "in") this.phase = "rest";
-  }
-
-  private updateSliver(dt: number) {
-    const s = this.sliver;
-    if (!s) return;
-    const scale = this.sliverScale();
-    s.group.visible = scale > 0.002;
-    s.group.scale.setScalar(Math.max(scale, 0.0001));
-    if (!s.group.visible) return;
-
-    let tX = 0, tY = 0;
-    if (this.sliverHover && this.pointer.active) {
-      const L = this.L!;
-      const px = (this.pointer.x / L.W - 0.5) * L.W, py = (0.5 - this.pointer.y / L.H) * L.H;
-      tY = THREE.MathUtils.clamp((px - s.group.position.x) / s.half[0], -1, 1) * 0.14;
-      tX = -THREE.MathUtils.clamp((py - s.group.position.y) / s.half[1], -1, 1) * 0.14;
-    }
-    const k = 1 - Math.exp(-dt / 0.12);
-    s.tipX += (tX - s.tipX) * k;
-    s.tipY += (tY - s.tipY) * k;
-    s.hover += ((this.sliverHover ? 1 : 0) - s.hover) * k;
-    const wob = this.time * Math.PI * 2;
-    s.group.rotation.set(
-      0.08 + 0.04 * Math.sin(wob * 1.05 + 1) + s.tipX,
-      -0.16 + 0.03 * Math.sin(wob * 0.9) + s.tipY,
-      0,
-    );
-    const m = s.mesh.material as THREE.MeshPhysicalMaterial;
-    m.envMapIntensity = 1.7 + 0.5 * s.hover;
   }
 
   private emitCorners() {

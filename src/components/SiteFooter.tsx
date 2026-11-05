@@ -19,7 +19,7 @@ const COLUMNS = [
       { href: "/terms", label: "Terms & conditions" },
       { href: "/privacy", label: "Privacy policy" },
       { href: "/faqs", label: "FAQs" },
-      { href: "/#how-it-works", label: "How it works" },
+      { href: "/how-it-works", label: "How it works" },
     ],
   },
   {
@@ -49,8 +49,8 @@ export function SiteFooter() {
             <div key={col.title}>
               <h2>{col.title}</h2>
               {col.links.map((l) =>
-                // Plain links: a phone number isn't a page, and the home page must hear the hash change to play "How it works".
-                /^tel:|#/.test(l.href) ? (
+                // A phone number isn't a page, so it stays a plain link.
+                l.href.startsWith("tel:") ? (
                   <a key={l.href} href={l.href}>
                     {l.label}
                   </a>
@@ -63,19 +63,6 @@ export function SiteFooter() {
             </div>
           ))}
         </nav>
-
-        <div className="ft-cta">
-          <h2>Need a creator?</h2>
-          <Link href="/book" className="ft-cta-box">
-            Book a service
-            <span className="ft-cta-arrow" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 8h10M9 4l4 4-4 4" />
-              </svg>
-            </span>
-          </Link>
-          <small>Fixed prices, no haggling</small>
-        </div>
       </div>
 
       <div className="ft-stage">

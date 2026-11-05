@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { computeLayout, DISPLAY, BODY, type Content, type Fill, type Item, type Layout } from "./glass/layout";
 import type { GlassScene } from "./glass/scene";
 import { useSession } from "./Session";
-import { inr } from "@/lib/client/format";
 
 const NAV_LINKS = [
   { label: "Explore", href: "/creators" },
@@ -18,31 +17,6 @@ const ACCOUNT = {
   creator: { label: "Creator dashboard", href: "/creator" },
   ops: { label: "Ops dashboard", href: "/ops" },
 };
-
-function terms(from: number) {
-  return [
-    {
-      term: "Same-day service",
-      body: "a verified creator comes to your place and gets the job done. Online jobs like video editing need no visit at all.",
-    },
-    {
-      term: "Five-minute dispatch",
-      body: "every available creator within 10 km is alerted at once and the first to accept takes the job. At minute three the search widens to 25 km.",
-    },
-    {
-      term: "Fixed price",
-      body: `packages from ${inr(from)}, with no haggling. Creators keep 80% of every service.`,
-    },
-    {
-      term: "Safe payment",
-      body: "you pay Srijan up front and the creator is paid after you approve the finished job.",
-    },
-    {
-      term: "Managed campaign",
-      body: "brands book a strategy call; our team shortlists creators across India, runs every deal and reports the results.",
-    },
-  ];
-}
 
 /** CSS matrix3d mapping a w×h box onto the quad TL, TR, BR, BL. */
 function homography(w: number, h: number, q: [number, number][]) {
@@ -71,7 +45,7 @@ function css(fill: Fill): CSSProperties {
 
 type Mode = "pending" | "static" | "live";
 
-export function GlassHero({ fromPrice }: { fromPrice: number }) {
+export function GlassHero() {
   const { session } = useSession();
   const role = session?.user?.role ?? "guest";
   const content = useMemo<Content>(() => ({ navLinks: NAV_LINKS, account: ACCOUNT[role] }), [role]);
@@ -79,7 +53,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
-  const backRef = useRef<HTMLButtonElement>(null);
   const sceneRef = useRef<GlassScene | null>(null);
   const layoutRef = useRef<Layout | null>(null);
   const introDone = useRef(false);
@@ -87,9 +60,7 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
   const [size, setSize] = useState<{ W: number; H: number } | null>(null);
   const [fontsReady, setFontsReady] = useState(false);
   const [mode, setMode] = useState<Mode>("pending");
-  const [view, setView] = useState<"page" | "defs">("page");
   const [hover, setHover] = useState<string | null>(null);
-  const [backHover, setBackHover] = useState(false);
 
   const L = useMemo(
     () => (size && fontsReady ? computeLayout(size.W, size.H, content) : null),
@@ -166,10 +137,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
     }
   }, [mode, L, hover]);
 
-  useEffect(() => {
-    sceneRef.current?.setBackHover(backHover);
-  }, [backHover, mode]);
-
   // Pause rendering while the hero is scrolled away.
   useEffect(() => {
     if (mode !== "live") return;
@@ -178,50 +145,12 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
     return () => io.disconnect();
   }, [mode]);
 
-  useEffect(() => {
-    if (view !== "defs") return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && goBack();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
   function pointer(e: React.PointerEvent, active: boolean) {
     const r = rootRef.current!.getBoundingClientRect();
     sceneRef.current?.setPointer(e.clientX - r.left, e.clientY - r.top, active && e.pointerType !== "touch");
   }
 
-  function shatter() {
-    setHover(null);
-    setView("defs");
-    sceneRef.current?.shatter();
-    setTimeout(() => backRef.current?.focus({ preventScroll: true }), 350);
-  }
-
-  function goBack() {
-    setBackHover(false);
-    setView("page");
-    sceneRef.current?.assemble();
-    setTimeout(() => layerRef.current?.querySelector<HTMLElement>(".gh-pill")?.focus({ preventScroll: true }), 300);
-  }
-
-  // The footer's "How it works" link: from any page it lands here with this hash, and plays the same view.
-  const heroReady = mode !== "pending" && !!L;
-  useEffect(() => {
-    if (!heroReady) return;
-    const open = () => {
-      if (window.location.hash !== "#how-it-works") return;
-      // Clear the hash so the link works again next time.
-      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
-      window.scrollTo({ top: 0, behavior: "instant" });
-      shatter();
-    };
-    open();
-    window.addEventListener("hashchange", open);
-    return () => window.removeEventListener("hashchange", open);
-  }, [heroReady]);
-
   const live = mode === "live";
-  const W = size?.W ?? 0, H = size?.H ?? 0;
 
   function renderItem(it: Item) {
     const on = hover === it.id;
@@ -267,17 +196,10 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
   }
 
   const by = (g: Item["group"]) => L?.items.filter((i) => i.group === g).map(renderItem);
-  const sl = L?.sliver;
-  const sliverBox = sl && (() => {
-    const xs = sl.pts.map((p) => p[0]), ys = sl.pts.map((p) => p[1]);
-    return { w: (Math.max(...xs) - Math.min(...xs)) * W, h: (Math.max(...ys) - Math.min(...ys)) * H };
-  })();
-
   return (
     <section
       ref={rootRef}
       className={`glass-hero gh-${mode}`}
-      data-view={view}
       onPointerMove={(e) => pointer(e, true)}
       onPointerDown={(e) => pointer(e, true)}
       onPointerLeave={(e) => pointer(e, false)}
@@ -295,7 +217,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
         <div
           ref={layerRef}
           className="gh-layer"
-          inert={view === "defs"}
           style={{ width: L.bw, height: L.bh, transform: live ? undefined : `translate(${L.bx}px, ${L.by}px)` }}
         >
           <nav aria-label="Main">{by("nav")}</nav>
@@ -305,40 +226,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
           <div>{by("cta")}</div>
           <p>{by("foot")}</p>
         </div>
-      )}
-
-      <div className="gh-defs" inert={view !== "defs"} aria-hidden={view !== "defs"}>
-        <div className="gh-defs-col">
-          <h2>Srijan, in five terms.</h2>
-          {terms(fromPrice).map((t) => (
-            <p key={t.term}>
-              <b>{t.term}</b> — {t.body}
-            </p>
-          ))}
-        </div>
-      </div>
-
-      {sl && sliverBox && (
-        <button
-          ref={backRef}
-          type="button"
-          className="gh-back"
-          inert={view !== "defs"}
-          style={{
-            left: sl.label[0] * W,
-            top: sl.label[1] * H,
-            width: Math.max(sliverBox.w, 88),
-            height: Math.max(sliverBox.h * 0.7, 44),
-            fontSize: sl.size,
-          }}
-          onClick={goBack}
-          onPointerEnter={() => setBackHover(true)}
-          onPointerLeave={() => setBackHover(false)}
-          onFocus={() => setBackHover(true)}
-          onBlur={() => setBackHover(false)}
-        >
-          ← Back
-        </button>
       )}
     </section>
   );

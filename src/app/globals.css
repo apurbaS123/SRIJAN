@@ -695,27 +695,6 @@ a.gh-item, button.gh-item { cursor: pointer; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 60px var(--violet-glow);
 }
 .gh-static .gh-layer { transition: opacity 0.25s ease; }
-.gh-static[data-view="defs"] .gh-layer,
-.gh-static[data-view="defs"] .gh-static-block { opacity: 0; }
-
-/* Definitions view */
-.gh-defs { position: absolute; inset: 0; z-index: 3; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
-.glass-hero[data-view="defs"] .gh-defs { opacity: 1; pointer-events: auto; transition: opacity 0.4s ease 0.28s; }
-.gh-defs-col { position: absolute; left: 32.4%; width: 33.9%; top: calc(35.9% - max(1.36vw, 20px)); }
-.gh-defs h2 {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: max(1.36vw, 20px);
-  line-height: 1.2;
-  letter-spacing: -0.022em;
-  color: #fff;
-  background: none;
-  -webkit-text-fill-color: #fff;
-  margin: 0 0 max(1.05vw, 14px);
-}
-.gh-defs p { font-size: max(0.73vw, 13px); line-height: 1.72; color: rgba(245, 240, 255, 0.6); margin: 0 0 max(1.05vw, 12px); }
-.gh-defs b { color: #fff; font-weight: 600; }
-
 /* Brand logos under the hero: same background, margins, slab and type as the hero */
 .brand-section {
   position: relative;
@@ -793,7 +772,7 @@ a.gh-item, button.gh-item { cursor: pointer; }
 }
 .ft-top {
   display: grid;
-  grid-template-columns: minmax(220px, 1.25fr) minmax(0, 2fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
   gap: clamp(28px, 4vw, 64px);
   padding: clamp(40px, 4.4vw, 72px) max(20px, 8vw) 0;
 }
@@ -819,32 +798,6 @@ a.gh-item, button.gh-item { cursor: pointer; }
 }
 .ft-columns a { display: block; padding: 4px 0; color: inherit; text-decoration: none; transition: color 0.15s; }
 .ft-columns a:hover { color: #fff; }
-.ft-cta-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 7px 7px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: linear-gradient(100deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.1));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.72);
-  text-decoration: none;
-  transition: border-color 0.15s, color 0.15s;
-}
-.ft-cta-box:hover { border-color: rgba(255, 255, 255, 0.5); color: #fff; }
-.ft-cta-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  background: linear-gradient(160deg, #8b8b90, #4c4c50);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 2px 8px rgba(0, 0, 0, 0.5);
-  color: #fff;
-}
-.ft-cta small { display: block; margin-top: 8px; font-size: 12px; color: rgba(255, 255, 255, 0.42); }
 .ft-stage { position: relative; height: 31vw; margin-top: clamp(16px, 2vw, 32px); }
 .ft-wordmark {
   position: absolute;
@@ -875,36 +828,6 @@ a.gh-item, button.gh-item { cursor: pointer; }
   .ft-hand-right { top: 32vw; width: 45vw; }
 }
 
-/* "← Back" — the label sits on a WebGL glass sliver */
-.gh-back {
-  position: absolute;
-  z-index: 4;
-  transform: translate(-50%, -50%);
-  border: 0;
-  border-radius: 10px;
-  background: none;
-  color: #fff;
-  font-family: var(--body);
-  font-weight: 500;
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease, color 0.15s;
-}
-.glass-hero[data-view="defs"] .gh-back { opacity: 1; pointer-events: auto; transition: opacity 0.3s ease 0.45s, color 0.15s; }
-.gh-back:hover, .gh-back:focus-visible { color: #c4b5fd; }
-.gh-back:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
-.gh-static .gh-back {
-  background: linear-gradient(160deg, rgba(42, 30, 58, 0.95), rgba(16, 10, 24, 0.95));
-  border: 1px solid rgba(196, 181, 253, 0.25);
-  transform: translate(-50%, -50%) rotate(-6deg);
-}
-
-@media (max-width: 899px) {
-  .gh-defs-col { left: 8%; width: 84%; top: 30%; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .gh-defs, .gh-back, .gh-layer, .gh-static-block,
-  .glass-hero[data-view="defs"] .gh-defs,
-  .glass-hero[data-view="defs"] .gh-back { transition: none; }
+  .gh-layer, .gh-static-block { transition: none; }
 }

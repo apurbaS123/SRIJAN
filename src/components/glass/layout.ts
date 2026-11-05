@@ -34,15 +34,6 @@ export interface Item {
   href?: string;
 }
 
-export interface Sliver {
-  /** Outline as viewport fractions. */
-  pts: [number, number][];
-  /** "← Back" label centre, viewport fractions. */
-  label: [number, number];
-  size: number;
-  k: number;
-}
-
 export interface Layout {
   W: number;
   H: number;
@@ -59,7 +50,6 @@ export interface Layout {
   ph: number;
   S: number;
   items: Item[];
-  sliver: Sliver;
 }
 
 export interface Content {
@@ -269,19 +259,7 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     family: BODY, tracking: 0.02, fill: WHITE(0.34),
   });
 
-  // ── "← Back" sliver (viewport fractions) ────────────────
-  const base: [number, number][] = [[0.147, 0.243], [0.252, 0.169], [0.287, 0.277], [0.151, 0.258]];
-  const narrow = W < 900;
-  const sliver: Sliver = narrow
-    ? {
-        pts: base.map(([x, yy]) => [0.06 + (x - 0.147) * 2.8, 0.06 + (yy - 0.169) * 1.3]),
-        label: [0.06 + (0.219 - 0.147) * 2.8, 0.06 + (0.238 - 0.169) * 1.3],
-        size: 15,
-        k: Math.max(W / 1918, 0.5),
-      }
-    : { pts: base, label: [0.219, 0.238], size: Math.max(W * 0.0066, 12), k: W / 1918 };
-
-  return { W, H, portrait, bx: mx, by: my, bw, bh, navH, panelY, pw, ph, S, items, sliver };
+  return { W, H, portrait, bx: mx, by: my, bw, bh, navH, panelY, pw, ph, S, items };
 }
 
 // ── Canvas painting ───────────────────────────────────────
