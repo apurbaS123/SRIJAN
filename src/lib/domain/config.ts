@@ -76,6 +76,9 @@ export const PACKAGES: ShootPackage[] = [
   { id: "video_edit", name: "Video Editing", price: 1500, hours: 0, service: "video_editing", online: true, retired: true, summary: "Online job · no visit · your editor calls you for the clips and sends the finished edit" },
 ];
 
+/** Shown in the footer, FAQs and terms. */
+export const SUPPORT_PHONE = "8638403800";
+
 /** On-demand shoots: creator keeps 80%, Srijan keeps 20%. */
 export const CREATOR_SHARE = 0.8;
 export const PLATFORM_SHARE = 0.2;

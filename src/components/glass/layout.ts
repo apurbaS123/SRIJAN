@@ -32,7 +32,6 @@ export interface Item {
   hoverFill?: Fill;
   align: "left" | "right";
   href?: string;
-  action?: "shatter";
 }
 
 export interface Sliver {
@@ -112,7 +111,7 @@ export const COPY = {
     "Same-day services, fixed prices, paid safely through Srijan.",
   ],
   cta: { label: "Join as creator", href: "/join" },
-  link: "How it works →",
+  cta2: { label: "Join as brand", href: "/login" },
   footL: "© Srijan · Made in India",
 };
 
@@ -241,13 +240,15 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     weight: 700, family: BODY, tracking: 0.01, fill: "#f5f0ff", hoverFill: ACCENT, align: "left",
     href: COPY.cta.href,
   });
-  // "How it works" sits beside the pill, or under it when the row would overflow.
-  const howGap = phone ? 18 : px(30, 20);
-  const beside = pillW + howGap + measure(COPY.link, 600, btnSize, BODY) <= maxW;
-  text({
-    id: "how", kind: "link", group: "cta", text: COPY.link, x: beside ? pad + pillW + howGap : pad,
-    cy: beside ? y : y + btnH / 2 + px(20, 16) + btnSize / 2, size: btnSize,
-    weight: 600, family: BODY, tracking: 0, fill: WHITE(0.82), hoverFill: WHITE(1), action: "shatter",
+  // The second button sits beside the first, or under it when the row would overflow.
+  const ctaGap = phone ? 12 : px(16, 12);
+  const pill2W = measure(COPY.cta2.label, 700, btnSize, BODY) + (phone ? 32 : px(48, 36));
+  const beside = pillW + ctaGap + pill2W <= maxW;
+  items.push({
+    id: "cta2", kind: "pill", group: "cta", text: COPY.cta2.label, x: beside ? pad + pillW + ctaGap : pad,
+    cy: beside ? y : y + btnH + ctaGap, w: pill2W, h: btnH, size: btnSize,
+    weight: 700, family: BODY, tracking: 0.01, fill: "#f5f0ff", hoverFill: ACCENT, align: "left",
+    href: COPY.cta2.href,
   });
 
   const footSize = px(11, 10);
@@ -351,10 +352,6 @@ export function drawPage(canvas: HTMLCanvasElement, L: Layout, hover: string | n
       continue;
     }
     const fill = on && it.hoverFill ? it.hoverFill : it.fill;
-    const base = drawText(c, it, fill, x);
-    if (on && it.action === "shatter") {
-      c.fillStyle = typeof fill === "string" ? fill : "#fff";
-      c.fillRect(x, base + it.size * 0.2, it.w, Math.max(1, it.size * 0.07));
-    }
+    drawText(c, it, fill, x);
   }
 }

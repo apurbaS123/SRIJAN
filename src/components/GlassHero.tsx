@@ -80,7 +80,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLButtonElement>(null);
-  const howRef = useRef<HTMLButtonElement>(null);
   const sceneRef = useRef<GlassScene | null>(null);
   const layoutRef = useRef<Layout | null>(null);
   const introDone = useRef(false);
@@ -202,8 +201,24 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
     setBackHover(false);
     setView("page");
     sceneRef.current?.assemble();
-    setTimeout(() => howRef.current?.focus({ preventScroll: true }), 300);
+    setTimeout(() => layerRef.current?.querySelector<HTMLElement>(".gh-pill")?.focus({ preventScroll: true }), 300);
   }
+
+  // The footer's "How it works" link: from any page it lands here with this hash, and plays the same view.
+  const heroReady = mode !== "pending" && !!L;
+  useEffect(() => {
+    if (!heroReady) return;
+    const open = () => {
+      if (window.location.hash !== "#how-it-works") return;
+      // Clear the hash so the link works again next time.
+      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+      window.scrollTo({ top: 0, behavior: "instant" });
+      shatter();
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, [heroReady]);
 
   const live = mode === "live";
   const W = size?.W ?? 0, H = size?.H ?? 0;
@@ -231,7 +246,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
       style.background = "var(--grad-primary)";
       style.borderRadius = it.w * 0.28;
     }
-    if (!live && on && it.action === "shatter") style.textDecoration = "underline";
     const events = {
       onPointerEnter: () => setHover(it.id),
       onPointerLeave: () => setHover((h) => (h === it.id ? null : h)),
@@ -239,12 +253,6 @@ export function GlassHero({ fromPrice }: { fromPrice: number }) {
       onBlur: () => setHover((h) => (h === it.id ? null : h)),
     };
     const cls = `gh-item gh-${it.kind}`;
-    if (it.action === "shatter")
-      return (
-        <button key={it.id} ref={howRef} type="button" className={cls} style={style} onClick={shatter} {...events}>
-          {it.text}
-        </button>
-      );
     if (it.href)
       return (
         <Link key={it.id} href={it.href} className={cls} style={style} aria-label={it.kind === "mark" ? "Srijan home" : undefined} {...events}>

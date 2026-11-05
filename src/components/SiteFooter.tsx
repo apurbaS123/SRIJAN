@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SUPPORT_PHONE } from "@/lib/domain/config";
 
 const COLUMNS = [
   {
@@ -12,19 +13,18 @@ const COLUMNS = [
     ],
   },
   {
-    title: "Creators",
+    title: "Company",
     links: [
-      { href: "/join", label: "Join as creator" },
-      { href: "/creator", label: "Creator dashboard" },
-      { href: "/creator/payout", label: "Get paid" },
+      { href: "/about", label: "About us" },
+      { href: "/terms", label: "Terms & conditions" },
+      { href: "/privacy", label: "Privacy policy" },
+      { href: "/faqs", label: "FAQs" },
+      { href: "/#how-it-works", label: "How it works" },
     ],
   },
   {
-    title: "Account",
-    links: [
-      { href: "/login", label: "Sign in" },
-      { href: "/bookings", label: "My bookings" },
-    ],
+    title: "Contact us",
+    links: [{ href: `tel:+91${SUPPORT_PHONE}`, label: SUPPORT_PHONE }],
   },
 ];
 
@@ -48,11 +48,18 @@ export function SiteFooter() {
           {COLUMNS.map((col) => (
             <div key={col.title}>
               <h2>{col.title}</h2>
-              {col.links.map((l) => (
-                <Link key={l.href} href={l.href}>
-                  {l.label}
-                </Link>
-              ))}
+              {col.links.map((l) =>
+                // Plain links: a phone number isn't a page, and the home page must hear the hash change to play "How it works".
+                /^tel:|#/.test(l.href) ? (
+                  <a key={l.href} href={l.href}>
+                    {l.label}
+                  </a>
+                ) : (
+                  <Link key={l.href} href={l.href}>
+                    {l.label}
+                  </Link>
+                ),
+              )}
             </div>
           ))}
         </nav>
