@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxy } from "@/proxy";
 
-const PRIMARY = "srijan-rho.vercel.app";
+const PRIMARY = "srijanclub.in";
 
 function request(host: string, path: string, init: { method?: string; origin?: string } = {}) {
   const headers = new Headers({ host, "x-forwarded-host": host });
