@@ -1,12 +1,14 @@
 "use client";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { call, serverNow, useAction, useData } from "@/lib/client/api";
 import type { ShootPackage } from "@/lib/domain/config";
 import type { ServiceKey } from "@/lib/domain/types";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
 import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
-import { ErrorNote, Guard, Loading } from "@/components/ui";
+import { useSession } from "@/components/Session";
+import { ErrorNote, Loading } from "@/components/ui";
 import { TimeWheel } from "@/components/TimeWheel";
 import { useMeta, type Meta } from "@/components/useMeta";
 import { inr } from "@/lib/client/format";
@@ -37,6 +39,34 @@ function slotsFor(date: string, meta: Meta, noticeMs: number) {
 
 function istDate(offsetDays: number) {
   return new Date(serverNow() + IST + offsetDays * 86400_000).toISOString().slice(0, 10);
+}
+
+/** What a guest filled in, kept for this tab while they sign in, so they come back to the same order. */
+const DRAFT_KEY = "srijan.book.draft";
+interface Draft {
+  creatorId: string;
+  cityId: string;
+  zoneId: string;
+  address: string;
+  packageIds: string[];
+  date: string;
+  slot: string;
+  brief: string;
+  referenceUrl: string;
+  aspect: "9:16" | "16:9" | "1:1";
+}
+
+/** The saved order, if there is one that still makes sense. */
+function readDraft(meta: Meta): Draft | null {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as Draft | null;
+    if (!draft) return null;
+    const city = meta.cities.find((c) => c.id === draft.cityId);
+    if (!city?.zones.some((z) => z.id === draft.zoneId)) return null;
+    return draft;
+  } catch {
+    return null;
+  }
 }
 
 /** The services as a menu: one drop-down per kind of creator, with the deliverable under each name. Tap to add or remove. */
@@ -90,40 +120,50 @@ function ServiceMenu({ meta, selected, onToggle }: { meta: Meta; selected: Shoot
 function BookForm({ meta }: { meta: Meta }) {
   const router = useRouter();
   const params = useSearchParams();
-  const [creatorId, setCreatorId] = useState(params.get("creator") ?? "");
+  const { session, loading: sessionLoading, error: sessionError, refresh } = useSession();
+  const user = session?.user;
+  const [draft] = useState(() => readDraft(meta));
+  useEffect(() => sessionStorage.removeItem(DRAFT_KEY), []);
+  const [creatorId, setCreatorId] = useState(draft?.creatorId ?? params.get("creator") ?? "");
   const { data: chosen } = useData<CreatorPublic>(creatorId ? `/api/creators/${creatorId}` : null);
 
-  const [cityId, setCityId] = useState(chosen?.cityId ?? "guwahati");
+  const [cityId, setCityId] = useState(draft?.cityId ?? chosen?.cityId ?? "guwahati");
   const city = meta.cities.find((c) => c.id === cityId)!;
-  const [zoneId, setZoneId] = useState(city.zones[0]!.id);
-  const [address, setAddress] = useState("");
+  const [zoneId, setZoneId] = useState(draft?.zoneId ?? city.zones[0]!.id);
+  const [address, setAddress] = useState(draft?.address ?? "");
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [packageIds, setPackageIds] = useState<string[]>([]);
+  const [packageIds, setPackageIds] = useState<string[]>(draft?.packageIds ?? []);
   const selected = meta.packages.filter((p) => packageIds.includes(p.id));
   const online = selected.length > 0 && selected.every((p) => p.online);
   const onSite = selected.some((p) => !p.online);
   // Everything in an order shares one time, so one on-site service sets the notice for all of it.
   const noticeMs = onSite ? meta.dispatch.onSiteNoticeMs : 0;
-  const [date, setDate] = useState(() => (slotsFor(istDate(0), meta, 0).length ? istDate(0) : istDate(1)));
+  const [date, setDate] = useState(() => (draft && draft.date >= istDate(0) ? draft.date : slotsFor(istDate(0), meta, 0).length ? istDate(0) : istDate(1)));
   const slots = useMemo(() => slotsFor(date, meta, noticeMs), [date, meta, noticeMs]);
-  const [slot, setSlot] = useState("");
-  const [brief, setBrief] = useState("");
-  const [referenceUrl, setReferenceUrl] = useState("");
-  const [aspect, setAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
+  const [slot, setSlot] = useState(draft?.slot ?? "");
+  const [brief, setBrief] = useState(draft?.brief ?? "");
+  const [referenceUrl, setReferenceUrl] = useState(draft?.referenceUrl ?? "");
+  const [aspect, setAspect] = useState<Draft["aspect"]>(draft?.aspect ?? "9:16");
   const { busy, error, run } = useAction();
 
   useEffect(() => {
-    if (chosen) {
+    // A saved order keeps the place the guest chose.
+    if (chosen && !draft) {
       setCityId(chosen.cityId);
       setZoneId(chosen.zoneId);
     }
-  }, [chosen]);
+  }, [chosen, draft]);
   useEffect(() => {
     if (!slots.includes(slot)) setSlot(slots.includes(DEFAULT_SLOT) ? DEFAULT_SLOT : (slots[0] ?? ""));
   }, [slots, slot]);
 
   const total = selected.reduce((sum, p) => sum + p.price, 0);
   const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta, noticeMs).length);
+
+  function saveDraft() {
+    const next: Draft = { creatorId, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect };
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+  }
 
   async function pay() {
     const paidPage = await run(async () => {
@@ -335,24 +375,51 @@ function BookForm({ meta }: { meta: Meta }) {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot || selected.length === 0} onClick={pay}>
-        {busy ? "Processing…" : `Pay ${inr(total)}`}
-      </button>
+      {!session && sessionError ? (
+        <div className="stack">
+          <p className="small">Can’t check whether you’re signed in. {sessionError}</p>
+          <button className="btn btn-ghost btn-block" onClick={() => void refresh()}>
+            Try again
+          </button>
+        </div>
+      ) : sessionLoading && !session ? (
+        <button className="btn btn-accent btn-lg btn-block" disabled>
+          Loading…
+        </button>
+      ) : !user ? (
+        <div className="stack">
+          <p className="strong" style={{ textAlign: "center", margin: 0 }}>
+            Sign in to pay
+          </p>
+          <Link href="/login?next=/book" className="btn btn-accent btn-lg btn-block" onClick={saveDraft}>
+            Sign in
+          </Link>
+        </div>
+      ) : user.role !== "client" ? (
+        <div className="stack">
+          <p className="small" style={{ margin: 0 }}>
+            You’re signed in as {user.name}, whose account can’t book services. Switch to a client account to pay.
+          </p>
+          <Link href="/login?next=/book" className="btn btn-accent btn-lg btn-block" onClick={saveDraft}>
+            Switch account
+          </Link>
+        </div>
+      ) : (
+        <button className="btn btn-accent btn-lg btn-block" disabled={busy || !slot || selected.length === 0} onClick={pay}>
+          {busy ? "Processing…" : `Pay ${inr(total)}`}
+        </button>
+      )}
     </div>
   );
 }
 
 export default function BookPage() {
   const meta = useMeta();
-  return (
-    <Guard role="client">
-      {meta ? (
-        <Suspense fallback={<Loading />}>
-          <BookForm meta={meta} />
-        </Suspense>
-      ) : (
-        <Loading />
-      )}
-    </Guard>
+  return meta ? (
+    <Suspense fallback={<Loading />}>
+      <BookForm meta={meta} />
+    </Suspense>
+  ) : (
+    <Loading />
   );
 }
