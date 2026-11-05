@@ -29,16 +29,18 @@ function Tiles({ brands, copy }: { brands: typeof BRANDS; copy?: boolean }) {
 }
 
 /** The section under the home hero: two rows of logos drifting opposite ways on a smoked-glass slab. Press and drag to scroll them. */
-export function BrandLogos() {
+export function BrandLogos({ heading = true }: { heading?: boolean }) {
   return (
-    <section className="brand-section" aria-labelledby="brands-heading">
+    <section className="brand-section" {...(heading ? { "aria-labelledby": "brands-heading" } : { "aria-label": "Brands we’ve worked with" })}>
       <div className="brand-slab">
-        <header className="brand-head">
-          <p className="brand-eyebrow">FROM LOCAL NAMES TO NATIONAL ONES</p>
-          <h2 id="brands-heading" className="brand-title">
-            WHERE LEADING BRANDS COME
-          </h2>
-        </header>
+        {heading && (
+          <header className="brand-head">
+            <p className="brand-eyebrow">FROM LOCAL NAMES TO NATIONAL ONES</p>
+            <h2 id="brands-heading" className="brand-title">
+              WHERE LEADING BRANDS COME
+            </h2>
+          </header>
+        )}
         <div className="brand-rows">
           {ROWS.map((row, i) => (
             <BrandRow key={i} reverse={i % 2 === 1}>

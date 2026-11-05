@@ -202,7 +202,7 @@ export default function BrandsPage() {
         Book strategy call
       </button>
     </div>
-    <BrandLogos />
+    <BrandLogos heading={false} />
     </>
   );
 }
