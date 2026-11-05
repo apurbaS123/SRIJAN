@@ -85,7 +85,7 @@ export function SiteFooter() {
           <br />
           Srijan
           <br />
-          The creator economy of the Northeast.
+          The creator economy of India.
         </p>
       </div>
     </footer>

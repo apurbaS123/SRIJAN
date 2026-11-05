@@ -49,7 +49,7 @@ function Browse() {
           <div className="field" style={{ minWidth: 200 }}>
             <label htmlFor="city">City</label>
             <select id="city" className="select" value={city} onChange={(e) => setCity(e.target.value)}>
-              <option value="">All Northeast</option>
+              <option value="">All India</option>
               {meta?.cities.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

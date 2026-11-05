@@ -2,7 +2,7 @@
   "name": "srijan",
   "version": "0.1.0",
   "private": true,
-  "description": "Srijan — creator-economy marketplace prototype (Northeast India launch)",
+  "description": "Srijan — creator-economy marketplace prototype (India launch)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

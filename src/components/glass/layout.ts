@@ -105,15 +105,15 @@ function wrap(text: string, maxW: number, weight: number, size: number, family: 
 }
 
 export const COPY = {
-  eyebrow: "THE CREATOR ECONOMY OF THE NORTHEAST",
+  eyebrow: "THE CREATOR ECONOMY OF INDIA",
   h1: ["Create it", "today."],
   sub: [
-    "Verified videographers, editors and influencers across the Northeast.",
+    "Verified videographers, editors and influencers across India.",
     "Same-day services, fixed prices, paid safely through Srijan.",
   ],
   cta: { label: "Join as creator", href: "/join" },
   link: "How it works →",
-  footL: "© Srijan · Made in the Northeast",
+  footL: "© Srijan · Made in India",
 };
 
 const WHITE = (a: number) => `rgba(245, 240, 255, ${a})`;

@@ -6,7 +6,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { DemoNotifications } from "@/components/DemoNotifications";
 
 export const metadata: Metadata = {
-  title: "Srijan — the creator economy of the Northeast",
+  title: "Srijan — the creator economy of India",
   description: "Hire creators, book a same-day video shoot, or run an influencer campaign.",
 };
 

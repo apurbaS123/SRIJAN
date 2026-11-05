@@ -39,7 +39,7 @@ function terms(from: number) {
     },
     {
       term: "Managed campaign",
-      body: "brands book a strategy call; our team shortlists creators across the Northeast, runs every deal and reports the results.",
+      body: "brands book a strategy call; our team shortlists creators across India, runs every deal and reports the results.",
     },
   ];
 }
