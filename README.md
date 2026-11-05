@@ -148,7 +148,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `EMAIL_FROM` | **Required for sign-in.** The address codes come from. It must be a sender verified in Brevo (Senders, Domains & Dedicated IPs); verifying your domain keeps codes out of spam. |
 | `EMAIL_FROM_NAME` | Optional sender name shown in the inbox (default `Srijan`). |
 | `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access. |
-| `POSTGRES_URL` or `DATABASE_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
+| `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |
 | `SRIJAN_DATA_FILE` | Only without Postgres: where the JSON file is stored (default `.data/db.json`). Must be on a persistent disk. |

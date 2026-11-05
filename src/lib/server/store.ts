@@ -40,7 +40,8 @@ async function runAndSave<T>(db: DB, save: (db: DB) => Promise<void> | void, fn:
 
 // ── Postgres ──────────────────────────────────────────────────────────────────
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+// The Vercel ↔ Supabase integration can add a prefix to its variables; this project uses STORAGE_.
+const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.STORAGE_POSTGRES_URL;
 let sql: postgres.Sql | undefined;
 let ready: Promise<void> | undefined;
 
