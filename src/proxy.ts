@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const MAX_BODY_BYTES = 64 * 1024;
 
 /** The live site's one address. A login belongs to one address, so everyone should be on the same one. */
-const PRIMARY_HOST = "srijan-rho.vercel.app";
+const PRIMARY_HOST = "srijan.in";
 /** Razorpay's servers call this one, not a browser. The route checks Razorpay's signature instead. */
 const WEBHOOK_PATH = "/api/payments/webhook";
 
