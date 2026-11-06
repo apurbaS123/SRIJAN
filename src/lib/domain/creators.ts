@@ -24,9 +24,24 @@ export interface SignupInput {
   gear?: string[];
   languages?: string[];
   instagram?: string;
+  portfolio?: string;
   social?: { platform?: string; url?: string };
   followers?: number;
   maxTravelKm?: number;
+}
+
+/** The portfolio link, as https. Any site is fine (Behance, Google Drive, a website…). */
+function cleanPortfolio(value: unknown) {
+  const raw = cleanText(value, 300, "your portfolio link", true);
+  assert(raw, "Add a link to your portfolio");
+  let u: URL | undefined;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {}
+  assert(u && (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes("."), "Paste a full link to your portfolio, e.g. behance.net/yourname");
+  u.protocol = "https:";
+  u.username = u.password = "";
+  return u.toString();
 }
 
 /** A profile link on the chosen site (https only), or undefined when left empty. */
@@ -111,6 +126,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
   const keys = Array.from(new Set(given.map((s) => s?.key))).filter((k): k is ServiceKey => SERVICES.some((s) => s.key === k));
   assert(keys.length > 0, "Pick at least one service you offer");
   const services: CreatorService[] = keys.map((key) => ({ key, ...DEFAULT_SERVICE[key], price: null }));
+  const portfolio = cleanPortfolio(input.portfolio);
   const social = cleanSocial(input.social);
   let instagram = cleanText(input.instagram, 60, "your Instagram handle", true);
   if (instagram) assert(/^@?[\w.]{1,30}$/.test(instagram), "Enter just your Instagram handle, e.g. @yourname");
@@ -139,6 +155,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     services,
     gear,
     instagram: instagram || undefined,
+    portfolio,
     social,
     followers: followers || undefined,
     onDemand: true,

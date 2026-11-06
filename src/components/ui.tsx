@@ -55,10 +55,20 @@ export function SessionError() {
   );
 }
 
+/** The creator's portfolio, opened in a new tab. */
+export function PortfolioLink({ url }: { url?: string }) {
+  if (!url) return null;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="small strong">
+      Portfolio ↗
+    </a>
+  );
+}
+
 /** The creator's main social media account, opened in a new tab. */
 export function SocialLink({ social }: { social?: CreatorPublic["social"] }) {
   if (!social) return null;
-  const label = SOCIAL_PLATFORMS.find((p) => p.key === social.platform)?.label ?? "Profile";
+  const label = SOCIAL_PLATFORMS.find((p) => p.key === social.platform)?.label ?? (social.platform === "other" ? "Website" : "Profile");
   return (
     <a href={social.url} target="_blank" rel="noopener noreferrer nofollow" className="small strong">
       {label} ↗

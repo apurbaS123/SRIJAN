@@ -35,6 +35,7 @@ export default function JoinPage() {
   const [services, setServices] = useState<ServiceKey[]>(["videography"]);
   const [gear, setGear] = useState<string[]>([]);
   const [platform, setPlatform] = useState<SocialPlatform>("instagram");
+  const [portfolio, setPortfolio] = useState("");
   const [socialUrl, setSocialUrl] = useState("");
   const [followers, setFollowers] = useState("");
   const [code, setCode] = useState("");
@@ -65,6 +66,7 @@ export default function JoinPage() {
         services: services.map((key) => ({ key })),
         // Gear picked under a service they later unticked doesn't count.
         gear: gear.filter((g) => services.some((k) => GEAR[k].includes(g))),
+        portfolio,
         social: { platform, url: socialUrl },
         followers: followers ? Number(followers) : undefined,
       }),
@@ -175,6 +177,15 @@ export default function JoinPage() {
       </section>
 
       <section className="card stack">
+        <h2>Your portfolio</h2>
+        <p className="small muted">Link to a portfolio of your best work: Behance, Google Drive, Dribbble, your own website or anything similar. It appears on your public profile, and the Srijan team checks it when reviewing your profile.</p>
+        <div className="field">
+          <label htmlFor="portfolio">Portfolio link</label>
+          <input id="portfolio" className="input" type="url" inputMode="url" required value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="behance.net/yourname" />
+        </div>
+      </section>
+
+      <section className="card stack">
         <h2>Your main social media account</h2>
         <p className="small muted">Link the account that best shows your work. It appears on your public profile, and the Srijan team checks it when reviewing your profile.</p>
         <div className="chips" role="group" aria-label="Site">
@@ -197,7 +208,7 @@ export default function JoinPage() {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password || !portfolio.trim()} onClick={submit}>
         Submit for verification
       </button>
       <p className="tiny muted">Next, you’ll link your bank account or UPI ID. The Srijan team reviews your profile before you can go online.</p>

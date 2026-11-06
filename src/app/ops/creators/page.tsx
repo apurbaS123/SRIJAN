@@ -1,7 +1,7 @@
 "use client";
 import { call, useAction, useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
-import { Avatar, ErrorNote, Guard, SocialLink, Stars } from "@/components/ui";
+import { Avatar, ErrorNote, Guard, PortfolioLink, SocialLink, Stars } from "@/components/ui";
 
 interface AdminData {
   pendingCreators: (CreatorPublic & { kyc: { aadhaar: boolean; pan: boolean }; phone?: string; email?: string })[];
@@ -41,7 +41,10 @@ function Creators() {
               <span className={`badge ${c.kyc.pan ? "badge-green" : "badge-red"}`}>PAN {c.kyc.pan ? "✓" : "missing"}</span>
             </div>
             {c.bio && <p className="small">{c.bio}</p>}
-            {c.social ? <SocialLink social={c.social} /> : <span className="small muted">No social media account linked</span>}
+            <div className="row">
+              {c.portfolio ? <PortfolioLink url={c.portfolio} /> : <span className="small muted">No portfolio linked</span>}
+              {c.social ? <SocialLink social={c.social} /> : <span className="small muted">No social media account linked</span>}
+            </div>
             <div className="chips">
               {c.services.map((s) => (
                 <span key={s.key} className="badge">

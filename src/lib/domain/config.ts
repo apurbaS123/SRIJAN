@@ -212,12 +212,12 @@ export const CAMPAIGN_STAGES: { key: import("./types").CampaignStage; label: str
   { key: "closed", label: "Closed" },
 ];
 
-/** Where a creator's main social media account can be. `hosts` limits links to that site; empty allows any. */
+/** Where a creator's main social media account can be. `hosts` limits links to that site; empty allows any.
+ *  "other" (website) is no longer offered: websites go in the portfolio link. Older profiles may still have it. */
 export const SOCIAL_PLATFORMS: { key: SocialPlatform; label: string; hosts: string[]; example: string }[] = [
   { key: "instagram", label: "Instagram", hosts: ["instagram.com"], example: "instagram.com/yourname" },
   { key: "youtube", label: "YouTube", hosts: ["youtube.com", "youtu.be"], example: "youtube.com/@yourchannel" },
   { key: "facebook", label: "Facebook", hosts: ["facebook.com", "fb.com"], example: "facebook.com/yourpage" },
-  { key: "other", label: "Website / portfolio", hosts: [], example: "yourwebsite.com" },
 ];
 
 /** The cheapest fixed price on the menu for a kind of service. Prices are never set per creator. */

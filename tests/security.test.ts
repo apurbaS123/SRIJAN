@@ -78,7 +78,7 @@ describe("input hardening", () => {
 describe("creator KYC", () => {
   it("ignores self-declared KYC and needs ops to confirm documents", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
+    const input = { name: "New Creator", portfolio: "behance.net/newcreator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
     const { creator } = signUpCreator(db, input, { email: "new.creator@example.com", phone: "9876511111" }, T0);
     expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
     expect(() => setVerification(db, creator.id, "verified")).toThrow(/Aadhaar and PAN/);
@@ -90,7 +90,7 @@ describe("creator KYC", () => {
 
 describe("creator social media link", () => {
   const join = (social: { platform?: string; url?: string } | undefined, phone = "9876522222") =>
-    signUpCreator(seedDb(T0), { name: "New Creator", phone, cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], social }, { email: "creator@example.com", phone }, T0).creator;
+    signUpCreator(seedDb(T0), { name: "New Creator", portfolio: "behance.net/newcreator", phone, cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], social }, { email: "creator@example.com", phone }, T0).creator;
 
   it("keeps a profile link on the chosen site, as https", () => {
     const c = join({ platform: "instagram", url: "www.instagram.com/new.creator" });
@@ -107,13 +107,28 @@ describe("creator social media link", () => {
   it("refuses links to other sites, scripts and bare site addresses", () => {
     expect(() => join({ platform: "instagram", url: "https://evil.example/instagram.com" })).toThrow(/isn’t on Instagram/);
     expect(() => join({ platform: "instagram", url: "https://instagram.com.evil.example/me" })).toThrow(/isn’t on Instagram/);
-    expect(() => join({ platform: "other", url: "javascript:alert(1)" })).toThrow(/profile link/);
+    expect(() => join({ platform: "youtube", url: "javascript:alert(1)" })).toThrow(/profile link/);
+    expect(() => join({ platform: "other", url: "newcreator.in" })).toThrow(/Pick which site/);
     expect(() => join({ platform: "instagram", url: "https://instagram.com/" })).toThrow(/your own Instagram profile/);
     expect(() => join({ platform: "myspace", url: "https://myspace.com/me" })).toThrow(/Pick which site/);
   });
 
-  it("allows any https site for a website or portfolio", () => {
-    expect(join({ platform: "other", url: "newcreator.in" }).social?.url).toBe("https://newcreator.in/");
+});
+
+describe("creator portfolio link", () => {
+  const join = (portfolio: string | undefined) =>
+    signUpCreator(seedDb(T0), { name: "New Creator", phone: "9876522223", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], portfolio }, { email: "folio@example.com", phone: "9876522223" }, T0).creator;
+
+  it("keeps a link on any site, as https", () => {
+    expect(join("newcreator.in").portfolio).toBe("https://newcreator.in/");
+    expect(join("http://behance.net/newcreator").portfolio).toBe("https://behance.net/newcreator");
+  });
+
+  it("is required and must be a real link", () => {
+    expect(() => join(undefined)).toThrow(/portfolio/);
+    expect(() => join("   ")).toThrow(/portfolio/);
+    expect(() => join("javascript:alert(1)")).toThrow(/portfolio/);
+    expect(() => join("not a link")).toThrow(/portfolio/);
   });
 });
 
@@ -140,7 +155,7 @@ describe("email sign-in", () => {
 
   it("refuses a second creator account for the same email", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] };
+    const input = { name: "New Creator", portfolio: "behance.net/newcreator", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] };
     signUpCreator(db, input, { email: "same@example.com", phone: "9876533333" }, T0);
     expect(() => signUpCreator(db, input, { email: "same@example.com", phone: "9876544444" }, T0)).toThrow(/already registered/);
   });

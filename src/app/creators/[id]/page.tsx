@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
-import { Avatar, Loading, SocialLink, Stars } from "@/components/ui";
+import { Avatar, Loading, PortfolioLink, SocialLink, Stars } from "@/components/ui";
 import { inr, when } from "@/lib/client/format";
 
 type Profile = CreatorPublic & { reviews: { rating: number; review?: string; at: number }[] };
@@ -34,7 +34,12 @@ export default function CreatorProfile() {
         </div>
       </div>
       {c.bio && <p>{c.bio}</p>}
-      <SocialLink social={c.social} />
+      {(c.portfolio || c.social) && (
+        <div className="row">
+          <PortfolioLink url={c.portfolio} />
+          <SocialLink social={c.social} />
+        </div>
+      )}
 
       <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", textAlign: "center" }}>
         <div>

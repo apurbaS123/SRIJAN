@@ -32,6 +32,7 @@ export function creatorPublic(c: Creator) {
     services: c.services.map((s) => ({ ...s, price: lowestPrice(s.key) })),
     gear: c.gear,
     instagram: c.instagram,
+    portfolio: c.portfolio,
     social: c.social,
     followers: c.followers,
     engagementRate: c.engagementRate,
