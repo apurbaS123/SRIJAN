@@ -117,6 +117,18 @@ describe("creator social media link", () => {
     expect(c.social).toBeUndefined();
   });
 
+  it("lets the follower count be changed and cleared from the dashboard", () => {
+    const db = seedDb(T0);
+    const c = db.creators[0]!;
+    updateOwnCreator(db, c.id, { followers: 12400 });
+    expect(c.followers).toBe(12400);
+    expect(() => updateOwnCreator(db, c.id, { followers: -5 })).toThrow(/Follower count/);
+    expect(() => updateOwnCreator(db, c.id, { followers: 1.5 })).toThrow(/Follower count/);
+    expect(c.followers).toBe(12400);
+    updateOwnCreator(db, c.id, { followers: null });
+    expect(c.followers).toBeUndefined();
+  });
+
   it("refuses links to other sites, scripts and bare site addresses", () => {
     expect(() => join({ platform: "instagram", url: "https://evil.example/instagram.com" })).toThrow(/isn’t on Instagram/);
     expect(() => join({ platform: "instagram", url: "https://instagram.com.evil.example/me" })).toThrow(/isn’t on Instagram/);

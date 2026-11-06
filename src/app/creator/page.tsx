@@ -168,7 +168,7 @@ function Home() {
       <ErrorNote error={act.error} />
 
       <PortfolioCard url={me.portfolio} />
-      <SocialCard social={me.social} />
+      <SocialCard social={me.social} followers={me.followers} />
 
       {offers.data && offers.data.length > 0 && (
         <section className="stack">
@@ -283,12 +283,13 @@ function PortfolioCard({ url }: { url?: string }) {
 }
 
 /** Add, change or remove the main social media account shown on the public profile. */
-function SocialCard({ social }: { social?: CreatorPublic["social"] }) {
+function SocialCard({ social, followers }: { social?: CreatorPublic["social"]; followers?: number }) {
   const { refresh } = useSession();
   const offered = (p?: string) => SOCIAL_PLATFORMS.find((x) => x.key === p)?.key ?? SOCIAL_PLATFORMS[0]!.key;
   const [editing, setEditing] = useState(false);
   const [platform, setPlatform] = useState<SocialPlatform>(offered(social?.platform));
   const [value, setValue] = useState("");
+  const [count, setCount] = useState("");
   const { busy, error, run } = useAction();
   const label = SOCIAL_PLATFORMS.find((p) => p.key === platform)?.label;
 
@@ -296,11 +297,13 @@ function SocialCard({ social }: { social?: CreatorPublic["social"] }) {
     setPlatform(offered(social?.platform));
     // A link on a site that's no longer offered (Website) can't be kept as is.
     setValue(social && SOCIAL_PLATFORMS.some((p) => p.key === social.platform) ? social.url : "");
+    setCount(followers ? String(followers) : "");
     setEditing(true);
   }
 
-  async function save(url: string) {
-    if (await run(() => call("/api/me/creator", { social: { platform, url } }, "PATCH"))) {
+  async function save(url: string, withCount: boolean) {
+    const body = withCount ? { social: { platform, url }, followers: count.trim() ? Number(count) : null } : { social: { platform, url } };
+    if (await run(() => call("/api/me/creator", body, "PATCH"))) {
       await refresh();
       setEditing(false);
     }
@@ -318,13 +321,19 @@ function SocialCard({ social }: { social?: CreatorPublic["social"] }) {
               </button>
             ))}
           </div>
-          <div className="field">
-            <label htmlFor="social">{label} profile link</label>
-            <input id="social" className="input" type="url" inputMode="url" value={value} onChange={(e) => setValue(e.target.value)} />
+          <div className="row">
+            <div className="field grow">
+              <label htmlFor="social">{label} profile link</label>
+              <input id="social" className="input" type="url" inputMode="url" value={value} onChange={(e) => setValue(e.target.value)} />
+            </div>
+            <div className="field" style={{ maxWidth: 160 }}>
+              <label htmlFor="followers">Followers</label>
+              <input id="followers" className="input" type="number" min={0} step={1} value={count} onChange={(e) => setCount(e.target.value)} />
+            </div>
           </div>
           <ErrorNote error={error} />
           <div className="row">
-            <button className="btn btn-sm btn-primary" disabled={busy || !value.trim()} onClick={() => void save(value)}>
+            <button className="btn btn-sm btn-primary" disabled={busy || !value.trim()} onClick={() => void save(value, true)}>
               Save
             </button>
             <button className="btn btn-sm" disabled={busy} onClick={() => setEditing(false)}>
@@ -334,12 +343,15 @@ function SocialCard({ social }: { social?: CreatorPublic["social"] }) {
         </>
       ) : social ? (
         <div className="row between">
-          <SocialLink social={social} />
+          <span className="row">
+            <SocialLink social={social} />
+            {followers ? <span className="small muted">{followers.toLocaleString("en-IN")} followers</span> : null}
+          </span>
           <div className="row">
             <button className="btn btn-sm" onClick={start}>
               Change
             </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => void save("")}>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void save("", false)}>
               Remove
             </button>
           </div>

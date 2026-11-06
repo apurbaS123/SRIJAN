@@ -183,6 +183,8 @@ export interface CreatorPatch {
   portfolio?: string;
   /** Main social media account; an empty url removes it. */
   social?: { platform?: string; url?: string };
+  /** Follower count; null or 0 removes it. */
+  followers?: number | null;
   /** Live location from the phone (optional). */
   lat?: number;
   lng?: number;
@@ -204,6 +206,11 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
   }
   if (patch.payout !== undefined) setPayoutDetails(c, patch.payout);
   if (patch.portfolio !== undefined) c.portfolio = cleanPortfolio(patch.portfolio);
+  if (patch.followers !== undefined) {
+    const n = patch.followers === null ? 0 : Number(patch.followers);
+    assert(Number.isInteger(n) && n >= 0 && n <= 1_000_000_000, "Follower count looks wrong");
+    c.followers = n || undefined;
+  }
   if (patch.social !== undefined) {
     c.social = cleanSocial(patch.social);
     // Keep the Instagram handle in step with a new Instagram link.
