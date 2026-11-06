@@ -4,6 +4,7 @@ import { SessionProvider } from "@/components/Session";
 import { Header } from "@/components/Header";
 import { SiteFooter } from "@/components/SiteFooter";
 import { DemoNotifications } from "@/components/DemoNotifications";
+import { HelpButton } from "@/components/HelpButton";
 
 export const metadata: Metadata = {
   title: "Srijan — the creator economy of India",
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DemoNotifications />
           <main>{children}</main>
           <SiteFooter />
+          <HelpButton />
         </SessionProvider>
       </body>
     </html>
