@@ -21,13 +21,13 @@ export function notifyCreatorOfOffer(db: DB, b: Booking, offer: Offer) {
   if (!creator) return;
   const place = findZone(b.cityId, b.zoneId);
   notifyUser(db, creator.userId, offer.sentAt, {
-    title: b.online ? "New online job" : "New job near you",
+    title: offer.kind === "direct" ? "A client sent you a job offer" : b.online ? "New online job" : "New job near you",
     lines: [
       `Job: ${findPackage(b.packageId)?.name ?? b.packageId}`,
       `Where: ${b.online ? "Online" : place ? `${place.zone.name}, ${place.city.name}` : ""}`,
       `${b.online ? "Finish by" : "When"}: ${istDateTime(b.scheduledAt)} IST`,
       `Brief: ${b.brief}`,
-      `You earn: ₹${rupees(b.price * CREATOR_SHARE).toLocaleString("en-IN")}. First to accept gets it.`,
+      `You earn: ₹${rupees(b.price * CREATOR_SHARE).toLocaleString("en-IN")}. ${offer.kind === "direct" ? `Only you have this job for ${Math.round((offer.expiresAt - offer.sentAt) / 60_000)} minutes.` : "First to accept gets it."}`,
     ],
     href: "/creator",
     offerId: offer.id,

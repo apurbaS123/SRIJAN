@@ -160,6 +160,47 @@ export function offerView(db: DB, o: Offer) {
 }
 export type OfferView = ReturnType<typeof offerView>;
 
+/**
+ * Jobs clients sent to this creator from their profile, newest first, and what became of each.
+ * Only what the offer itself showed: no address or client details unless the creator took the job.
+ */
+export function sentOffersFor(db: DB, creatorId: string, limit = 20) {
+  return db.bookings
+    .filter((b) => b.requestedCreatorId === creatorId && b.status !== "awaiting_payment")
+    .sort((a, b) => (b.paidAt ?? b.createdAt) - (a.paidAt ?? a.createdAt))
+    .slice(0, limit)
+    .map((b) => {
+      const direct = db.offers.find((o) => o.bookingId === b.id && o.creatorId === creatorId && o.kind === "direct");
+      const outcome: "waiting" | "taken" | "declined" | "missed" | "offline" | "cancelled" | "other_creator" =
+        b.creatorId === creatorId
+          ? "taken"
+          : direct?.status === "pending"
+            ? "waiting"
+            : direct?.status === "declined"
+              ? "declined"
+              : !direct
+                ? "offline"
+                : b.status === "cancelled" || b.status === "refunded"
+                  ? "cancelled"
+                  : b.creatorId
+                    ? "other_creator"
+                    : "missed";
+      const pkg = findPackage(b.packageId);
+      return {
+        bookingId: b.id,
+        code: b.code,
+        sentAt: b.paidAt ?? b.createdAt,
+        packageName: pkg?.name ?? b.packageId,
+        payout: rupees(b.price * CREATOR_SHARE),
+        online: !!b.online,
+        area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
+        scheduledAt: b.scheduledAt,
+        outcome,
+      };
+    });
+}
+export type SentOfferView = ReturnType<typeof sentOffersFor>[number];
+
 export function campaignView(db: DB, c: Campaign, viewer: Viewer) {
   const m = campaignMath(c);
   const isOps = viewer.role === "ops";

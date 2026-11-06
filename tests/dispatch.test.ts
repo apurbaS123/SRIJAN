@@ -3,7 +3,7 @@ import { seedDb } from "./fixtures/seed";
 import { createBooking, recordPayment } from "@/lib/domain/bookings";
 import { signUpCreator } from "@/lib/domain/creators";
 import { acceptOffer, declineOffer } from "@/lib/domain/dispatch";
-import { tickAll } from "@/lib/domain/views";
+import { sentOffersFor, tickAll } from "@/lib/domain/views";
 import { MIN } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
@@ -138,6 +138,45 @@ describe("job offers sent from a creator's profile", () => {
     expect(() => book(db, { requestedCreatorId: "cr_nobody" })).toThrow(/Creator not found/);
     // Bhaswati is a designer, not a videographer.
     expect(() => book(db, { requestedCreatorId: "cr_bhaswati" })).toThrow(/doesn’t offer/);
+  });
+});
+
+describe("job offers a creator was sent", () => {
+  const outcomes = (db: DB) => sentOffersFor(db, "cr_rituraj").map((o) => o.outcome);
+
+  it("lists each one with what became of it", () => {
+    const db = seedDb(T0);
+    const waiting = book(db, { requestedCreatorId: "cr_rituraj" });
+    expect(outcomes(db)).toEqual(["waiting"]);
+
+    const o = db.offers.find((x) => x.bookingId === waiting.id && x.creatorId === "cr_rituraj")!;
+    declineOffer(db, o.id, "cr_rituraj", T0 + MIN);
+    expect(outcomes(db)).toEqual(["declined"]);
+
+    const taken = book(db, { requestedCreatorId: "cr_rituraj", scheduledAt: "2026-10-27T16:00" }, T0 + 2 * MIN);
+    acceptOffer(db, db.offers.find((x) => x.bookingId === taken.id)!.id, "cr_rituraj", T0 + 3 * MIN);
+    expect(sentOffersFor(db, "cr_rituraj")[0]).toMatchObject({ bookingId: taken.id, outcome: "taken" });
+  });
+
+  it("shows offers sent while the creator was offline, and ones they missed", () => {
+    const db = seedDb(T0);
+    const rituraj = db.creators.find((c) => c.id === "cr_rituraj")!;
+    rituraj.available = false;
+    book(db, { requestedCreatorId: "cr_rituraj" });
+    expect(outcomes(db)).toEqual(["offline"]);
+
+    rituraj.available = true;
+    const missed = book(db, { requestedCreatorId: "cr_rituraj", scheduledAt: "2026-10-27T16:00" }, T0 + MIN);
+    tickAll(db, T0 + 6 * MIN);
+    acceptOffer(db, db.offers.find((x) => x.bookingId === missed.id && x.creatorId === "cr_ankita" && x.status === "pending")!.id, "cr_ankita", T0 + 7 * MIN);
+    expect(outcomes(db)).toEqual(["other_creator", "offline"]);
+  });
+
+  it("leaves out unpaid orders and other creators' offers", () => {
+    const db = seedDb(T0);
+    createBooking(db, "u_priya", { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T16:00", brief: "Opening week reel for our café", requestedCreatorId: "cr_rituraj" }, T0);
+    book(db, { requestedCreatorId: "cr_ankita" });
+    expect(sentOffersFor(db, "cr_rituraj")).toEqual([]);
   });
 });
 

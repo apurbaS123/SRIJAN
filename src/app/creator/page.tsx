@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
-import type { BookingView, CreatorPublic, OfferView } from "@/lib/domain/views";
+import type { BookingView, CreatorPublic, OfferView, SentOfferView } from "@/lib/domain/views";
 import { ErrorNote, Guard, SocialLink, StatusBadge } from "@/components/ui";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { SocialPlatform } from "@/lib/domain/types";
@@ -87,6 +87,7 @@ function Home() {
   const me = session?.creator;
   const offers = useData<OfferView[]>("/api/offers", 2000);
   const jobs = useData<BookingView[]>("/api/bookings", 5000);
+  const sent = useData<SentOfferView[]>("/api/offers/sent", 15000);
   const act = useAction();
   const seen = useRef<Set<string>>(new Set());
 
@@ -111,6 +112,8 @@ function Home() {
   }
 
   if (!me) return null;
+  const directOffers = offers.data?.filter((o) => o.kind === "direct") ?? [];
+  const otherAlerts = offers.data?.filter((o) => o.kind !== "direct") ?? [];
   const active = jobs.data?.filter((b) => !["completed", "refunded", "cancelled"].includes(b.status)) ?? [];
   const past = jobs.data?.filter((b) => ["completed", "refunded", "cancelled"].includes(b.status)) ?? [];
   const toReview = past.filter((b) => b.status === "completed" && !b.reviewOfClient).length;
@@ -170,10 +173,20 @@ function Home() {
       <PortfolioCard url={me.portfolio} />
       <SocialCard social={me.social} followers={me.followers} />
 
-      {offers.data && offers.data.length > 0 && (
+      {directOffers.length > 0 && (
+        <section className="stack">
+          <h2>Job offers for you</h2>
+          <p className="small muted">A client sent {directOffers.length === 1 ? "this job" : "these jobs"} to you from your profile. Nobody else can take {directOffers.length === 1 ? "it" : "them"} until the timer runs out.</p>
+          {directOffers.map((o) => (
+            <Alert key={o.id} o={o} onDone={() => { void offers.reload(); void sent.reload(); }} />
+          ))}
+        </section>
+      )}
+
+      {otherAlerts.length > 0 && (
         <section className="stack">
           <h2>Job alerts</h2>
-          {offers.data.map((o) => (
+          {otherAlerts.map((o) => (
             <Alert key={o.id} o={o} onDone={() => void offers.reload()} />
           ))}
         </section>
@@ -218,7 +231,53 @@ function Home() {
           </details>
         )}
       </section>
+
+      {sent.data && sent.data.length > 0 && <SentOffers list={sent.data} />}
     </div>
+  );
+}
+
+const OUTCOME: Record<SentOfferView["outcome"], { label: string; badge: string }> = {
+  waiting: { label: "Waiting for you", badge: "badge-orange" },
+  taken: { label: "You took it", badge: "badge-green" },
+  declined: { label: "You declined", badge: "" },
+  missed: { label: "Missed · sent to everyone", badge: "badge-amber" },
+  offline: { label: "You were offline", badge: "badge-amber" },
+  other_creator: { label: "Another creator took it", badge: "" },
+  cancelled: { label: "Cancelled by the client", badge: "" },
+};
+
+/** Every job a client sent to this creator from their profile, including ones they missed or were offline for. */
+function SentOffers({ list }: { list: SentOfferView[] }) {
+  return (
+    <section className="stack">
+      <h2>Job offers sent to you</h2>
+      {list.map((o) => {
+        const out = OUTCOME[o.outcome];
+        const body = (
+          <>
+            <div className="stack" style={{ gap: 2 }}>
+              <b>
+                {o.packageName} · {when(o.scheduledAt)}
+              </b>
+              <span className="small muted">
+                {o.area} · you earn {inr(o.payout)} · sent {when(o.sentAt)}
+              </span>
+            </div>
+            <span className={`badge ${out.badge}`}>{out.label}</span>
+          </>
+        );
+        return o.outcome === "taken" ? (
+          <Link key={o.bookingId} href={`/creator/jobs/${o.bookingId}`} className="card card-tight row between" style={{ textDecoration: "none", color: "inherit" }}>
+            {body}
+          </Link>
+        ) : (
+          <div key={o.bookingId} className="card card-tight row between">
+            {body}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
