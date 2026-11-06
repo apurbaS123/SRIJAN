@@ -1,7 +1,10 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useData } from "@/lib/client/api";
+import { BookForm } from "@/components/BookForm";
+import { useMeta } from "@/components/useMeta";
 import type { CreatorPublic } from "@/lib/domain/views";
 import { Avatar, Loading, PortfolioLink, SocialLink, Stars } from "@/components/ui";
 import { followerCount, inr, when } from "@/lib/client/format";
@@ -11,6 +14,15 @@ type Profile = CreatorPublic & { reviews: { rating: number; review?: string; at:
 export default function CreatorProfile() {
   const { id } = useParams<{ id: string }>();
   const { data: c, error } = useData<Profile>(`/api/creators/${id}`);
+  const meta = useMeta();
+  const [offerOpen, setOfferOpen] = useState(false);
+  // Back from signing in to pay (?offer=1): open the offer form again, with what they filled in.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("offer") === "1") setOfferOpen(true);
+  }, []);
+  useEffect(() => {
+    if (offerOpen && c && meta) document.getElementById("offer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [offerOpen, c, meta]);
   if (error) return <div className="container page"><p className="error">{error.message}</p></div>;
   if (!c) return <Loading />;
 
@@ -72,14 +84,16 @@ export default function CreatorProfile() {
                   Enquire
                 </Link>
               ) : (
-                <Link href={`/book?creator=${c.id}`} className="btn btn-accent btn-sm">
+                <button className="btn btn-accent btn-sm" onClick={() => setOfferOpen(true)}>
                   Send job offer
-                </Link>
+                </button>
               )}
             </div>
           </div>
         ))}
       </section>
+
+      {offerOpen && (meta ? <BookForm meta={meta} creator={c} /> : <Loading />)}
 
       {c.gear.length > 0 && (
         <section className="stack">
