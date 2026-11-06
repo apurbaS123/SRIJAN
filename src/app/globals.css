@@ -837,8 +837,8 @@ a.gh-item, button.gh-item { cursor: pointer; }
 /* Floating help button (bottom-right on every page). Shows "?" and slides out its label on hover or focus. */
 .help-fab {
   position: fixed;
-  right: max(20px, env(safe-area-inset-right));
-  bottom: max(20px, env(safe-area-inset-bottom));
+  right: max(40px, env(safe-area-inset-right));
+  bottom: max(40px, env(safe-area-inset-bottom));
   z-index: 900;
   display: flex;
   align-items: center;
@@ -864,10 +864,8 @@ a.gh-item, button.gh-item { cursor: pointer; }
   flex: 0 0 56px;
   display: grid;
   place-items: center;
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1;
 }
+.help-fab-icon svg { width: 34px; height: 34px; }
 .help-fab-label {
   padding-right: 22px;
   white-space: nowrap;
@@ -878,8 +876,9 @@ a.gh-item, button.gh-item { cursor: pointer; }
 .help-fab:hover .help-fab-label,
 .help-fab:focus-visible .help-fab-label { opacity: 1; }
 @media (max-width: 600px) {
-  .help-fab { height: 48px; max-width: 48px; right: 14px; bottom: 14px; }
-  .help-fab-icon { flex-basis: 48px; font-size: 22px; }
+  .help-fab { height: 52px; max-width: 52px; right: 24px; bottom: 24px; }
+  .help-fab-icon { flex-basis: 52px; }
+  .help-fab-icon svg { width: 30px; height: 30px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .help-fab, .help-fab-label { transition: none; }
