@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
 import { Avatar, Loading, PortfolioLink, SocialLink, Stars } from "@/components/ui";
-import { inr, when } from "@/lib/client/format";
+import { followerCount, inr, when } from "@/lib/client/format";
 
 type Profile = CreatorPublic & { reviews: { rating: number; review?: string; at: number }[] };
 
@@ -51,7 +51,7 @@ export default function CreatorProfile() {
           <div className="tiny muted">jobs done</div>
         </div>
         <div>
-          <div className="big-num" style={{ fontSize: 24 }}>{c.followers ? `${Math.round(c.followers / 1000)}K` : "—"}</div>
+          <div className="big-num" style={{ fontSize: 24 }}>{c.followers ? followerCount(c.followers) : "—"}</div>
           <div className="tiny muted">{c.instagram ?? "followers"}</div>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function CreatorProfile() {
             </div>
             <p className="small muted">{s.description}</p>
             <div className="row between">
-              <b>{s.key === "influencer" ? `${c.followers ? Math.round(c.followers / 1000) + "K followers" : ""}${c.engagementRate ? ` · ${c.engagementRate}% engagement` : ""}` : s.price ? `From ${inr(s.price)}` : ""}</b>
+              <b>{s.key === "influencer" ? `${c.followers ? `${followerCount(c.followers)} followers` : ""}${c.engagementRate ? ` · ${c.engagementRate}% engagement` : ""}` : s.price ? `From ${inr(s.price)}` : ""}</b>
               {s.key === "influencer" ? (
                 <Link href="/brands" className="btn btn-violet btn-sm">
                   Enquire

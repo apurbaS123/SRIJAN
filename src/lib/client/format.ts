@@ -36,3 +36,8 @@ export const initials = (name: string) =>
 export function istInputValue(ms: number) {
   return new Date(ms + 5.5 * 3600_000).toISOString().slice(0, 16);
 }
+
+/** Follower count for profiles: the exact number under 1,000, otherwise rounded to thousands ("12K"). */
+export function followerCount(n: number) {
+  return n < 1000 ? String(n) : `${Math.round(n / 1000)}K`;
+}
