@@ -1,10 +1,11 @@
 // Finding a creator for an on-demand shoot.
 //
-// 1. Every available, verified creator within 10 km is alerted at once (5 min window).
+// 1. If the client sent the job to a creator from their profile, only that creator is alerted first (5 min).
+// 2. Then every available, verified creator within 10 km is alerted at once (5 min window).
 //    The first to accept gets the job.
-// 2. At minute 3 the search widens to 25 km for the rest of the same window.
-// 3. Creators who come online during the window are alerted too.
-// 4. If nobody accepts by the end of the window, the booking goes to the ops team.
+// 3. At minute 3 the search widens to 25 km for the rest of the same window.
+// 4. Creators who come online during the window are alerted too.
+// 5. If nobody accepts by the end of the window, the booking goes to the ops team.
 //
 // Only creators who offer the job's service are alerted. Online jobs skip the distance rules.
 //
@@ -114,13 +115,23 @@ function startBroadcast(db: DB, b: Booking, at: number) {
 /** Called once, right after payment. */
 export function startDispatch(db: DB, b: Booking, now: number) {
   b.dispatch = {
-    phase: "broadcast",
+    phase: "direct",
     roundStartedAt: now,
     roundEndsAt: now,
     widened: false,
     radiusKm: DISPATCH.initialRadiusKm,
     notifiedCreatorIds: [],
   };
+  if (b.requestedCreatorId) {
+    const c = db.creators.find((x) => x.id === b.requestedCreatorId);
+    if (c && canTakeJob(c, jobService(b)) && c.available && !isCreatorBusy(db, c.id, b)) {
+      b.dispatch.roundEndsAt = now + DISPATCH.directOfferMs;
+      createOffer(db, b, c.id, "direct", now, b.online ? 0 : haversineKm(c, b));
+      log(b, now, `Sent to ${c.name} first · 5 min to accept`);
+      return;
+    }
+    log(b, now, `${c?.name ?? "The chosen creator"} isn’t available right now — alerting everyone nearby`);
+  }
   startBroadcast(db, b, now);
 }
 
@@ -139,7 +150,7 @@ export function tickDispatch(db: DB, b: Booking, now: number) {
   if (b.status !== "searching") return;
   const d = b.dispatch;
 
-  // Clients can no longer pick a creator. This only moves on bookings sent to one creator before that changed.
+  // Sent to one creator first: move on to everyone when they decline or their 5 minutes are up.
   if (d.phase === "direct") {
     const direct = [...db.offers].reverse().find((o) => o.bookingId === b.id && o.kind === "direct");
     const declined = direct?.status === "declined";

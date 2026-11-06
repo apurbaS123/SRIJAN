@@ -8,7 +8,7 @@ export interface Meta {
   cities: City[];
   services: { key: ServiceKey; label: string }[];
   creatorShare: number;
-  dispatch: { onSiteNoticeMs: number; maxDaysAhead: number; firstStartHour: number; lastStartHour: number; initialRadiusKm: number; widenedRadiusKm: number; broadcastWindowMs: number };
+  dispatch: { onSiteNoticeMs: number; maxDaysAhead: number; firstStartHour: number; lastStartHour: number; initialRadiusKm: number; widenedRadiusKm: number; broadcastWindowMs: number; directOfferMs: number };
   campaignStages: { key: CampaignStage; label: string }[];
   campaignCommission: { min: number; max: number; default: number };
 }

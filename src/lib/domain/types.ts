@@ -132,7 +132,7 @@ export interface Booking {
   brief: string;
   aspect: "9:16" | "16:9" | "1:1";
   referenceUrl?: string;
-  /** Only on older bookings: clients can no longer pick a creator. */
+  /** The creator the client sent this job to from their profile. They get it first, alone. */
   requestedCreatorId?: string;
   creatorId?: string;
   status: BookingStatus;

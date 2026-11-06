@@ -72,8 +72,8 @@ export default function CreatorProfile() {
                   Enquire
                 </Link>
               ) : (
-                <Link href="/book" className="btn btn-accent btn-sm">
-                  Book a service
+                <Link href={`/book?creator=${c.id}`} className="btn btn-accent btn-sm">
+                  Send job offer
                 </Link>
               )}
             </div>

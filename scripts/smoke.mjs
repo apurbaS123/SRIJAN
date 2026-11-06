@@ -617,7 +617,7 @@ async function run() {
   r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
   ok(r.status === 409, "a sent refund can’t be marked twice");
 
-  // --- A request naming one creator still alerts everyone ------------------------
+  // --- A job offer sent to one creator from their profile -----------------------
   r = await priya.req("/api/session");
   r = await priya.bookAndPay({
     packageIds: ["video_milestone"],
@@ -629,11 +629,11 @@ async function run() {
     requestedCreatorId: cr.nilakshi,
   });
   const b3 = r.data;
-  ok(b3.dispatch.phase === "broadcast", "a client can’t send a job to one creator");
+  ok(b3.dispatch.phase === "direct", "the chosen creator gets the job first");
   r = await nilakshi.req("/api/offers");
   r = await nilakshi.req(`/api/offers/${r.data.find((o) => o.bookingId === b3.id).id}`, { action: "decline" });
   r = await priya.req(`/api/bookings/${b3.id}`);
-  ok(r.data.dispatch.phase === "broadcast", "the search carries on after a decline");
+  ok(r.data.dispatch.phase === "broadcast", "everyone nearby is alerted after the chosen creator declines");
   await advance(6);
   r = await ops.req(`/api/bookings/${b3.id}`, { action: "assign", creatorId: cr.nilakshi });
   ok(r.data.status === "assigned", "ops assigns by hand after the window");

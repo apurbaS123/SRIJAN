@@ -90,7 +90,9 @@ export const CREATOR_SHARE = 0.8;
 export const PLATFORM_SHARE = 0.2;
 
 export const DISPATCH = {
-  /** Every available creator nearby gets this long. */
+  /** Client sent the job to one creator from their profile: that creator alone gets this long. */
+  directOfferMs: 5 * MIN,
+  /** Then (or straight away) every available creator nearby gets this long. */
   broadcastWindowMs: 5 * MIN,
   /** If nobody has accepted by this point, the search area widens. */
   widenAfterMs: 3 * MIN,

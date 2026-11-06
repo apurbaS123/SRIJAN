@@ -94,42 +94,50 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
   });
 });
 
-describe("clients can't pick a creator", () => {
-  it("alerts everyone even if a request names one creator", () => {
+describe("job offers sent from a creator's profile", () => {
+  it("goes to that creator alone first, for 5 minutes", () => {
     const db = seedDb(T0);
-    const b = book(db, { requestedCreatorId: "cr_rituraj" } as never);
-    expect(b.requestedCreatorId).toBeUndefined();
-    expect(b.dispatch.phase).toBe("broadcast");
-    expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_rituraj"]);
+    const b = book(db, { requestedCreatorId: "cr_rituraj" });
+    expect(b.requestedCreatorId).toBe("cr_rituraj");
+    expect(b.dispatch.phase).toBe("direct");
+    expect(b.dispatch.roundEndsAt).toBe(T0 + 5 * MIN);
+    expect(pendingFor(db, b.id)).toEqual(["cr_rituraj"]);
   });
 
-  /** A booking made before the option was removed, still waiting on the creator it was sent to. */
-  function sentToOne(db: DB) {
-    const b = book(db);
-    db.offers = db.offers.filter((o) => o.bookingId !== b.id || o.creatorId === "cr_rituraj");
-    const o = db.offers.find((x) => x.bookingId === b.id)!;
-    o.kind = "direct";
-    b.dispatch.phase = "direct";
-    return { b, o };
-  }
-
-  it("still moves an older booking on to everyone after 5 minutes", () => {
+  it("moves on to everyone after 5 minutes", () => {
     const db = seedDb(T0);
-    const { b } = sentToOne(db);
+    const b = book(db, { requestedCreatorId: "cr_rituraj" });
     tickAll(db, T0 + 5 * MIN);
     expect(b.dispatch.phase).toBe("broadcast");
+    // Missing the 5 minutes isn't a no, so they're alerted again with everyone else.
     expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_rituraj"]);
     tickAll(db, T0 + 10 * MIN);
     expect(b.status).toBe("needs_ops");
   });
 
-  it("still moves an older booking on when that creator declines", () => {
+  it("moves on to everyone straight away when that creator declines", () => {
     const db = seedDb(T0);
-    const { b, o } = sentToOne(db);
+    const b = book(db, { requestedCreatorId: "cr_rituraj" });
+    const o = db.offers.find((x) => x.bookingId === b.id)!;
     declineOffer(db, o.id, "cr_rituraj", T0 + MIN);
     expect(b.dispatch.phase).toBe("broadcast");
     expect(b.dispatch.roundEndsAt).toBe(T0 + 6 * MIN);
     expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba"]);
+  });
+
+  it("alerts everyone at once when that creator is offline", () => {
+    const db = seedDb(T0);
+    db.creators.find((c) => c.id === "cr_rituraj")!.available = false;
+    const b = book(db, { requestedCreatorId: "cr_rituraj" });
+    expect(b.dispatch.phase).toBe("broadcast");
+    expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba"]);
+  });
+
+  it("refuses unknown creators and services they don't offer", () => {
+    const db = seedDb(T0);
+    expect(() => book(db, { requestedCreatorId: "cr_nobody" })).toThrow(/Creator not found/);
+    // Bhaswati is a designer, not a videographer.
+    expect(() => book(db, { requestedCreatorId: "cr_bhaswati" })).toThrow(/doesn’t offer/);
   });
 });
 

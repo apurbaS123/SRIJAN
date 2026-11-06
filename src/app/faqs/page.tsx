@@ -13,7 +13,7 @@ const FAQS = [
   },
   {
     q: "How do I get a creator?",
-    a: `You don’t need to choose one. Every available creator within ${DISPATCH.initialRadiusKm} km is alerted, and the first to accept takes the job. If nobody has accepted after ${DISPATCH.widenAfterMs / 60_000} minutes, the search widens to ${DISPATCH.widenedRadiusKm} km.`,
+    a: `You don’t need to choose one. To work with a particular creator, press Send job offer on their profile: they get the job first, for ${DISPATCH.directOfferMs / 60_000} minutes. Otherwise every available creator within ${DISPATCH.initialRadiusKm} km is alerted, and the first to accept takes the job. If nobody has accepted after ${DISPATCH.widenAfterMs / 60_000} minutes, the search widens to ${DISPATCH.widenedRadiusKm} km.`,
   },
   {
     q: "Which cities do you cover?",
