@@ -5,7 +5,7 @@ import type { CampaignView, CreatorPublic } from "@/lib/domain/views";
 import type { CampaignStage } from "@/lib/domain/types";
 import { ErrorNote, Guard } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
-import { inr, when } from "@/lib/client/format";
+import { followerCount, inr, when } from "@/lib/client/format";
 
 function Editor({ c, creators, onSaved }: { c: CampaignView; creators: CreatorPublic[]; onSaved: (c: CampaignView) => void }) {
   const meta = useMeta();
@@ -127,7 +127,7 @@ function Editor({ c, creators, onSaved }: { c: CampaignView; creators: CreatorPu
                     .map((cr) => (
                       <option key={cr.id} value={cr.id}>
                         {cr.name} · {cr.area}
-                        {cr.followers ? ` · ${Math.round(cr.followers / 1000)}K` : ""}
+                        {cr.followers ? ` · ${followerCount(cr.followers)}` : ""}
                       </option>
                     ))}
                 </select>
