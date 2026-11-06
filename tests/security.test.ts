@@ -104,6 +104,19 @@ describe("creator social media link", () => {
     expect(join({ platform: "instagram", url: "  " }).social).toBeUndefined();
   });
 
+  it("can be changed and removed from the dashboard", () => {
+    const db = seedDb(T0);
+    const c = db.creators[0]!;
+    updateOwnCreator(db, c.id, { social: { platform: "instagram", url: "instagram.com/fresh.handle" } });
+    expect(c.social).toEqual({ platform: "instagram", url: "https://instagram.com/fresh.handle" });
+    expect(c.instagram).toBe("@fresh.handle");
+    expect(() => updateOwnCreator(db, c.id, { social: { platform: "youtube", url: "https://evil.example/x" } })).toThrow(/isn’t on YouTube/);
+    expect(() => updateOwnCreator(db, c.id, { social: { platform: "other", url: "mysite.in" } })).toThrow(/Pick which site/);
+    expect(c.social?.platform).toBe("instagram");
+    updateOwnCreator(db, c.id, { social: { platform: "instagram", url: "" } });
+    expect(c.social).toBeUndefined();
+  });
+
   it("refuses links to other sites, scripts and bare site addresses", () => {
     expect(() => join({ platform: "instagram", url: "https://evil.example/instagram.com" })).toThrow(/isn’t on Instagram/);
     expect(() => join({ platform: "instagram", url: "https://instagram.com.evil.example/me" })).toThrow(/isn’t on Instagram/);

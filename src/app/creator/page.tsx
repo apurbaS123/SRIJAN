@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
-import type { BookingView, OfferView } from "@/lib/domain/views";
-import { ErrorNote, Guard, StatusBadge } from "@/components/ui";
+import type { BookingView, CreatorPublic, OfferView } from "@/lib/domain/views";
+import { ErrorNote, Guard, SocialLink, StatusBadge } from "@/components/ui";
+import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
+import type { SocialPlatform } from "@/lib/domain/types";
 import { useSession } from "@/components/Session";
 import { countdown, inr, when } from "@/lib/client/format";
 
@@ -166,6 +168,7 @@ function Home() {
       <ErrorNote error={act.error} />
 
       <PortfolioCard url={me.portfolio} />
+      <SocialCard social={me.social} />
 
       {offers.data && offers.data.length > 0 && (
         <section className="stack">
@@ -272,6 +275,81 @@ function PortfolioCard({ url }: { url?: string }) {
           <span className="small muted">No portfolio linked yet.</span>
           <button className="btn btn-sm btn-accent" onClick={() => { setValue(""); setEditing(true); }}>
             Add portfolio link
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Add, change or remove the main social media account shown on the public profile. */
+function SocialCard({ social }: { social?: CreatorPublic["social"] }) {
+  const { refresh } = useSession();
+  const offered = (p?: string) => SOCIAL_PLATFORMS.find((x) => x.key === p)?.key ?? SOCIAL_PLATFORMS[0]!.key;
+  const [editing, setEditing] = useState(false);
+  const [platform, setPlatform] = useState<SocialPlatform>(offered(social?.platform));
+  const [value, setValue] = useState("");
+  const { busy, error, run } = useAction();
+  const label = SOCIAL_PLATFORMS.find((p) => p.key === platform)?.label;
+
+  function start() {
+    setPlatform(offered(social?.platform));
+    // A link on a site that's no longer offered (Website) can't be kept as is.
+    setValue(social && SOCIAL_PLATFORMS.some((p) => p.key === social.platform) ? social.url : "");
+    setEditing(true);
+  }
+
+  async function save(url: string) {
+    if (await run(() => call("/api/me/creator", { social: { platform, url } }, "PATCH"))) {
+      await refresh();
+      setEditing(false);
+    }
+  }
+
+  return (
+    <section className="card stack">
+      <h2>Social media account</h2>
+      {editing ? (
+        <>
+          <div className="chips" role="group" aria-label="Site">
+            {SOCIAL_PLATFORMS.map((p) => (
+              <button key={p.key} type="button" aria-pressed={platform === p.key} className={`chip${platform === p.key ? " on" : ""}`} onClick={() => setPlatform(p.key)}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="field">
+            <label htmlFor="social">{label} profile link</label>
+            <input id="social" className="input" type="url" inputMode="url" value={value} onChange={(e) => setValue(e.target.value)} />
+          </div>
+          <ErrorNote error={error} />
+          <div className="row">
+            <button className="btn btn-sm btn-primary" disabled={busy || !value.trim()} onClick={() => void save(value)}>
+              Save
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : social ? (
+        <div className="row between">
+          <SocialLink social={social} />
+          <div className="row">
+            <button className="btn btn-sm" onClick={start}>
+              Change
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void save("")}>
+              Remove
+            </button>
+          </div>
+          <ErrorNote error={error} />
+        </div>
+      ) : (
+        <div className="row between">
+          <span className="small muted">No social media account linked yet.</span>
+          <button className="btn btn-sm btn-accent" onClick={start}>
+            Add social media link
           </button>
         </div>
       )}

@@ -181,6 +181,8 @@ export interface CreatorPatch {
   payout?: PayoutInput;
   /** Portfolio link; an empty string removes it. */
   portfolio?: string;
+  /** Main social media account; an empty url removes it. */
+  social?: { platform?: string; url?: string };
   /** Live location from the phone (optional). */
   lat?: number;
   lng?: number;
@@ -202,6 +204,14 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
   }
   if (patch.payout !== undefined) setPayoutDetails(c, patch.payout);
   if (patch.portfolio !== undefined) c.portfolio = cleanPortfolio(patch.portfolio);
+  if (patch.social !== undefined) {
+    c.social = cleanSocial(patch.social);
+    // Keep the Instagram handle in step with a new Instagram link.
+    if (c.social?.platform === "instagram") {
+      const handle = new URL(c.social.url).pathname.split("/")[1] ?? "";
+      if (/^[\w.]{1,30}$/.test(handle)) c.instagram = `@${handle}`;
+    }
+  }
   if (patch.lat !== undefined || patch.lng !== undefined) {
     const lat = Number(patch.lat);
     const lng = Number(patch.lng);
