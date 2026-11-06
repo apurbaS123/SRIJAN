@@ -178,10 +178,9 @@ export default function JoinPage() {
 
       <section className="card stack">
         <h2>Your portfolio</h2>
-        <p className="small muted">Link to a portfolio of your best work: Behance, Google Drive, Dribbble, your own website or anything similar. It appears on your public profile, and the Srijan team checks it when reviewing your profile.</p>
         <div className="field">
           <label htmlFor="portfolio">Portfolio link</label>
-          <input id="portfolio" className="input" type="url" inputMode="url" required value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="behance.net/yourname" />
+          <input id="portfolio" className="input" type="url" inputMode="url" value={portfolio} onChange={(e) => setPortfolio(e.target.value)} />
         </div>
       </section>
 
@@ -208,7 +207,7 @@ export default function JoinPage() {
       </section>
 
       <ErrorNote error={error} />
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password || !portfolio.trim()} onClick={submit}>
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
         Submit for verification
       </button>
       <p className="tiny muted">Next, you’ll link your bank account or UPI ID. The Srijan team reviews your profile before you can go online.</p>

@@ -171,7 +171,7 @@ describe("only the right field is alerted", () => {
 
   it("gives every new creator alerts, whatever they offer", () => {
     const db = seedDb(T0);
-    const { user, creator } = signUpCreator(db, { name: "New Writer", portfolio: "behance.net/newcreator", phone: "9876511113", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "content_writing" }] }, { email: "writer@example.com", phone: "9876511113" }, T0);
+    const { user, creator } = signUpCreator(db, { name: "New Writer", phone: "9876511113", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "content_writing" }] }, { email: "writer@example.com", phone: "9876511113" }, T0);
     creator.verification = "verified";
     creator.available = true;
     creator.upiId = "writer@okaxis";

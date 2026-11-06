@@ -78,7 +78,7 @@ describe("input hardening", () => {
 describe("creator KYC", () => {
   it("ignores self-declared KYC and needs ops to confirm documents", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", portfolio: "behance.net/newcreator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
+    const input = { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
     const { creator } = signUpCreator(db, input, { email: "new.creator@example.com", phone: "9876511111" }, T0);
     expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
     expect(() => setVerification(db, creator.id, "verified")).toThrow(/Aadhaar and PAN/);
@@ -124,9 +124,12 @@ describe("creator portfolio link", () => {
     expect(join("http://behance.net/newcreator").portfolio).toBe("https://behance.net/newcreator");
   });
 
-  it("is required and must be a real link", () => {
-    expect(() => join(undefined)).toThrow(/portfolio/);
-    expect(() => join("   ")).toThrow(/portfolio/);
+  it("is optional", () => {
+    expect(join(undefined).portfolio).toBeUndefined();
+    expect(join("   ").portfolio).toBeUndefined();
+  });
+
+  it("must be a real link when given", () => {
     expect(() => join("javascript:alert(1)")).toThrow(/portfolio/);
     expect(() => join("not a link")).toThrow(/portfolio/);
   });
@@ -155,7 +158,7 @@ describe("email sign-in", () => {
 
   it("refuses a second creator account for the same email", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", portfolio: "behance.net/newcreator", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] };
+    const input = { name: "New Creator", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] };
     signUpCreator(db, input, { email: "same@example.com", phone: "9876533333" }, T0);
     expect(() => signUpCreator(db, input, { email: "same@example.com", phone: "9876544444" }, T0)).toThrow(/already registered/);
   });

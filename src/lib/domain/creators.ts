@@ -30,15 +30,15 @@ export interface SignupInput {
   maxTravelKm?: number;
 }
 
-/** The portfolio link, as https. Any site is fine (Behance, Google Drive, a website…). */
+/** The optional portfolio link, as https. Any site is fine. */
 function cleanPortfolio(value: unknown) {
   const raw = cleanText(value, 300, "your portfolio link", true);
-  assert(raw, "Add a link to your portfolio");
+  if (!raw) return undefined;
   let u: URL | undefined;
   try {
     u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
   } catch {}
-  assert(u && (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes("."), "Paste a full link to your portfolio, e.g. behance.net/yourname");
+  assert(u && (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes("."), "Paste a full link to your portfolio");
   u.protocol = "https:";
   u.username = u.password = "";
   return u.toString();

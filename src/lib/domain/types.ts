@@ -60,7 +60,7 @@ export interface Creator {
   services: CreatorService[];
   gear: string[];
   instagram?: string;
-  /** Link to the creator's portfolio of work. Required at sign-up; older profiles may not have one. */
+  /** Link to the creator's portfolio of work. Optional. */
   portfolio?: string;
   /** Main social media account, linked on the public profile. */
   social?: { platform: SocialPlatform; url: string };
