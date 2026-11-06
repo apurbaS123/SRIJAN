@@ -45,7 +45,7 @@ const FAQS = [
   },
   {
     q: "How do I contact Srijan?",
-    a: `Call us on ${SUPPORT_PHONE}.`,
+    a: `Call us on ${SUPPORT_PHONE}, or raise a ticket on the Help & support page (/support) and we’ll reply by email.`,
   },
 ];
 

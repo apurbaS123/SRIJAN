@@ -32,3 +32,61 @@ export async function sendEmailCode(email: string, code: string) {
   }
   return false;
 }
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+export interface SupportTicket {
+  ref: string;
+  topic: string;
+  subject: string;
+  message: string;
+  name: string;
+  email: string;
+  phone?: string;
+  bookingCode?: string;
+  account?: string;
+}
+
+/** Emails a help ticket to the support inbox, with Reply-To set to the person who raised it. Never throws. */
+export async function sendSupportTicket(to: string, t: SupportTicket) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) return false;
+  const rows: [string, string | undefined][] = [
+    ["Ticket", t.ref],
+    ["Topic", t.topic],
+    ["Name", t.name],
+    ["Email", t.email],
+    ["Phone", t.phone],
+    ["Booking reference", t.bookingCode],
+    ["Signed in as", t.account],
+  ];
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: process.env.EMAIL_FROM_NAME || "Srijan", email: from },
+        to: [{ email: to }],
+        replyTo: { email: t.email, name: t.name },
+        subject: `[${t.ref}] ${t.topic}: ${t.subject}`,
+        htmlContent: `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a002e">
+  <h2 style="margin:0 0 16px">New help ticket ${esc(t.ref)}</h2>
+  <table style="border-collapse:collapse;margin:0 0 16px">${rows
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#6b5a7e">${k}</td><td style="padding:4px 0">${esc(v!)}</td></tr>`)
+    .join("")}</table>
+  <p style="margin:0 0 8px;font-weight:700">${esc(t.subject)}</p>
+  <p style="margin:0 0 16px;white-space:pre-wrap">${esc(t.message)}</p>
+  <p style="margin:0;color:#6b5a7e">Reply to this email to answer ${esc(t.name)} directly.</p>
+</div>`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return true;
+    console.error(`Support ticket ${t.ref} email failed: ${res.status} ${(await res.text()).slice(0, 500)}`);
+  } catch (e) {
+    console.error(`Support ticket ${t.ref} email failed`, e);
+  }
+  return false;
+}

@@ -79,6 +79,12 @@ export const PACKAGES: ShootPackage[] = [
 /** Shown in the footer, FAQs and terms. */
 export const SUPPORT_PHONE = "8638403800";
 
+/** Help tickets from /support are emailed here. */
+export const SUPPORT_EMAIL = "hadescorps123@gmail.com";
+
+/** Topics people can pick when they raise a help ticket. */
+export const SUPPORT_TOPICS = ["General question", "Booking", "Payment or refund", "Creator account", "Brand campaign", "Problem with the website", "Other"] as const;
+
 /** On-demand shoots: creator keeps 80%, Srijan keeps 20%. */
 export const CREATOR_SHARE = 0.8;
 export const PLATFORM_SHARE = 0.2;

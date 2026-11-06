@@ -24,7 +24,10 @@ const COLUMNS = [
   },
   {
     title: "Contact us",
-    links: [{ href: `tel:+91${SUPPORT_PHONE}`, label: SUPPORT_PHONE }],
+    links: [
+      { href: `tel:+91${SUPPORT_PHONE}`, label: SUPPORT_PHONE },
+      { href: "/support", label: "Raise a ticket" },
+    ],
   },
 ];
 
