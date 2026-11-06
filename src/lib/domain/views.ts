@@ -74,6 +74,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
   const creatorUser = creator ? db.users.find((u) => u.id === creator.userId) : undefined;
   const earning = db.ledger.find((l) => l.type === "creator_earning" && l.bookingId === b.id);
   const pendingOffers = db.offers.filter((o) => o.bookingId === b.id && o.status === "pending").length;
+  const requested = b.requestedCreatorId ? db.creators.find((c) => c.id === b.requestedCreatorId) : undefined;
   return {
     id: b.id,
     code: b.code,
@@ -107,6 +108,10 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     refund: isOps || isClient ? (b.refund ? { amount: b.refund.amount, status: b.refund.status } : null) : undefined,
     report: b.report ?? null,
     requestedCreatorId: b.requestedCreatorId,
+    /** The creator the client sent this job to from their profile, and what became of it. */
+    requestedCreator: requested
+      ? { id: requested.id, name: requested.name, outcome: b.status === "awaiting_payment" ? null : sentOfferOutcome(db, b, requested.id) }
+      : null,
     creator: creator ? creatorPublic(creator) : null,
     dispatch: {
       phase: b.dispatch.phase,
@@ -160,6 +165,27 @@ export function offerView(db: DB, o: Offer) {
 }
 export type OfferView = ReturnType<typeof offerView>;
 
+/** What became of a job offer sent to one creator from their profile. */
+export function sentOfferOutcome(db: DB, b: Booking, creatorId: string) {
+  const direct = db.offers.find((o) => o.bookingId === b.id && o.creatorId === creatorId && o.kind === "direct");
+  type Outcome = "waiting" | "taken" | "declined" | "missed" | "offline" | "cancelled" | "other_creator";
+  const outcome: Outcome =
+    b.creatorId === creatorId
+      ? "taken"
+      : direct?.status === "pending"
+        ? "waiting"
+        : direct?.status === "declined"
+          ? "declined"
+          : !direct
+            ? "offline"
+            : b.status === "cancelled" || b.status === "refunded"
+              ? "cancelled"
+              : b.creatorId
+                ? "other_creator"
+                : "missed";
+  return outcome;
+}
+
 /**
  * Jobs clients sent to this creator from their profile, newest first, and what became of each.
  * Only what the offer itself showed: no address or client details unless the creator took the job.
@@ -170,21 +196,7 @@ export function sentOffersFor(db: DB, creatorId: string, limit = 20) {
     .sort((a, b) => (b.paidAt ?? b.createdAt) - (a.paidAt ?? a.createdAt))
     .slice(0, limit)
     .map((b) => {
-      const direct = db.offers.find((o) => o.bookingId === b.id && o.creatorId === creatorId && o.kind === "direct");
-      const outcome: "waiting" | "taken" | "declined" | "missed" | "offline" | "cancelled" | "other_creator" =
-        b.creatorId === creatorId
-          ? "taken"
-          : direct?.status === "pending"
-            ? "waiting"
-            : direct?.status === "declined"
-              ? "declined"
-              : !direct
-                ? "offline"
-                : b.status === "cancelled" || b.status === "refunded"
-                  ? "cancelled"
-                  : b.creatorId
-                    ? "other_creator"
-                    : "missed";
+      const outcome = sentOfferOutcome(db, b, creatorId);
       const pkg = findPackage(b.packageId);
       return {
         bookingId: b.id,

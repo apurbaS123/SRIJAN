@@ -24,6 +24,17 @@ function Progress({ status }: { status: string }) {
   );
 }
 
+/** What became of a job offer sent to one creator, as the client sees it. */
+const OFFER_OUTCOME: Record<NonNullable<NonNullable<BookingView["requestedCreator"]>["outcome"]>, string> = {
+  waiting: "waiting for them to accept",
+  taken: "they accepted",
+  declined: "they couldn’t take it, so everyone nearby was alerted",
+  missed: "they didn’t accept in time, so everyone nearby was alerted",
+  offline: "they weren’t available, so everyone nearby was alerted",
+  other_creator: "another creator took the job",
+  cancelled: "this booking was cancelled",
+};
+
 const REFUND_TEXT = {
   pending: "The Srijan team will contact you and send your refund.",
   sent: "Your refund has been sent. Please contact us if it hasn’t reached you in a few working days.",
@@ -73,11 +84,23 @@ function Tracking() {
         </section>
       )}
 
+      {b.requestedCreator && (
+        <section className="card card-violet row between">
+          <span className="small">
+            Job offer sent to{" "}
+            <Link href={`/creators/${b.requestedCreator.id}`} className="strong">
+              {b.requestedCreator.name}
+            </Link>
+            {b.requestedCreator.outcome ? ` · ${OFFER_OUTCOME[b.requestedCreator.outcome]}` : ""}
+          </span>
+        </section>
+      )}
+
       {b.status === "searching" && (
         <section className="card card-orange stack">
           <div className="row between">
             <div className="stack" style={{ gap: 4 }}>
-              <h2>{b.dispatch.phase === "direct" ? "Waiting for your chosen creator" : "Finding your creator"}</h2>
+              <h2>{b.dispatch.phase === "direct" ? `Waiting for ${b.requestedCreator?.name.split(" ")[0] ?? "your chosen creator"}` : "Finding your creator"}</h2>
               <span className="small" style={{ color: "var(--orange-ink)" }}>
                 {b.dispatch.phase === "direct"
                   ? "They have 5 minutes to accept. If they don’t, everyone available is alerted."

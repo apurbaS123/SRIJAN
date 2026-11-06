@@ -27,7 +27,7 @@ function List() {
               </b>
               <span className="small muted">
                 {when(b.scheduledAt)} · {b.area}
-                {b.creator ? ` · ${b.creator.name}` : ""}
+                {b.creator ? ` · ${b.creator.name}` : b.requestedCreator ? ` · Offer sent to ${b.requestedCreator.name}` : ""}
               </span>
             </div>
             <div className="row">

@@ -3,7 +3,7 @@ import { seedDb } from "./fixtures/seed";
 import { createBooking, recordPayment } from "@/lib/domain/bookings";
 import { signUpCreator } from "@/lib/domain/creators";
 import { acceptOffer, declineOffer } from "@/lib/domain/dispatch";
-import { sentOffersFor, tickAll } from "@/lib/domain/views";
+import { bookingView, sentOffersFor, tickAll } from "@/lib/domain/views";
 import { MIN } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
@@ -170,6 +170,16 @@ describe("job offers a creator was sent", () => {
     tickAll(db, T0 + 6 * MIN);
     acceptOffer(db, db.offers.find((x) => x.bookingId === missed.id && x.creatorId === "cr_ankita" && x.status === "pending")!.id, "cr_ankita", T0 + 7 * MIN);
     expect(outcomes(db)).toEqual(["other_creator", "offline"]);
+  });
+
+  it("shows the client who they sent it to and what happened", () => {
+    const db = seedDb(T0);
+    const b = book(db, { requestedCreatorId: "cr_rituraj" });
+    const client = { userId: "u_priya", role: "client" as const };
+    expect(bookingView(db, b, client).requestedCreator).toMatchObject({ id: "cr_rituraj", outcome: "waiting" });
+    declineOffer(db, db.offers.find((x) => x.bookingId === b.id)!.id, "cr_rituraj", T0 + MIN);
+    expect(bookingView(db, b, client).requestedCreator?.outcome).toBe("declined");
+    expect(bookingView(db, book(db), client).requestedCreator).toBeNull();
   });
 
   it("leaves out unpaid orders and other creators' offers", () => {
