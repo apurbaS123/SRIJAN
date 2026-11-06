@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
 import { createBooking } from "@/lib/domain/bookings";
-import { setVerification, signUpCreator } from "@/lib/domain/creators";
+import { setVerification, signUpCreator, updateOwnCreator } from "@/lib/domain/creators";
 import { createCampaign } from "@/lib/domain/campaigns";
 import { DomainError, cleanUrl } from "@/lib/domain/util";
 import { issueOtp, verifyOtp } from "@/lib/server/auth";
@@ -127,6 +127,17 @@ describe("creator portfolio link", () => {
   it("is optional", () => {
     expect(join(undefined).portfolio).toBeUndefined();
     expect(join("   ").portfolio).toBeUndefined();
+  });
+
+  it("can be added, changed and removed from the dashboard", () => {
+    const db = seedDb(T0);
+    const c = db.creators[0]!;
+    updateOwnCreator(db, c.id, { portfolio: "behance.net/me" });
+    expect(c.portfolio).toBe("https://behance.net/me");
+    expect(() => updateOwnCreator(db, c.id, { portfolio: "javascript:alert(1)" })).toThrow(/portfolio/);
+    expect(c.portfolio).toBe("https://behance.net/me");
+    updateOwnCreator(db, c.id, { portfolio: "" });
+    expect(c.portfolio).toBeUndefined();
   });
 
   it("must be a real link when given", () => {

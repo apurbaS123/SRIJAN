@@ -179,6 +179,8 @@ export interface CreatorPatch {
   available?: boolean;
   maxTravelKm?: number;
   payout?: PayoutInput;
+  /** Portfolio link; an empty string removes it. */
+  portfolio?: string;
   /** Live location from the phone (optional). */
   lat?: number;
   lng?: number;
@@ -199,6 +201,7 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
     c.maxTravelKm = Number(patch.maxTravelKm);
   }
   if (patch.payout !== undefined) setPayoutDetails(c, patch.payout);
+  if (patch.portfolio !== undefined) c.portfolio = cleanPortfolio(patch.portfolio);
   if (patch.lat !== undefined || patch.lng !== undefined) {
     const lat = Number(patch.lat);
     const lng = Number(patch.lng);

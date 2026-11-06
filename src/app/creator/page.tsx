@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
@@ -165,6 +165,8 @@ function Home() {
 
       <ErrorNote error={act.error} />
 
+      <PortfolioCard url={me.portfolio} />
+
       {offers.data && offers.data.length > 0 && (
         <section className="stack">
           <h2>Job alerts</h2>
@@ -214,6 +216,66 @@ function Home() {
         )}
       </section>
     </div>
+  );
+}
+
+/** Add, change or remove the portfolio link shown on the public profile. */
+function PortfolioCard({ url }: { url?: string }) {
+  const { refresh } = useSession();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(url ?? "");
+  const { busy, error, run } = useAction();
+
+  async function save(next: string) {
+    if (await run(() => call("/api/me/creator", { portfolio: next }, "PATCH"))) {
+      await refresh();
+      setEditing(false);
+    }
+  }
+
+  return (
+    <section className="card stack">
+      <h2>Portfolio</h2>
+      {editing ? (
+        <>
+          <div className="field">
+            <label htmlFor="portfolio">Portfolio link</label>
+            <input id="portfolio" className="input" type="url" inputMode="url" value={value} onChange={(e) => setValue(e.target.value)} />
+          </div>
+          <ErrorNote error={error} />
+          <div className="row">
+            <button className="btn btn-sm btn-primary" disabled={busy || !value.trim()} onClick={() => void save(value)}>
+              Save
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => { setValue(url ?? ""); setEditing(false); }}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : url ? (
+        <div className="row between">
+          <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="small strong" style={{ overflowWrap: "anywhere" }}>
+            {url} ↗
+          </a>
+          <div className="row">
+            <button className="btn btn-sm" onClick={() => { setValue(url); setEditing(true); }}>
+              Change
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void save("")}>
+              Remove
+            </button>
+          </div>
+          <ErrorNote error={error} />
+        </div>
+      ) : (
+        <div className="row between">
+          <span className="small muted">No portfolio linked yet.</span>
+          <button className="btn btn-sm btn-accent" onClick={() => { setValue(""); setEditing(true); }}>
+            Add portfolio link
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
