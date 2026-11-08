@@ -22,6 +22,10 @@ function nextWorkdays(n: number) {
   return out;
 }
 
+function Reminder({ id, text }: { id: string; text: string }) {
+  return text ? <p id={`${id}-reminder`} className="field-reminder">{text}</p> : null;
+}
+
 export default function BrandsPage() {
   const { session, refresh } = useSession();
   const signedIn = !!session?.user;
@@ -41,16 +45,53 @@ export default function BrandsPage() {
   const [done, setDone] = useState<{ code: string; callAt: number } | null>(null);
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const { busy, error, run } = useAction();
+  // Reminders stay hidden until someone tries to book (or asks for a code with no email).
+  const [remind, setRemind] = useState(false);
+  const [remindEmail, setRemindEmail] = useState(false);
+  const { busy, error, setError, run } = useAction();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const set =<K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  const blank = {
+    brand: form.brandName.trim() ? "" : "Please enter your brand or company name.",
+    cname: form.contactName.trim() ? "" : "Please enter your name.",
+    email: form.email.trim() ? "" : "Please enter your work email.",
+    phone: form.phone.trim() ? "" : "Please enter your mobile number.",
+    otp: signedIn || otp.trim() ? "" : otpSent ? "Please enter the 6-digit code we emailed you." : "Verify your email first. Tap Send code above, then enter the 6-digit code here.",
+  };
+  type Box = keyof typeof blank;
+  const firstBlank = (Object.keys(blank) as Box[]).find((k) => blank[k]);
+  const reminder = (k: Box) => (remind || (k === "email" && remindEmail) ? blank[k] : "");
+  const box = (k: Box, cls = "input") => ({
+    className: reminder(k) ? `${cls} invalid` : cls,
+    "aria-invalid": !!reminder(k),
+    "aria-describedby": reminder(k) ? `${k}-reminder` : undefined,
+  });
+
+  function showBox(id: string) {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.focus({ preventScroll: true });
+  }
+
   async function sendCode() {
+    if (blank.email) {
+      setRemindEmail(true);
+      showBox("email");
+      return;
+    }
     if (await run(() => call("/api/session/otp", { email: form.email }))) setOtpSent(true);
   }
 
   async function submit() {
+    if (firstBlank) {
+      setError(null);
+      setRemind(true);
+      // Before a code is sent the code box is locked, so point at the button that sends one.
+      showBox(firstBlank === "otp" && !otpSent ? "send-code" : firstBlank);
+      return;
+    }
     const r = await run(() =>
       call<{ code: string; callAt: number }>("/api/campaigns", {
         brandName: form.brandName,
@@ -103,35 +144,40 @@ export default function BrandsPage() {
         <h2>About your brand</h2>
         <div className="field">
           <label htmlFor="brand">Brand or company name</label>
-          <input id="brand" className="input" value={form.brandName} onChange={(e) => set("brandName", e.target.value)} />
+          <input id="brand" {...box("brand")} value={form.brandName} onChange={(e) => set("brandName", e.target.value)} />
+          <Reminder id="brand" text={reminder("brand")} />
         </div>
         <div className="field">
           <label htmlFor="cname">Your name</label>
-          <input id="cname" className="input" value={form.contactName} onChange={(e) => set("contactName", e.target.value)} />
+          <input id="cname" {...box("cname")} value={form.contactName} onChange={(e) => set("contactName", e.target.value)} />
+          <Reminder id="cname" text={reminder("cname")} />
         </div>
-        <div className="row">
+        <div className="row contact-row">
           <div className="field grow">
             <label htmlFor="email">Work email</label>
             {signedIn ? (
-              <input id="email" className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+              <input id="email" {...box("email")} type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
             ) : (
               <div className="row">
-                <input id="email" className="input grow" type="email" autoComplete="email" placeholder="you@brand.com" value={form.email} onChange={(e) => { set("email", e.target.value); setOtpSent(false); setOtp(""); }} />
-                <button className="btn btn-sm" disabled={busy || !form.email} onClick={sendCode}>
+                <input id="email" {...box("email", "input grow")} type="email" autoComplete="email" placeholder="you@brand.com" value={form.email} onChange={(e) => { set("email", e.target.value); setOtpSent(false); setOtp(""); }} />
+                <button id="send-code" className="btn btn-sm" disabled={busy} onClick={sendCode}>
                   {otpSent ? "Resend code" : "Send code"}
                 </button>
               </div>
             )}
+            <Reminder id="email" text={reminder("email")} />
           </div>
           <div className="field grow">
             <label htmlFor="phone">Mobile number</label>
-            <input id="phone" className="input" type="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+            <input id="phone" {...box("phone")} type="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+            <Reminder id="phone" text={reminder("phone")} />
           </div>
         </div>
-        {!signedIn && otpSent && (
+        {!signedIn && (otpSent || remind) && (
           <div className="field">
-            <label htmlFor="otp">Code sent to your email</label>
-            <input id="otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} />
+            <label htmlFor="otp">{otpSent ? "Code sent to your email" : "Email verification code"}</label>
+            <input id="otp" {...box("otp")} disabled={!otpSent} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} />
+            <Reminder id="otp" text={reminder("otp")} />
           </div>
         )}
         {!signedIn && (
@@ -197,8 +243,8 @@ export default function BrandsPage() {
         </div>
       </section>
 
-      <ErrorNote error={error} />
-      <button className="btn btn-violet btn-lg btn-block" disabled={busy || (!signedIn && !otp)} onClick={submit}>
+      <ErrorNote error={error ?? (remind && firstBlank ? (firstBlank === "otp" ? "Please verify your email with the code before booking your call." : "Please fill in the boxes marked in red.") : null)} />
+      <button className="btn btn-violet btn-lg btn-block" disabled={busy} onClick={submit}>
         Book strategy call
       </button>
     </div>
