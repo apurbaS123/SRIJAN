@@ -1,10 +1,10 @@
 // Connects Razorpay to bookings. Razorpay is never called while the database is locked: every other
 // request would have to wait for it.
-import { after } from "next/server";
 import { recordPayment } from "@/lib/domain/bookings";
 import { withDb } from "./store";
+import { sendOpsAlerts } from "./alerts";
 import { capturePayment, fetchPayment, RazorpayError, type RazorpayPayment } from "./razorpay";
-import { bookingAlertLines, sendWhatsAppAlert } from "./whatsapp";
+import { bookingAlertLines } from "./whatsapp";
 
 /** Asks Razorpay what really happened and captures the money if it's only authorized. */
 async function capturedPayment(paymentId: string, paise: number): Promise<RazorpayPayment> {
@@ -44,6 +44,6 @@ export async function confirmPayment(orderId: string, paymentId: string) {
     const outcomes = list.map((b) => recordPayment(db, b, paymentId, now));
     return { outcomes, alerts: list.filter((_, i) => outcomes[i] === "paid").map((b) => bookingAlertLines(db, b)) };
   });
-  for (const lines of result.alerts) after(() => sendWhatsAppAlert(lines));
+  sendOpsAlerts(result.alerts);
   return result.outcomes.includes("refund") ? ("refund" as const) : result.outcomes[0]!;
 }

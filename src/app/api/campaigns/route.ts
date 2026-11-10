@@ -1,8 +1,8 @@
-import { after } from "next/server";
 import { api, readJson, setSession } from "@/lib/server/api";
 import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
-import { campaignAlertLines, sendWhatsAppAlert } from "@/lib/server/whatsapp";
+import { sendOpsAlerts } from "@/lib/server/alerts";
+import { campaignAlertLines } from "@/lib/server/whatsapp";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { campaignView } from "@/lib/domain/views";
 import { createCampaign, type NewCampaignInput } from "@/lib/domain/campaigns";
@@ -62,9 +62,6 @@ export async function POST(req: Request) {
   });
   if (res.status === 200 && signIn) setSession(res, signIn);
   // Only alert once the request is saved; runs after the response is sent.
-  if (res.ok && alert) {
-    const lines = alert;
-    after(() => sendWhatsAppAlert(lines));
-  }
+  if (res.ok && alert) sendOpsAlerts([alert]);
   return res;
 }
