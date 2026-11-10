@@ -10,7 +10,7 @@ import { PushToggle } from "@/components/PushToggle";
 import { countdown, inr, lakh, time, when } from "@/lib/client/format";
 
 interface Overview {
-  kpis: { shootsToday: number; liveNow: number; searching: number; needsOps: number; pipelineValue: number; revenueMonth: number; pendingVerification: number };
+  kpis: { shootsToday: number; liveNow: number; searching: number; needsOps: number; awaitingPayment: number; pipelineValue: number; revenueMonth: number; pendingVerification: number };
   money: { month: string; shootGmv: number; platformFee: number; campaignBilled: number; campaignCommission: number; refunds: number };
   payoutsDue: PayoutDue[];
   refundsDue: RefundDue[];
@@ -27,7 +27,9 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
       ? `${countdown(b.dispatch.roundEndsAt - now)} left · ${b.dispatch.notified} alerted${b.dispatch.widened ? " · 25 km" : ""}`
       : b.status === "needs_ops"
         ? `${b.dispatch.notified} alerted · nobody accepted`
-        : b.status === "delivered"
+        : b.status === "awaiting_payment"
+          ? `${b.paymentDueAt ? `${countdown(b.paymentDueAt - now)} left` : "waiting"} for the client to pay ${inr(b.total)}`
+          : b.status === "delivered"
           ? `Auto-approves ${when(b.autoApproveAt)}`
           : b.status === "disputed"
             ? `Client: “${b.report?.note ?? ""}”`
@@ -80,8 +82,19 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
           </button>
         )}
         {!["completed", "refunded", "cancelled"].includes(b.status) && (
-          <button className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} disabled={act.busy} onClick={() => confirm(`Stop ${b.code} and refund ${inr(b.total)}? You’ll then send the money from the Razorpay dashboard.`) && post({ action: "refund", reason: "refunded by Srijan team" })}>
-            Refund
+          <button
+            className="btn btn-sm btn-ghost"
+            style={{ marginTop: 6 }}
+            disabled={act.busy}
+            onClick={() =>
+              confirm(
+                b.paid
+                  ? `Stop ${b.code} and refund ${inr(b.total)}? You’ll then send the money by hand.`
+                  : `Drop ${b.code}? Nothing has been paid, so there’s nothing to refund.${b.creator ? ` ${b.creator.name} is released.` : ""}`,
+              ) && post({ action: "refund", reason: "refunded by Srijan team" })
+            }
+          >
+            {b.paid ? "Refund" : "Drop"}
           </button>
         )}
         {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
@@ -204,6 +217,7 @@ function Dashboard() {
         <div className="card stack" style={{ gap: 4 }}>
           <span className="small muted strong">Live right now</span>
           <span className="big-num">{k.liveNow}</span>
+          {k.awaitingPayment > 0 && <span className="tiny muted">{k.awaitingPayment} accepted, waiting to be paid for</span>}
         </div>
         <div className={`card stack${k.needsOps ? " card-orange" : ""}`} style={{ gap: 4 }}>
           <span className="small strong" style={{ color: k.needsOps ? "var(--orange-ink)" : "var(--muted)" }}>Needs a creator</span>
@@ -223,7 +237,7 @@ function Dashboard() {
       <section className="card stack">
         <div className="row between">
           <h2>Live jobs</h2>
-          <span className="small muted">Alert everyone in the field within 10 km (online jobs: everywhere) · 5 min to accept · widen to 25 km at minute 3 · then ops</span>
+          <span className="small muted">Alert everyone in the field within 10 km (online jobs: everywhere) · 5 min to accept · widen to 25 km at minute 3 · then ops · the client pays once a creator accepts</span>
         </div>
         <div className="table-wrap">
           <table style={{ minWidth: 900 }}>

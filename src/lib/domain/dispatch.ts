@@ -1,4 +1,5 @@
-// Finding a creator for an on-demand shoot.
+// Finding a creator for an on-demand shoot. This runs as soon as the booking is placed: the client
+// is asked for the money only once a creator has accepted, and the job is theirs once it arrives.
 //
 // 1. If the client sent the job to a creator from their profile, only that creator is alerted first (5 min).
 // 2. Then every available, verified creator within 10 km is alerted at once (5 min window).
@@ -14,9 +15,9 @@
 // All of this runs lazily: `tickDispatch` is called on every request with the current
 // time, so it works without background jobs (and on serverless hosting).
 
-import { DISPATCH, HOUR, findPackage } from "./config";
+import { DISPATCH, HOUR, findPackage, paymentDeadline } from "./config";
 import { hasPayoutDetails } from "./creators";
-import { closeOfferNotifications, notifyCreatorOfOffer, notifyUser } from "./notifications";
+import { closeOfferNotifications, notifyCreatorOfOffer, notifyJobConfirmed, notifyPaymentDue } from "./notifications";
 import type { Booking, Creator, DB, Offer, ServiceKey } from "./types";
 import { DomainError, assert, haversineKm, newId } from "./util";
 
@@ -34,7 +35,8 @@ export function isCreatorBusy(db: DB, creatorId: string, booking: Booking) {
   const [s, e] = bookingWindow(booking);
   return db.bookings.some((o) => {
     if (o.id === booking.id || o.creatorId !== creatorId || o.online) return false;
-    if (o.status !== "assigned") return false;
+    // A creator who has accepted is holding that slot, even before the client has paid.
+    if (o.status !== "assigned" && o.status !== "awaiting_payment") return false;
     const [os, oe] = bookingWindow(o);
     return os < e && s < oe;
   });
@@ -115,7 +117,7 @@ function startBroadcast(db: DB, b: Booking, at: number) {
   }
 }
 
-/** Called once, right after payment. */
+/** Called once, as soon as the booking is placed. */
 export function startDispatch(db: DB, b: Booking, now: number) {
   b.dispatch = {
     phase: "direct",
@@ -196,17 +198,29 @@ export function tickDispatch(db: DB, b: Booking, now: number) {
   }
 }
 
+/**
+ * A creator has the job, and the payment form opens for the client. Nothing is shared between the
+ * two of them yet: the creator gets the address and the client's number once the money arrives.
+ *
+ * Returns false for a booking that was already paid for before a creator took it — the old
+ * "pay first, then search" flow. Those are the creator's straight away: asking for the money again
+ * would charge the client twice.
+ */
 function assignCreator(db: DB, b: Booking, creator: Creator, now: number) {
   b.creatorId = creator.id;
-  b.status = "assigned";
-  b.assignedAt = now;
+  b.acceptedAt = now;
   b.dispatch.phase = "done";
   expirePending(db, b.id, "taken", now);
-  notifyUser(db, b.clientId, now, {
-    title: `${creator.name} accepted your job`,
-    lines: [b.code, "Open the job to see their phone number and all the details."],
-    href: `/bookings/${b.id}`,
-  });
+  if (b.paidAt) {
+    b.status = "assigned";
+    b.assignedAt = now;
+    notifyJobConfirmed(db, b, now);
+    return false;
+  }
+  b.status = "awaiting_payment";
+  b.paymentDueAt = paymentDeadline(now, b.scheduledAt);
+  notifyPaymentDue(db, b, creator.name, now);
+  return true;
 }
 
 export function acceptOffer(db: DB, offerId: string, creatorId: string, now: number) {
@@ -228,10 +242,11 @@ export function acceptOffer(db: DB, offerId: string, creatorId: string, now: num
   o.status = "accepted";
   o.respondedAt = now;
   closeOfferNotifications(db, o.id, now);
-  assignCreator(db, b, creator, now);
-  const secs = Math.max(0, Math.round((now - (b.paidAt ?? now)) / 1000));
+  const owes = assignCreator(db, b, creator, now);
+  const secs = Math.max(0, Math.round((now - b.createdAt) / 1000));
   const took = secs < 60 ? `${secs} sec` : `${Math.floor(secs / 60)} min ${secs % 60} sec`;
   log(b, now, `${creator.name} accepted · ${b.dispatch.notifiedCreatorIds.length} alerted · matched in ${took}`);
+  log(b, now, owes ? `Waiting for the client to pay ₹${b.total.toLocaleString("en-IN")}` : "Already paid for · job confirmed");
   return b;
 }
 
@@ -249,11 +264,13 @@ export function declineOffer(db: DB, offerId: string, creatorId: string, now: nu
 /** Ops assigns a creator by hand (after the 5-minute window, or any time while searching). */
 export function manualAssign(db: DB, b: Booking, creatorId: string, now: number) {
   assert(b.status === "searching" || b.status === "needs_ops", "This booking already has a creator");
+  // The client still has to pay, and their time to do it ends at the job's start.
+  assert(now < b.scheduledAt, "This job’s start time has passed — drop it and refund instead");
   const c = db.creators.find((x) => x.id === creatorId);
   assert(c && canTakeJob(c, jobService(b)), "Pick a verified creator who offers this service and has linked their bank or UPI");
   assert(!isCreatorBusy(db, c.id, b), `${c.name} already has a shoot around this time`);
-  assignCreator(db, b, c, now);
-  log(b, now, `Srijan team assigned ${c.name}`);
+  const owes = assignCreator(db, b, c, now);
+  log(b, now, owes ? `Srijan team assigned ${c.name} · waiting for the client to pay ₹${b.total.toLocaleString("en-IN")}` : `Srijan team assigned ${c.name} · already paid for`);
 }
 
 export function cancelSearch(db: DB, b: Booking, now: number) {

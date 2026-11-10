@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { createBooking, recordPayment } from "@/lib/domain/bookings";
+import { createBooking } from "@/lib/domain/bookings";
 import { tickAll } from "@/lib/domain/views";
 import { addPushSub, removePushSub, dropDeadSubs, takePushes } from "@/lib/server/push";
 import { MIN } from "@/lib/domain/config";
@@ -20,10 +20,9 @@ const JOB = {
 const sub = (n: number) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/device-${n}`, keys: { p256dh: `p${n}`, auth: `a${n}` }, addedAt: T0 });
 const ankita = (db: DB) => db.creators.find((c) => c.id === "cr_ankita")!.userId;
 
-function paid(db: DB) {
-  const b = createBooking(db, "u_priya", JOB, T0);
-  recordPayment(db, b, "pay_push", T0);
-  return b;
+/** Placing a booking alerts the creators straight away — there is nothing to pay for yet. */
+function placed(db: DB) {
+  return createBooking(db, "u_priya", JOB, T0);
 }
 
 describe("push notifications", () => {
@@ -31,7 +30,7 @@ describe("push notifications", () => {
     const db = seedDb(T0);
     addPushSub(db, ankita(db), sub(1));
     addPushSub(db, ankita(db), sub(2));
-    paid(db);
+    placed(db);
 
     const pushes = takePushes(db, T0);
     const mine = pushes.filter((p) => p.userId === ankita(db));
@@ -45,21 +44,21 @@ describe("push notifications", () => {
   it("never buzzes the same phone twice for one message", () => {
     const db = seedDb(T0);
     addPushSub(db, ankita(db), sub(1));
-    paid(db);
+    placed(db);
     expect(takePushes(db, T0).length).toBeGreaterThan(0);
     expect(takePushes(db, T0 + MIN)).toEqual([]);
   });
 
   it("sends nothing to someone who hasn't turned notifications on", () => {
     const db = seedDb(T0);
-    paid(db);
+    placed(db);
     expect(takePushes(db, T0)).toEqual([]);
   });
 
   it("pushes the 20-minute ops reminder to the ops team's phone", () => {
     const db = seedDb(T0);
     addPushSub(db, "u_ops", sub(9));
-    const b = paid(db);
+    const b = placed(db);
     takePushes(db, T0); // clear the job alerts
     tickAll(db, SHOOT - 20 * MIN);
     const pushes = takePushes(db, SHOOT - 20 * MIN);

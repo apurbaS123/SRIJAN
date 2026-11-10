@@ -2,7 +2,7 @@
 // request would have to wait for it.
 import { recordPayment } from "@/lib/domain/bookings";
 import { withDb } from "./store";
-import { bookingAlertLines, sendOpsAlerts } from "./alerts";
+import { paymentConfirmedLines, sendOpsAlerts } from "./alerts";
 import { capturePayment, fetchPayment, RazorpayError, type RazorpayPayment } from "./razorpay";
 
 /** Asks Razorpay what really happened and captures the money if it's only authorized. */
@@ -19,11 +19,12 @@ async function capturedPayment(paymentId: string, paise: number): Promise<Razorp
 }
 
 /**
- * Called by both the checkout page and the webhook, in whichever order they arrive. Starts the
- * search for a creator once, and only if Razorpay confirms the right amount for this order.
+ * Called by both the checkout page and the webhook, in whichever order they arrive. Confirms the
+ * job for the creator who accepted it once, and only if Razorpay confirms the right amount for
+ * this order.
  */
 export async function confirmPayment(orderId: string, paymentId: string) {
-  // One order can hold several services, and so several bookings.
+  // An order belongs to one job: each service in a basket is paid for when its own creator accepts.
   const { result: found } = await withDb((db) => {
     const list = db.bookings.filter((x) => x.razorpayOrderId === orderId);
     return list.length ? { paise: list.reduce((sum, b) => sum + b.total * 100, 0), known: list.some((b) => b.razorpayPaymentId) } : null;
@@ -41,7 +42,7 @@ export async function confirmPayment(orderId: string, paymentId: string) {
   const { result } = await withDb((db, now) => {
     const list = db.bookings.filter((x) => x.razorpayOrderId === orderId);
     const outcomes = list.map((b) => recordPayment(db, b, paymentId, now));
-    return { outcomes, alerts: list.filter((_, i) => outcomes[i] === "paid").map((b) => bookingAlertLines(db, b)) };
+    return { outcomes, alerts: list.filter((_, i) => outcomes[i] === "paid").map((b) => paymentConfirmedLines(db, b)) };
   });
   sendOpsAlerts(result.alerts);
   return result.outcomes.includes("refund") ? ("refund" as const) : result.outcomes[0]!;

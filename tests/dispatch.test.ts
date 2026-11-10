@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
-import { createBooking, recordPayment } from "@/lib/domain/bookings";
+import { createBooking } from "@/lib/domain/bookings";
 import { signUpCreator } from "@/lib/domain/creators";
-import { acceptOffer, declineOffer } from "@/lib/domain/dispatch";
+import { acceptOffer, declineOffer, manualAssign } from "@/lib/domain/dispatch";
 import { bookingView, sentOffersFor, tickAll } from "@/lib/domain/views";
 import { MIN } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
@@ -27,7 +27,6 @@ function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, 
     },
     now,
   );
-  recordPayment(db, b, `pay_${b.id}`, now);
   return b;
 }
 
@@ -61,7 +60,7 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     expect(b.status).toBe("needs_ops");
     const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
     acceptOffer(db, o.id, "cr_ankita", T0 + 90 * MIN);
-    expect(b.status).toBe("assigned");
+    expect(b.status).toBe("awaiting_payment");
     expect(b.creatorId).toBe("cr_ankita");
     expect(pendingFor(db, b.id)).toEqual([]);
   });
@@ -117,7 +116,7 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     const dhruba = offers.find((o) => o.creatorId === "cr_dhruba")!;
     const ankita = offers.find((o) => o.creatorId === "cr_ankita")!;
     acceptOffer(db, dhruba.id, "cr_dhruba", T0 + 2 * MIN);
-    expect(b.status).toBe("assigned");
+    expect(b.status).toBe("awaiting_payment");
     expect(b.creatorId).toBe("cr_dhruba");
     expect(() => acceptOffer(db, ankita.id, "cr_ankita", T0 + 2 * MIN + 1000)).toThrow(/first/);
   });
@@ -220,11 +219,28 @@ describe("job offers a creator was sent", () => {
     expect(bookingView(db, book(db), client).requestedCreator).toBeNull();
   });
 
-  it("leaves out unpaid orders and other creators' offers", () => {
+  it("leaves out other creators' offers", () => {
     const db = seedDb(T0);
-    createBooking(db, "u_priya", { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T16:00", brief: "Opening week reel for our café", requestedCreatorId: "cr_rituraj" }, T0);
     book(db, { requestedCreatorId: "cr_ankita" });
     expect(sentOffersFor(db, "cr_rituraj")).toEqual([]);
+    expect(sentOffersFor(db, "cr_ankita")).toHaveLength(1);
+  });
+});
+
+describe("a creator the Srijan team assigns by hand", () => {
+  it("waits for the client's payment, just like a creator who accepted", () => {
+    const db = seedDb(T0);
+    const b = book(db);
+    tickAll(db, T0 + 6 * MIN);
+    expect(b.status).toBe("needs_ops");
+    manualAssign(db, b, "cr_ankita", T0 + 7 * MIN);
+    expect(b.status).toBe("awaiting_payment");
+    expect(b.creatorId).toBe("cr_ankita");
+    expect(b.paymentDueAt).toBe(T0 + 7 * MIN + 30 * MIN);
+    const [ask] = (db.notifications ?? []).filter((n) => n.userId === "u_priya" && !n.readAt);
+    expect(ask!.title).toContain("pay to confirm");
+    // Nothing about the client reaches the creator until the money does.
+    expect(bookingView(db, b, { userId: "u_ankita", role: "creator", creatorId: "cr_ankita" }).clientPhone).toBeUndefined();
   });
 });
 
@@ -302,13 +318,16 @@ describe("demo notifications", () => {
     expect(unread(db, "u_bhaswati")).toEqual([]);
   });
 
-  it("clears the alert for everyone once the job is taken, and tells the client", () => {
+  it("clears the alert for everyone once the job is taken, and asks the client to pay", () => {
     const db = seedDb(T0);
     const b = book(db);
     acceptOffer(db, db.offers.find((o) => o.bookingId === b.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
     expect(unread(db, "u_ankita")).toEqual([]);
     expect(unread(db, "u_rituraj")).toEqual([]);
-    expect(unread(db, "u_priya").map((n) => n.title)).toEqual(["Ankita Baruah accepted your job"]);
+    const [ask] = unread(db, "u_priya");
+    expect(ask!.title).toBe("Ankita Baruah accepted your job — pay to confirm");
+    expect(ask!.lines.join(" ")).toContain("₹2,499");
+    expect(ask!.href).toBe(`/bookings/${b.id}`);
   });
 });
 

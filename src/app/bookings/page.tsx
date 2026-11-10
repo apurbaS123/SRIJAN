@@ -34,6 +34,8 @@ function List() {
               <span className="small strong">{inr(b.total)}</span>
               {b.status === "completed" && !b.rating ? (
                 <span className="badge badge-orange">★ Leave a review</span>
+              ) : b.status === "awaiting_payment" ? (
+                <span className="badge badge-violet">Pay to confirm</span>
               ) : (
                 <StatusBadge status={b.status} label={b.statusLabel} />
               )}

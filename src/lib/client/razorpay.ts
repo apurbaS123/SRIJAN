@@ -23,7 +23,7 @@ interface RazorpayInstance {
 type RazorpayConstructor = new (options: Record<string, unknown>) => RazorpayInstance;
 
 const SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
-/** Closes well before an unpaid booking is dropped (PAYMENT_WINDOW_MS). */
+/** Closes well before the client's time to pay runs out (PAYMENT_WINDOW_MS, from the accept). */
 const CHECKOUT_TIMEOUT_S = 20 * 60;
 
 function loadScript() {

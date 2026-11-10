@@ -95,22 +95,27 @@ describe("creator bank and UPI details", () => {
 });
 
 describe("who sees which phone number", () => {
-  it("shares the client's number only with the creator who took the job", () => {
+  it("swaps the two numbers only once the job has been paid for", () => {
     const db = seedDb(T0);
     const b = createBooking(db, "u_priya", { packageId: "edit_reel", scheduledAt: "2026-10-26T15:00", brief: "Edit my café clips into one reel" }, T0);
-    recordPayment(db, b, "pay_1", T0);
     const asRituraj = { userId: "u_rituraj", role: "creator" as const, creatorId: "cr_rituraj" };
     const asAnkita = { userId: "u_ankita", role: "creator" as const, creatorId: "cr_ankita" };
+    const asClient = { userId: "u_priya", role: "client" as const };
     expect(bookingView(db, b, asRituraj).clientPhone).toBeUndefined();
 
     const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_rituraj")!;
     acceptOffer(db, o.id, "cr_rituraj", T0 + 60_000);
+    // Taken, but not paid for: neither side has anything about the other yet.
+    expect(bookingView(db, b, asRituraj).clientPhone).toBeUndefined();
+    expect(bookingView(db, b, asClient).creatorPhone).toBeUndefined();
+
+    recordPayment(db, b, "pay_1", T0 + 2 * 60_000);
     const phone = db.users.find((u) => u.id === "u_priya")!.phone;
     expect(phone).toBeTruthy();
     expect(bookingView(db, b, asRituraj).clientPhone).toBe(phone);
     expect(bookingView(db, b, asAnkita).clientPhone).toBeUndefined();
 
-    const client = bookingView(db, b, { userId: "u_priya", role: "client" });
+    const client = bookingView(db, b, asClient);
     expect(client.clientPhone).toBe(phone);
     expect(client.creatorPhone).toBe("+91 98640 22222");
     expect(bookingView(db, b, asAnkita).creatorPhone).toBeUndefined();
@@ -179,16 +184,24 @@ describe("several services in one order", () => {
     expect(() => createBookings(db, "u_priya", { ...ORDER, packageIds: [] }, T0)).toThrow(/at least one/);
   });
 
-  it("refunds each service on a shared payment separately", () => {
+  it("pays for and refunds each service in the order on its own", () => {
     const db = seedDb(T0);
     const [a, b] = createBookings(db, "u_priya", { ...ORDER, packageIds: ["video_tour", "edit_reel"] }, T0);
-    recordPayment(db, a!, "pay_1", T0);
-    recordPayment(db, b!, "pay_1", T0);
-    refund(db, b!, "cancelled by client", T0);
+    // Each job is accepted by its own creator and paid for at its own moment.
+    const take = (bookingId: string, creatorId: string, paymentId: string) => {
+      const o = db.offers.find((x) => x.bookingId === bookingId && x.creatorId === creatorId && x.status === "pending")!;
+      acceptOffer(db, o.id, creatorId, T0 + 60_000);
+      recordPayment(db, db.bookings.find((x) => x.id === bookingId)!, paymentId, T0 + 2 * 60_000);
+    };
+    take(a!.id, "cr_ankita", "pay_shoot");
+    take(b!.id, "cr_rituraj", "pay_edit");
+    expect([a!.status, b!.status]).toEqual(["assigned", "assigned"]);
+
+    refund(db, b!, "cancelled by client", T0 + 3 * 60_000);
     expect(refundsDue(db).map((r) => [r.id, r.amount])).toEqual([[b!.id, 999]]);
-    expect(a!.status).toBe("searching");
-    markRefundSent(db, b!.id, "UTR123", T0);
+    expect(a!.status).toBe("assigned");
+    markRefundSent(db, b!.id, "UTR123", T0 + 4 * 60_000);
     expect(b!.refund).toMatchObject({ status: "sent", paymentRef: "UTR123" });
-    expect(() => markRefundSent(db, b!.id, undefined, T0)).toThrow(/already/);
+    expect(() => markRefundSent(db, b!.id, undefined, T0 + 5 * 60_000)).toThrow(/already/);
   });
 });

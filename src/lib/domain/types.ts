@@ -98,10 +98,10 @@ export interface Creator {
 }
 
 export type BookingStatus =
-  | "awaiting_payment" // created, Razorpay hasn't confirmed payment yet; nobody is alerted
-  | "searching" // paid, alerts going out
-  | "needs_ops" // nobody accepted in time; ops must assign or refund
-  | "assigned" // creator accepted and is doing the job
+  | "searching" // placed, alerts going out; nothing has been paid yet
+  | "needs_ops" // nobody accepted in time; ops must assign or drop it
+  | "awaiting_payment" // a creator accepted: the client has to pay to confirm the job
+  | "assigned" // paid, and the creator is doing the job
   | "delivered" // creator pressed Mark As Finished, waiting for the client
   | "disputed" // client reported a problem; payout stopped until ops decides
   | "completed" // approved (by client or automatically), creator payout owed
@@ -148,7 +148,11 @@ export interface Booking {
   creatorId?: string;
   status: BookingStatus;
   createdAt: number;
-  /** Set once Razorpay has confirmed the payment. */
+  /** When a creator accepted the job (or ops assigned one). The client is asked to pay from here. */
+  acceptedAt?: number;
+  /** The client has until this moment to pay, or the job is dropped and the creator released. */
+  paymentDueAt?: number;
+  /** Set once Razorpay has confirmed the payment. The job is only really the creator's from here. */
   paidAt?: number;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
@@ -159,6 +163,7 @@ export interface Booking {
   dispatch: DispatchState;
   /** When the ops team was told this job starts in 20 minutes. Set once, so the alert can't repeat. */
   opsRemindedAt?: number;
+  /** When the payment landed and the job became the creator's. */
   assignedAt?: number;
   /** When the creator pressed Mark As Finished. */
   deliveredAt?: number;

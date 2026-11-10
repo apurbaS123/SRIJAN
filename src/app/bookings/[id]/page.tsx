@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { call, useAction, useData, useTick } from "@/lib/client/api";
+import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
 import type { BookingView } from "@/lib/domain/views";
 import { Avatar, ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
 import { JobDetails } from "@/components/JobDetails";
@@ -11,7 +12,7 @@ import { useSession } from "@/components/Session";
 import { ReviewBody, ReviewSection } from "@/components/Review";
 import { REVIEW_EVENT } from "@/components/ReviewGate";
 
-const ORDER = ["searching", "assigned", "delivered", "completed"];
+const ORDER = ["searching", "awaiting_payment", "assigned", "delivered", "completed"];
 
 function Progress({ status }: { status: string }) {
   const s = status === "needs_ops" ? "searching" : status === "disputed" ? "delivered" : status;
@@ -49,6 +50,8 @@ function Tracking() {
   const now = useTick();
   const [note, setNote] = useState("");
   const [reporting, setReporting] = useState(false);
+  // True from the moment Razorpay says it took the money until our own records agree.
+  const [confirming, setConfirming] = useState(false);
   const isClient = session?.user?.role === "client";
 
   if (error) return <div className="container page"><p className="error">{error.message}</p></div>;
@@ -62,6 +65,21 @@ function Tracking() {
     if (r && body.action === "approve") window.dispatchEvent(new Event(REVIEW_EVENT));
   }
 
+  /** Pay for the job the creator has accepted. Razorpay's own form takes the card or UPI details. */
+  async function pay() {
+    const id = b!.id;
+    await act.run(async () => {
+      const { checkout } = await call<{ checkout: CheckoutDetails }>("/api/payments/order", { bookingId: id });
+      const result = await openCheckout(checkout);
+      if (!result) return; // closed the form without paying: they can press Pay again
+      setConfirming(true);
+      // If this call is lost, Razorpay's webhook still confirms it, and this page is polling.
+      await call("/api/payments/verify", { bookingId: id, ...result }).catch(() => undefined);
+      await reload();
+      setConfirming(false);
+    });
+  }
+
   return (
     <div className="container page narrow">
       <Link href={isClient ? "/bookings" : "/ops"} className="small strong">
@@ -71,7 +89,8 @@ function Tracking() {
         <div className="stack" style={{ gap: 2 }}>
           <h1 style={{ fontSize: 28 }}>{b.packageName}</h1>
           <span className="small muted">
-            {b.code} · {b.area} · {inr(b.total)}{b.status === "awaiting_payment" ? "" : " paid"}
+            {b.code} · {b.area} · {inr(b.total)}
+            {b.paid ? " paid" : " to pay"}
           </span>
         </div>
         <StatusBadge status={b.status} label={b.statusLabel} />
@@ -79,10 +98,34 @@ function Tracking() {
       <Progress status={b.status} />
 
       {b.status === "awaiting_payment" && (
-        <section className="card card-orange stack">
-          <h2>Confirming your payment</h2>
-          <p className="small">
-            This usually takes a few seconds. If you closed the payment form without paying, you can <Link href="/book">book again</Link>. You won’t be charged for this booking.
+        <section className="card card-selected stack">
+          <div className="row between">
+            <div className="stack" style={{ gap: 4 }}>
+              <h2>{b.creator ? `${b.creator.name} accepted — pay to confirm` : "Pay to confirm your job"}</h2>
+              <span className="small">
+                {b.creator ? b.creator.name.split(" ")[0] : "Your creator"} is holding this slot for you. Pay {inr(b.total)} and you’ll each get the other’s phone number
+                {b.online ? "" : " and the exact address"} straight away.
+              </span>
+            </div>
+            {b.paymentDueAt && (
+              <span className="ring" style={{ background: "#fff", border: "5px solid var(--violet)" }} aria-label="Time left to pay">
+                {countdown(b.paymentDueAt - now)}
+              </span>
+            )}
+          </div>
+          {isClient && (
+            <>
+              <button className="btn btn-accent btn-lg" disabled={act.busy || confirming} onClick={() => void pay()}>
+                {confirming ? "Confirming your payment…" : act.busy ? "Opening payment…" : `Pay ${inr(b.total)}`}
+              </button>
+              <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} disabled={act.busy || confirming} onClick={() => confirm("Cancel this job? The creator will be released.") && void post({ action: "cancel" })}>
+                Cancel this job
+              </button>
+            </>
+          )}
+          <p className="tiny muted">
+            {b.paymentDueAt ? `If the payment hasn’t arrived by ${time(b.paymentDueAt)}, the job is dropped and the creator released. ` : ""}
+            You haven’t been charged anything yet.
           </p>
         </section>
       )}
@@ -116,9 +159,10 @@ function Tracking() {
               {countdown(b.dispatch.roundEndsAt - now)}
             </span>
           </div>
+          <p className="tiny" style={{ color: "var(--orange-ink)" }}>Nothing to pay yet — you’re asked for {inr(b.total)} as soon as a creator accepts.</p>
           {isClient && (
             <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "cancel" })}>
-              Cancel · full refund
+              Cancel · nothing to pay
             </button>
           )}
         </section>
@@ -127,10 +171,10 @@ function Tracking() {
       {b.status === "needs_ops" && (
         <section className="card card-orange stack">
           <h2>Our team is finding you a creator</h2>
-          <p className="small">No one accepted in the first 5 minutes, so a Srijan team member is calling creators now. Your job is still showing to every creator nearby too, so one of them may take it first. If we can’t fill it, you get a full refund.</p>
+          <p className="small">No one accepted in the first 5 minutes, so a Srijan team member is calling creators now. Your job is still showing to every creator nearby too, so one of them may take it first. You’re asked to pay {inr(b.total)} only once someone accepts, and nothing is owed if we can’t fill it.</p>
           {isClient && (
             <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "cancel" })}>
-              Cancel · full refund
+              Cancel · nothing to pay
             </button>
           )}
         </section>
@@ -143,7 +187,7 @@ function Tracking() {
         </section>
       )}
 
-      {b.creator && (
+      {b.creator && b.paid && (
         <section className="card stack">
           <h2>Contact</h2>
           <div className="row">
@@ -245,7 +289,7 @@ function Tracking() {
 
       <ErrorNote error={act.error} />
 
-      <JobDetails b={b} money={{ label: b.status === "awaiting_payment" ? "To pay" : "Paid", value: inr(b.total) }} />
+      <JobDetails b={b} money={{ label: b.paid ? "Paid" : "To pay", value: inr(b.total) }} />
 
       <section className="card stack">
         <h2>Activity</h2>

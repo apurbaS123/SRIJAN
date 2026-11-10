@@ -1,4 +1,5 @@
 import { api, readJson } from "@/lib/server/api";
+import { paymentRequestLines, sendClientAlert } from "@/lib/server/alerts";
 import { bookingView } from "@/lib/domain/views";
 import { approve, cancelByClient, markFinished, refund, releaseDisputed, reportProblem, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { manualAssign } from "@/lib/domain/dispatch";
@@ -36,7 +37,9 @@ type Action =
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await readJson<Action>(req);
-  return api(
+  // Set when this action leaves the client with a payment to make, so they can be emailed about it.
+  let ask: { email?: string; lines: string[] } | undefined;
+  const res = await api(
     ({ db, now, user, viewer }) => {
       const u = user!;
       const b = find(db, id, u);
@@ -66,6 +69,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         case "assign":
           as("ops");
           manualAssign(db, b, body.creatorId, now);
+          ask = { email: db.users.find((x) => x.id === b.clientId)?.email, lines: paymentRequestLines(db, b) };
           break;
         case "release":
           as("ops");
@@ -82,4 +86,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
     { role: ["client", "creator", "ops"] },
   );
+  if (res.ok && ask) sendClientAlert(ask.email, ask.lines);
+  return res;
 }

@@ -1,33 +1,40 @@
 import { describe, expect, it } from "vitest";
 import { seedDb } from "./fixtures/seed";
 import { approve, cancelByClient, clientRating, createBooking, markFinished, recordPayment, refund, releaseDisputed, reportProblem, reviewClient, reviewCreator } from "@/lib/domain/bookings";
-import { acceptOffer } from "@/lib/domain/dispatch";
-import { tickAll } from "@/lib/domain/views";
+import { acceptOffer, isCreatorBusy } from "@/lib/domain/dispatch";
+import { bookingView, tickAll } from "@/lib/domain/views";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { campaignMath, inviteCreator, respondToInvite, settleCampaign, updateCampaign } from "@/lib/domain/campaigns";
 import { pendingReviews } from "@/lib/domain/views";
-import { CREATOR_SHARE, HOUR, lowestPrice, MIN, PACKAGES, sellable } from "@/lib/domain/config";
+import { CREATOR_SHARE, HOUR, lowestPrice, MIN, PACKAGES, PAYMENT_WINDOW_MS, sellable } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
 const JOB = { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
-function paid(db: DB) {
-  const b = createBooking(db, "u_priya", JOB, T0);
-  recordPayment(db, b, "pay_test1", T0);
-  return b;
+/** Placed, with the alerts already out to creators. Nothing has been paid. */
+function placed(db: DB) {
+  return createBooking(db, "u_priya", JOB, T0);
 }
 
-function bookedAndAccepted(db: DB) {
-  const b = paid(db);
+/** Ankita has taken it, so the client is the one holding things up: they owe the money. */
+function accepted(db: DB) {
+  const b = placed(db);
   const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
   acceptOffer(db, o.id, "cr_ankita", T0 + MIN);
   return b;
 }
 
+/** Accepted and paid for: the job is Ankita's and both sides have each other's details. */
+function confirmed(db: DB) {
+  const b = accepted(db);
+  recordPayment(db, b, "pay_test1", T0 + 2 * MIN);
+  return b;
+}
+
 function finished(db: DB) {
-  const b = bookedAndAccepted(db);
+  const b = confirmed(db);
   markFinished(db, b.id, "cr_ankita", SHOOT + 5 * HOUR);
   return b;
 }
@@ -41,48 +48,129 @@ describe("paying for a job", () => {
     expect(b.total).toBe(2499);
   });
 
-  it("alerts nobody until the payment is confirmed", () => {
+  it("looks for a creator straight away and asks for nothing until one accepts", () => {
     const db = seedDb(T0);
-    const b = createBooking(db, "u_priya", JOB, T0);
-    expect(b.status).toBe("awaiting_payment");
-    expect(db.offers.filter((o) => o.bookingId === b.id)).toEqual([]);
-    expect(ledger(db, b.id, "client_payment")).toBe(0);
-    expect(recordPayment(db, b, "pay_1", T0)).toBe("paid");
+    const b = placed(db);
     expect(b.status).toBe("searching");
     expect(db.offers.filter((o) => o.bookingId === b.id).length).toBeGreaterThan(0);
+    expect(ledger(db, b.id, "client_payment")).toBe(0);
+    expect(b.paidAt).toBeUndefined();
+  });
+
+  it("asks the client to pay once a creator accepts, and holds the job for them", () => {
+    const db = seedDb(T0);
+    const b = accepted(db);
+    expect(b.status).toBe("awaiting_payment");
+    expect(b.creatorId).toBe("cr_ankita");
+    expect(b.acceptedAt).toBe(T0 + MIN);
+    // 30 minutes to pay, or the job's own start time if that comes first.
+    expect(b.paymentDueAt).toBe(T0 + MIN + PAYMENT_WINDOW_MS);
+    expect(ledger(db, b.id, "client_payment")).toBe(0);
+    // Nobody else can take it while the client pays.
+    const other = db.offers.find((o) => o.bookingId === b.id && o.creatorId === "cr_rituraj")!;
+    expect(() => acceptOffer(db, other.id, "cr_rituraj", T0 + 2 * MIN)).toThrow(/first/);
+  });
+
+  it("hands the job over, with both sides' details, the moment the payment lands", () => {
+    const db = seedDb(T0);
+    const b = accepted(db);
+    expect(recordPayment(db, b, "pay_1", T0 + 2 * MIN)).toBe("paid");
+    expect(b.status).toBe("assigned");
+    expect(b.assignedAt).toBe(T0 + 2 * MIN);
     expect(ledger(db, b.id, "client_payment")).toBe(2499);
+    const asAnkita = { userId: "u_ankita", role: "creator" as const, creatorId: "cr_ankita" };
+    expect(bookingView(db, b, asAnkita).clientPhone).toBe(db.users.find((u) => u.id === "u_priya")!.phone);
+    expect(bookingView(db, b, asAnkita).address).toContain("Café Brahma");
+    expect(bookingView(db, b, { userId: "u_priya", role: "client" }).creatorPhone).toBe("+91 98640 11111");
+  });
+
+  it("tells the creator nothing about the client until the money has arrived", () => {
+    const db = seedDb(T0);
+    const b = accepted(db);
+    const waiting = bookingView(db, b, { userId: "u_ankita", role: "creator", creatorId: "cr_ankita" });
+    expect(waiting.clientPhone).toBeUndefined();
+    expect(waiting.address).toBe("");
+    expect(waiting.clientName).toBe("Client");
+    // And the client doesn't get the creator's number before paying either.
+    expect(bookingView(db, b, { userId: "u_priya", role: "client" }).creatorPhone).toBeUndefined();
   });
 
   it("counts a payment once when checkout and the webhook both report it", () => {
     const db = seedDb(T0);
-    const b = createBooking(db, "u_priya", JOB, T0);
-    recordPayment(db, b, "pay_1", T0);
-    const offers = db.offers.length;
-    expect(recordPayment(db, b, "pay_1", T0 + 1000)).toBe("already");
+    const b = accepted(db);
+    recordPayment(db, b, "pay_1", T0 + 2 * MIN);
+    expect(recordPayment(db, b, "pay_1", T0 + 3 * MIN)).toBe("already");
     expect(ledger(db, b.id, "client_payment")).toBe(2499);
-    expect(db.offers.length).toBe(offers);
+    expect(b.status).toBe("assigned");
   });
 
-  it("drops an unpaid booking after 30 minutes and refunds a payment that lands later", () => {
+  it("drops the job and releases the creator if the client doesn't pay in time", () => {
     const db = seedDb(T0);
-    const b = createBooking(db, "u_priya", JOB, T0);
-    tickAll(db, T0 + 29 * MIN);
+    const b = accepted(db);
+    tickAll(db, T0 + MIN + PAYMENT_WINDOW_MS - 1000);
     expect(b.status).toBe("awaiting_payment");
-    tickAll(db, T0 + 30 * MIN);
+    tickAll(db, T0 + MIN + PAYMENT_WINDOW_MS);
     expect(b.status).toBe("cancelled");
-    expect(recordPayment(db, b, "pay_late", T0 + 31 * MIN)).toBe("refund");
+    expect(ledger(db, b.id, "client_refund")).toBe(0);
+    const told = (db.notifications ?? []).filter((n) => n.userId === "u_ankita" && n.title === "A job you accepted was dropped");
+    expect(told).toHaveLength(1);
+    // Ankita's time is free again: a job at the same hour can be alerted to her.
+    expect(isCreatorBusy(db, "cr_ankita", b)).toBe(false);
+  });
+
+  it("refunds a payment that lands after the job was dropped", () => {
+    const db = seedDb(T0);
+    const b = accepted(db);
+    tickAll(db, T0 + MIN + PAYMENT_WINDOW_MS);
+    expect(recordPayment(db, b, "pay_late", T0 + 40 * MIN)).toBe("refund");
     expect(b.status).toBe("refunded");
     expect(b.refund).toMatchObject({ amount: 2499, status: "pending" });
-    expect(db.offers.filter((o) => o.bookingId === b.id)).toEqual([]);
+    expect(db.offers.filter((o) => o.bookingId === b.id && o.status === "pending")).toEqual([]);
   });
 
-  it("sets up a real refund when a paid client cancels, and can't refund twice", () => {
+  it("never asks twice for a booking paid for under the old flow", () => {
     const db = seedDb(T0);
-    const b = paid(db);
-    cancelByClient(db, b.id, "u_priya", T0 + MIN);
-    expect(b.status).toBe("cancelled");
+    const b = placed(db);
+    // What production looks like mid-flight: paid first, still looking for a creator.
+    b.paidAt = T0;
+    b.razorpayPaymentId = "pay_old_flow";
+    db.ledger.push({ id: "led_old", at: T0, type: "client_payment", amount: b.total, bookingId: b.id, note: b.code });
+
+    const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
+    acceptOffer(db, o.id, "cr_ankita", T0 + MIN);
+    expect(b.status).toBe("assigned");
+    expect(b.paymentDueAt).toBeUndefined();
+    expect(ledger(db, b.id, "client_payment")).toBe(2499);
+    // Confirmed, not asked for money: both sides get each other's details at once.
+    const asked = (db.notifications ?? []).filter((n) => n.userId === "u_priya" && n.title.includes("pay to confirm"));
+    expect(asked).toEqual([]);
+    expect(bookingView(db, b, { userId: "u_ankita", role: "creator", creatorId: "cr_ankita" }).clientPhone).toBeTruthy();
+  });
+
+  it("lets the client cancel for free while nothing has been paid", () => {
+    const db = seedDb(T0);
+    const searching = placed(db);
+    cancelByClient(db, searching.id, "u_priya", T0 + MIN);
+    expect(searching.status).toBe("cancelled");
+    expect(searching.refund).toBeUndefined();
+    expect(ledger(db, searching.id, "client_refund")).toBe(0);
+
+    // Same once a creator has accepted: there is no money to send back, and they are told.
+    const waiting = accepted(db);
+    cancelByClient(db, waiting.id, "u_priya", T0 + 2 * MIN);
+    expect(waiting.status).toBe("cancelled");
+    expect(waiting.refund).toBeUndefined();
+    expect((db.notifications ?? []).some((n) => n.userId === "u_ankita" && n.title === "A job you accepted was dropped")).toBe(true);
+  });
+
+  it("won't let the client cancel a job they've paid for, and refunds it once only", () => {
+    const db = seedDb(T0);
+    const b = confirmed(db);
+    expect(() => cancelByClient(db, b.id, "u_priya", T0 + 3 * MIN)).toThrow(/contact support/);
+    refund(db, b, "ops stopped it", T0 + 4 * MIN);
+    expect(b.status).toBe("refunded");
     expect(b.refund).toMatchObject({ amount: 2499, status: "pending" });
-    expect(() => refund(db, b, "again", T0 + 2 * MIN)).toThrow(/can’t be refunded/);
+    expect(() => refund(db, b, "again", T0 + 5 * MIN)).toThrow(/can’t be refunded/);
     expect(ledger(db, b.id, "client_refund")).toBe(2499);
   });
 });
@@ -126,14 +214,14 @@ describe("telling the ops team a job is about to start", () => {
 
   it("says nothing until 20 minutes before the start", () => {
     const db = seedDb(T0);
-    bookedAndAccepted(db);
+    confirmed(db);
     expect(tickAll(db, SHOOT - 21 * MIN)).toEqual([]);
     expect(unread(db)).toHaveLength(0);
   });
 
   it("alerts ops once, 20 minutes before, with the creator's phone number", () => {
     const db = seedDb(T0);
-    const b = bookedAndAccepted(db);
+    const b = confirmed(db);
     const alerts = tickAll(db, SHOOT - 20 * MIN);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]![0]).toBe(`Job ${b.code} starts in 20 min`);
@@ -149,7 +237,7 @@ describe("telling the ops team a job is about to start", () => {
 
   it("shouts when the job starts in 20 minutes and still has no creator", () => {
     const db = seedDb(T0);
-    const b = paid(db);
+    const b = placed(db);
     const alerts = tickAll(db, SHOOT - 15 * MIN);
     expect(b.status).toBe("needs_ops");
     expect(alerts[0]![0]).toBe(`Job ${b.code} starts in 15 min and has NO creator`);
@@ -158,7 +246,7 @@ describe("telling the ops team a job is about to start", () => {
 
   it("doesn't chase a job that was cancelled", () => {
     const db = seedDb(T0);
-    const b = paid(db);
+    const b = placed(db);
     cancelByClient(db, b.id, "u_priya", T0 + MIN);
     expect(tickAll(db, SHOOT - 15 * MIN)).toEqual([]);
     expect(unread(db)).toHaveLength(0);
@@ -166,7 +254,7 @@ describe("telling the ops team a job is about to start", () => {
 
   it("doesn't chase a job once its start time has passed", () => {
     const db = seedDb(T0);
-    const b = bookedAndAccepted(db);
+    const b = confirmed(db);
     // Nobody opened the site between 20 minutes before and the start, so the moment has gone.
     expect(tickAll(db, SHOOT + MIN)).toEqual([]);
     expect(b.opsRemindedAt).toBeUndefined();
@@ -177,7 +265,7 @@ describe("telling the ops team a job is about to start", () => {
 describe("finishing and approving a job", () => {
   it("owes the creator 80% and keeps 20% once the client approves", () => {
     const db = seedDb(T0);
-    const b = bookedAndAccepted(db);
+    const b = confirmed(db);
     markFinished(db, b.id, "cr_ankita", SHOOT + HOUR);
     expect(b.status).toBe("delivered");
     expect(ledger(db, b.id, "creator_earning")).toBe(0);
@@ -189,7 +277,7 @@ describe("finishing and approving a job", () => {
 
   it("won't let a creator finish an on-site job before it starts, or someone else's", () => {
     const db = seedDb(T0);
-    const b = bookedAndAccepted(db);
+    const b = confirmed(db);
     expect(() => markFinished(db, b.id, "cr_ankita", SHOOT - MIN)).toThrow(/start time/);
     expect(() => markFinished(db, b.id, "cr_rituraj", SHOOT + HOUR)).toThrow(/not found/);
     expect(() => approve(db, b.id, "u_priya", SHOOT + HOUR)).toThrow(/nothing to approve/);
@@ -317,6 +405,25 @@ describe("reviews", () => {
     const asked = (db.notifications ?? []).filter((n) => n.userId === "u_priya" && n.title.startsWith("Please rate"));
     expect(asked).toHaveLength(1);
     expect(asked[0]!.href).toBe(`/bookings/${b.id}`);
+  });
+
+  it("holds the review pop-up back while a creator waits to be paid", () => {
+    const db = seedDb(T0);
+    const client = { userId: "u_priya", role: "client" as const };
+    const done = finished(db);
+    approve(db, done.id, "u_priya", SHOOT + 6 * HOUR);
+    expect(pendingReviews(db, client)).toHaveLength(1);
+
+    // A second job is taken by a creator: paying them comes before rating the last one.
+    const next = createBooking(db, "u_priya", { ...JOB, scheduledAt: "2026-10-27T15:00" }, SHOOT + 7 * HOUR);
+    const offer = db.offers.find((o) => o.bookingId === next.id && o.status === "pending")!;
+    acceptOffer(db, offer.id, offer.creatorId, SHOOT + 7 * HOUR);
+    expect(next.status).toBe("awaiting_payment");
+    expect(pendingReviews(db, client)).toEqual([]);
+
+    // Settled either way, and the review is owed again.
+    recordPayment(db, next, "pay_next", SHOOT + 7 * HOUR + MIN);
+    expect(pendingReviews(db, client)).toHaveLength(1);
   });
 
   it("never holds a creator or the ops team to reviewing a creator", () => {

@@ -35,6 +35,65 @@ export function notifyCreatorOfOffer(db: DB, b: Booking, offer: Offer) {
 }
 
 /**
+ * A creator took the job, so the payment form opens for the client. This is the alert that asks
+ * them to pay: it also reaches their phone if they've turned on notifications.
+ */
+export function notifyPaymentDue(db: DB, b: Booking, creatorName: string, at: number) {
+  const minutes = Math.max(1, Math.round(((b.paymentDueAt ?? at) - at) / 60_000));
+  notifyUser(db, b.clientId, at, {
+    title: `${creatorName} accepted your job — pay to confirm`,
+    lines: [
+      `Job: ${findPackage(b.packageId)?.name ?? b.packageId} · ${b.code}`,
+      `Pay ₹${b.total.toLocaleString("en-IN")} in the next ${minutes} minute${minutes === 1 ? "" : "s"} to confirm it.`,
+      `${creatorName} is holding this slot for you and is given your details once you've paid.`,
+    ],
+    href: `/bookings/${b.id}`,
+  });
+}
+
+/** The money has arrived: each side gets the other's number and everything about the job. */
+export function notifyJobConfirmed(db: DB, b: Booking, at: number) {
+  const creator = db.creators.find((c) => c.id === b.creatorId);
+  const creatorPhone = creator ? db.users.find((u) => u.id === creator.userId)?.phone : undefined;
+  const client = db.users.find((u) => u.id === b.clientId);
+  const place = findZone(b.cityId, b.zoneId);
+  const when = `${b.online ? "Finish by" : "When"}: ${istDateTime(b.scheduledAt)} IST`;
+  notifyUser(db, b.clientId, at, {
+    title: `Payment received — ${creator?.name ?? "your creator"} is confirmed`,
+    lines: [
+      b.code,
+      `Creator: ${creator?.name ?? "Your creator"}${creatorPhone ? ` · ${creatorPhone}` : ""}`,
+      when,
+      "Open the job to see everything you both agreed.",
+    ],
+    href: `/bookings/${b.id}`,
+  });
+  if (!creator) return;
+  notifyUser(db, creator.userId, at, {
+    title: "The client has paid — the job is yours",
+    lines: [
+      `Job: ${findPackage(b.packageId)?.name ?? b.packageId} · ${b.code}`,
+      `Client: ${client?.name ?? "Client"}${client?.phone ? ` · ${client.phone}` : ""}`,
+      when,
+      b.online ? "Where: Online · no visit needed" : `Where: ${b.address}${place ? `, ${place.zone.name}, ${place.city.name}` : ""}`,
+      `You earn: ₹${rupees(b.price * CREATOR_SHARE).toLocaleString("en-IN")}`,
+    ],
+    href: `/creator/jobs/${b.id}`,
+  });
+}
+
+/** The job never got paid for, so the creator who accepted it is let go. */
+export function notifyCreatorJobLost(db: DB, b: Booking, reason: string, at: number) {
+  const creator = db.creators.find((c) => c.id === b.creatorId);
+  if (!creator) return;
+  notifyUser(db, creator.userId, at, {
+    title: "A job you accepted was dropped",
+    lines: [`Job: ${findPackage(b.packageId)?.name ?? b.packageId} · ${b.code}`, reason, "Your time is free again, and no payment is owed either way."],
+    href: `/creator/jobs/${b.id}`,
+  });
+}
+
+/**
  * "Starts in 20 minutes" for the ops team: who the creator is, or that nobody has it yet. Returned as
  * lines so the server layer can also email them to the ops inbox.
  */
@@ -44,12 +103,18 @@ export function opsStartingSoonLines(db: DB, b: Booking, now: number): string[] 
   const creatorPhone = creator ? db.users.find((u) => u.id === creator.userId)?.phone : undefined;
   const client = db.users.find((u) => u.id === b.clientId);
   const mins = Math.max(0, Math.round((b.scheduledAt - now) / 60_000));
+  const headline = !creator
+    ? `Job ${b.code} starts in ${mins} min and has NO creator`
+    : !b.paidAt
+      ? `Job ${b.code} starts in ${mins} min and ISN’T PAID FOR`
+      : `Job ${b.code} starts in ${mins} min`;
   return [
-    creator ? `Job ${b.code} starts in ${mins} min` : `Job ${b.code} starts in ${mins} min and has NO creator`,
+    headline,
     `Service: ${findPackage(b.packageId)?.name ?? b.packageId}`,
     `Starts: ${istDateTime(b.scheduledAt)} IST`,
     b.online ? "Where: Online job" : `Where: ${b.address}, ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
     creator ? `Creator: ${creator.name}${creatorPhone ? ` · ${creatorPhone}` : ""}` : `Status: ${b.status === "needs_ops" ? "waiting for the Srijan team to assign someone" : "still searching"}`,
+    b.paidAt ? `Paid: ₹${b.total.toLocaleString("en-IN")}` : `Payment: ₹${b.total.toLocaleString("en-IN")} still to be paid by the client`,
     `Client: ${client?.name ?? "Unknown"}${client?.phone ? ` · ${client.phone}` : ""}`,
   ];
 }
@@ -57,7 +122,7 @@ export function opsStartingSoonLines(db: DB, b: Booking, now: number): string[] 
 /** Tells every ops account a job is about to start. Returns the lines, or undefined if it's not due. */
 export function remindOpsIfStartingSoon(db: DB, b: Booking, now: number) {
   if (b.opsRemindedAt) return;
-  if (!["searching", "needs_ops", "assigned"].includes(b.status)) return;
+  if (!["searching", "needs_ops", "awaiting_payment", "assigned"].includes(b.status)) return;
   if (now < b.scheduledAt - OPS_REMINDER_MS || now >= b.scheduledAt) return;
   b.opsRemindedAt = now;
   const lines = opsStartingSoonLines(db, b, now);

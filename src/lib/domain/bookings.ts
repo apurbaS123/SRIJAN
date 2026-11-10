@@ -1,18 +1,18 @@
-// Job lifecycle: book → pay with Razorpay → first creator to accept gets it → creator uploads proof
-// and marks it finished → client approves → Srijan pays the creator 80%.
+// Job lifecycle: book (nothing to pay yet) → the first creator to accept takes it → the client is
+// asked to pay for it → payment confirms the job and the two sides swap details → creator uploads
+// proof and marks it finished → client approves → Srijan pays the creator 80%.
 import {
   AUTO_APPROVE_MS,
   CREATOR_SHARE,
   DAY,
   DISPATCH,
   MAX_SERVICES_PER_ORDER,
-  PAYMENT_WINDOW_MS,
   PLATFORM_SHARE,
   findPackage,
   findZone,
 } from "./config";
 import { cancelSearch, startDispatch, tickDispatch } from "./dispatch";
-import { notifyUser, remindOpsIfStartingSoon } from "./notifications";
+import { notifyCreatorJobLost, notifyJobConfirmed, notifyUser, remindOpsIfStartingSoon } from "./notifications";
 import type { Booking, BookingStatus, DB } from "./types";
 import { assert, cleanText, cleanUrl, istHour, newId, nextCode, parseIstLocal, rupees } from "./util";
 
@@ -43,7 +43,10 @@ export interface NewBookingInput {
   requestedCreatorId?: string;
 }
 
-/** Creates the booking, unpaid. Nobody is alerted until `recordPayment`. */
+/**
+ * Creates the booking and starts looking for a creator at once. Nothing is paid yet: the client is
+ * asked for the money only once a creator has accepted (see `acceptOffer`).
+ */
 export function createBooking(db: DB, clientId: string, input: NewBookingInput, now: number) {
   const q = quote(input.packageId);
   const online = !!q.pkg.online;
@@ -88,20 +91,26 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     aspect,
     referenceUrl,
     requestedCreatorId: requested?.id,
-    status: "awaiting_payment",
+    status: "searching",
     createdAt: now,
     dispatch: { phase: "done", roundStartedAt: now, roundEndsAt: now, widened: false, radiusKm: 0, notifiedCreatorIds: [] },
     events: [],
   };
   db.bookings.push(b);
+  log(b, now, `Booked ${q.pkg.name} · ₹${b.total.toLocaleString("en-IN")} to pay once a creator accepts`);
+  startDispatch(db, b, now);
   return b;
 }
+
 
 export interface NewOrderInput extends Omit<NewBookingInput, "packageId"> {
   packageIds: string[];
 }
 
-/** One order on /book: each service is its own job for its own creator, all paid with one Razorpay payment. */
+/**
+ * One order on /book: each service becomes its own job, looked for and paid for on its own, since
+ * each one's creator accepts at their own moment.
+ */
 export function createBookings(db: DB, clientId: string, input: NewOrderInput, now: number) {
   const ids = Array.isArray(input.packageIds) ? [...new Set(input.packageIds)] : [];
   assert(ids.length > 0, "Pick at least one service");
@@ -111,23 +120,28 @@ export function createBookings(db: DB, clientId: string, input: NewOrderInput, n
 
 /**
  * Razorpay has confirmed the money. Safe to call twice (checkout and webhook both report it).
- * Returns "paid" the first time. A payment that lands after the booking was dropped can't start a
- * job, so it is set up for a refund: returns "refund".
+ * Returns "paid" the first time, which confirms the job for the creator who accepted it and gives
+ * each side the other's details. A payment that lands once the job has been dropped can't confirm
+ * anything, so it is set up for a refund: returns "refund".
  */
 export function recordPayment(db: DB, b: Booking, paymentId: string, now: number): "paid" | "refund" | "already" {
   if (b.razorpayPaymentId) return "already";
-  const waiting = b.status === "awaiting_payment";
+  const confirms = b.status === "awaiting_payment" && !!b.creatorId;
   b.razorpayPaymentId = paymentId;
   b.paidAt = now;
   db.ledger.push({ id: newId("led"), at: now, type: "client_payment", amount: b.total, bookingId: b.id, note: b.code });
   log(b, now, `Paid ₹${b.total.toLocaleString("en-IN")}`);
-  if (waiting) {
-    b.status = "searching";
-    startDispatch(db, b, now);
+  if (confirms) {
+    b.status = "assigned";
+    b.assignedAt = now;
+    b.paymentDueAt = undefined;
+    const creator = db.creators.find((c) => c.id === b.creatorId);
+    log(b, now, `Job confirmed with ${creator?.name ?? "the creator"} · both sides have each other's details`);
+    notifyJobConfirmed(db, b, now);
     return "paid";
   }
-  b.status = "awaiting_payment"; // a dropped booking is "cancelled", which `refund` would refuse
-  refund(db, b, "paid after the booking had expired", now);
+  b.status = "awaiting_payment"; // a dropped job is "cancelled", which `refund` would refuse
+  refund(db, b, "paid after the job had been dropped", now);
   return "refund";
 }
 
@@ -257,12 +271,20 @@ export function clientRating(db: DB, clientId: string) {
  */
 export function refund(db: DB, b: Booking, reason: string, now: number) {
   assert(!["completed", "refunded", "cancelled"].includes(b.status), "This booking can’t be refunded now");
+  const paid = !!b.razorpayPaymentId;
+  const creatorWasWaiting = b.status === "awaiting_payment" && !!b.creatorId;
   cancelSearch(db, b, now);
-  b.status = "refunded";
+  // Nothing was ever charged until a creator accepted, so most dropped jobs owe the client nothing.
+  b.status = paid ? "refunded" : "cancelled";
   b.refundedAt = now;
-  if (b.razorpayPaymentId) b.refund = { amount: b.total, reason, status: "pending" };
-  db.ledger.push({ id: newId("led"), at: now, type: "client_refund", amount: b.total, bookingId: b.id, note: `${b.code} · ${reason}` });
-  log(b, now, `Full refund of ₹${b.total.toLocaleString("en-IN")} due · ${reason}`);
+  if (paid) {
+    b.refund = { amount: b.total, reason, status: "pending" };
+    db.ledger.push({ id: newId("led"), at: now, type: "client_refund", amount: b.total, bookingId: b.id, note: `${b.code} · ${reason}` });
+    log(b, now, `Full refund of ₹${b.total.toLocaleString("en-IN")} due · ${reason}`);
+  } else {
+    log(b, now, `Job dropped · ${reason} · nothing was paid, so there is nothing to refund`);
+  }
+  if (creatorWasWaiting && !paid) notifyCreatorJobLost(db, b, `The job was dropped before it was paid for: ${reason}.`, now);
   return b;
 }
 
@@ -304,10 +326,13 @@ export function markRefundSent(db: DB, bookingId: string, reference: unknown, no
   return b;
 }
 
-/** Client can cancel for free until a creator has accepted. */
+/** Client can cancel for free until they have paid: before that, nobody is out of pocket. */
 export function cancelByClient(db: DB, bookingId: string, clientId: string, now: number) {
   const b = getForClient(db, bookingId, clientId);
-  assert(b.status === "searching" || b.status === "needs_ops", "A creator is already on this job — contact support to cancel");
+  assert(
+    ["searching", "needs_ops", "awaiting_payment"].includes(b.status),
+    "This job has been paid for and is under way — contact support to cancel",
+  );
   refund(db, b, "cancelled by client", now);
   b.status = "cancelled";
   return b;
@@ -319,9 +344,25 @@ const OLD_IN_PROGRESS = ["shooting", "editing", "revision_requested"];
 /** Time-based rules that aren't part of the creator search. */
 export function tickBooking(db: DB, b: Booking, now: number) {
   if (OLD_IN_PROGRESS.includes(b.status)) b.status = "assigned" as BookingStatus;
-  if (b.status === "awaiting_payment" && now >= b.createdAt + PAYMENT_WINDOW_MS) {
+  // Bookings made under the old "pay first, then search" flow have nobody to pay for, so they are
+  // dropped the way the old 30-minute rule dropped them.
+  if (b.status === "awaiting_payment" && !b.creatorId) {
     b.status = "cancelled";
     log(b, now, "Payment wasn’t completed");
+    return;
+  }
+  // A creator accepted and is holding the slot. No money in time means the job goes, not their day.
+  if (b.status === "awaiting_payment" && b.paymentDueAt && now >= b.paymentDueAt) {
+    const at = b.paymentDueAt;
+    cancelSearch(db, b, at);
+    b.status = "cancelled";
+    log(b, at, "The client didn’t pay in time — the job was dropped and the creator released");
+    notifyCreatorJobLost(db, b, "The client didn’t pay in time, so the job was dropped.", at);
+    notifyUser(db, b.clientId, at, {
+      title: "Your job was dropped — it wasn’t paid for",
+      lines: [b.code, "The creator who accepted it has been released. You haven’t been charged.", "Book again whenever you’re ready."],
+      href: "/book",
+    });
     return;
   }
   // Anything this returns has to reach the ops team, so it's handed back to the server layer.

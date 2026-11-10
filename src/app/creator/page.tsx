@@ -64,7 +64,7 @@ function Alert({ o, onDone }: { o: OfferView; onDone: () => void }) {
       <div>
         <span className="small muted">You earn</span>
         <div className="huge-num">{inr(o.payout)}</div>
-        <span className="small muted">Client paid {inr(o.price)} · Srijan fee 20%</span>
+        <span className="small muted">Client pays {inr(o.price)} · Srijan fee 20%</span>
       </div>
       <div className="stack" style={{ gap: 6, fontSize: 14 }}>
         <div className="row between"><span className="muted">Package</span><b>{o.packageName}</b></div>
@@ -73,7 +73,8 @@ function Alert({ o, onDone }: { o: OfferView; onDone: () => void }) {
       </div>
       <p className="small">{o.brief}</p>
       <p className="tiny muted">
-        {o.kind === "direct" ? "Only you have this job for now." : `Sent to ${o.alerted} creator${o.alerted === 1 ? "" : "s"}. First to accept gets it.`} {o.online ? "The client’s number appears after you accept." : "Exact address after you accept."}
+        {o.kind === "direct" ? "Only you have this job for now." : `Sent to ${o.alerted} creator${o.alerted === 1 ? "" : "s"}. First to accept gets it.`} Accepting asks the client to pay:
+        the job is yours, with their number{o.online ? "" : " and the exact address"}, as soon as the money lands.
       </p>
       <ErrorNote error={act.error} />
       <div className="row">

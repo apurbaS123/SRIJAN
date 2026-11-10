@@ -6,7 +6,7 @@ import { markRefundSent, refundsDue } from "@/lib/domain/bookings";
 import { canTakeJob, isCreatorBusy, jobService } from "@/lib/domain/dispatch";
 import { haversineKm, DomainError } from "@/lib/domain/util";
 
-const ACTIVE = ["searching", "needs_ops", "assigned", "delivered", "disputed"];
+const ACTIVE = ["searching", "needs_ops", "awaiting_payment", "assigned", "delivered", "disputed"];
 const needsAction = (status: string) => status === "needs_ops" || status === "disputed";
 
 /** Everything the ops dashboard needs in one call. */

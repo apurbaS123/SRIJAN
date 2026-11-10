@@ -41,9 +41,14 @@ export interface PendingReview {
 /**
  * Completed jobs this client hasn't reviewed, oldest first. A creator's or the ops team's list is
  * always empty: only the client who paid reviews the creator.
+ *
+ * Nothing is owed while one of their jobs is waiting to be paid for: a creator is holding that slot
+ * and has minutes to spare, so the pop-up that blocks the site must not stand between them and the
+ * payment form. It comes back the moment that job is settled either way.
  */
 export function pendingReviews(db: DB, viewer: Viewer): PendingReview[] {
   if (!viewer.userId || viewer.role !== "client") return [];
+  if (db.bookings.some((b) => b.clientId === viewer.userId && b.status === "awaiting_payment")) return [];
   return db.bookings
     .filter((b) => b.clientId === viewer.userId && b.status === "completed" && !b.rating && b.creatorId)
     .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))
@@ -90,9 +95,9 @@ export function placeName(cityId: string, zoneId: string) {
 }
 
 export const STATUS_LABEL: Record<Booking["status"], string> = {
-  awaiting_payment: "Waiting for payment",
   searching: "Finding your creator",
   needs_ops: "Our team is assigning a creator",
+  awaiting_payment: "Waiting for payment",
   assigned: "Creator working on it",
   delivered: "Waiting for approval",
   disputed: "Problem reported",
@@ -108,6 +113,8 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
   const isOps = viewer.role === "ops";
   const isClient = viewer.userId === b.clientId;
   const isJobCreator = !!viewer.creatorId && viewer.creatorId === b.creatorId;
+  // Each side learns who the other is, and the creator the exact address, only once it's paid for.
+  const paid = !!b.paidAt;
   const creatorUser = creator ? db.users.find((u) => u.id === creator.userId) : undefined;
   const earning = db.ledger.find((l) => l.type === "creator_earning" && l.bookingId === b.id);
   const pendingOffers = db.offers.filter((o) => o.bookingId === b.id && o.status === "pending").length;
@@ -125,7 +132,8 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     total: b.total,
     creatorPayout: rupees(b.price * CREATOR_SHARE),
     online: !!b.online,
-    address: b.address,
+    /** The creator is given the exact address once the client has paid, never before. */
+    address: isJobCreator && !paid ? "" : b.address,
     area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
     cityId: b.cityId,
     lat: b.lat,
@@ -134,10 +142,10 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     brief: b.brief,
     aspect: b.aspect,
     referenceUrl: b.referenceUrl,
-    clientName: client?.name ?? "Client",
-    /** Shared with the creator once they've accepted the job. */
-    clientPhone: isOps || isClient || isJobCreator ? client?.phone : undefined,
-    creatorPhone: isOps || isClient ? creatorUser?.phone : undefined,
+    clientName: isJobCreator && !paid ? "Client" : (client?.name ?? "Client"),
+    /** Shared with the creator once the client has paid for the job. */
+    clientPhone: isOps || isClient || (isJobCreator && paid) ? client?.phone : undefined,
+    creatorPhone: isOps || (isClient && paid) ? creatorUser?.phone : undefined,
     /** Where the creator uploads proof of work. */
     proofUploadUrl: isJobCreator && b.status === "assigned" ? process.env.SRIJAN_PROOF_DRIVE_URL || null : undefined,
     /** Has Srijan sent the creator their share yet? */
@@ -146,9 +154,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     report: b.report ?? null,
     requestedCreatorId: b.requestedCreatorId,
     /** The creator the client sent this job to from their profile, and what became of it. */
-    requestedCreator: requested
-      ? { id: requested.id, name: requested.name, outcome: b.status === "awaiting_payment" ? null : sentOfferOutcome(db, b, requested.id) }
-      : null,
+    requestedCreator: requested ? { id: requested.id, name: requested.name, outcome: sentOfferOutcome(db, b, requested.id) } : null,
     creator: creator ? creatorPublic(creator) : null,
     dispatch: {
       phase: b.dispatch.phase,
@@ -158,6 +164,11 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
       notified: b.dispatch.notifiedCreatorIds.length,
       pendingOffers,
     },
+    /** Has the client paid? Everything the two sides share hangs off this. */
+    paid,
+    acceptedAt: b.acceptedAt,
+    /** While waiting for payment: the moment the job is dropped if the money hasn't arrived. */
+    paymentDueAt: b.status === "awaiting_payment" ? b.paymentDueAt : undefined,
     assignedAt: b.assignedAt,
     deliveredAt: b.deliveredAt,
     autoApproveAt: b.status === "delivered" && b.deliveredAt ? b.deliveredAt + AUTO_APPROVE_MS : null,
@@ -168,7 +179,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     reviewedAt: b.reviewedAt,
     reviewOfClient: b.reviewOfClient ?? null,
     /** The client's average from creators' reviews, shown to the creator and ops. */
-    clientRating: isOps || isJobCreator ? clientRating(db, b.clientId) : undefined,
+    clientRating: isOps || (isJobCreator && paid) ? clientRating(db, b.clientId) : undefined,
     createdAt: b.createdAt,
     events: [...b.events].sort((x, y) => x.at - y.at),
   };
@@ -229,8 +240,8 @@ export function sentOfferOutcome(db: DB, b: Booking, creatorId: string) {
  */
 export function sentOffersFor(db: DB, creatorId: string, limit = 20) {
   return db.bookings
-    .filter((b) => b.requestedCreatorId === creatorId && b.status !== "awaiting_payment")
-    .sort((a, b) => (b.paidAt ?? b.createdAt) - (a.paidAt ?? a.createdAt))
+    .filter((b) => b.requestedCreatorId === creatorId)
+    .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, limit)
     .map((b) => {
       const outcome = sentOfferOutcome(db, b, creatorId);
@@ -238,7 +249,7 @@ export function sentOffersFor(db: DB, creatorId: string, limit = 20) {
       return {
         bookingId: b.id,
         code: b.code,
-        sentAt: b.paidAt ?? b.createdAt,
+        sentAt: b.createdAt,
         packageName: pkg?.name ?? b.packageId,
         payout: rupees(b.price * CREATOR_SHARE),
         online: !!b.online,
@@ -305,10 +316,12 @@ export function opsOverview(db: DB, now: number) {
   const openCampaigns = db.campaigns.filter((c) => c.stage !== "closed");
   return {
     kpis: {
-      shootsToday: db.bookings.filter((b) => istDay(b.scheduledAt) === today && !["awaiting_payment", "refunded", "cancelled"].includes(b.status)).length,
+      shootsToday: db.bookings.filter((b) => istDay(b.scheduledAt) === today && !["refunded", "cancelled"].includes(b.status)).length,
       liveNow: db.bookings.filter((b) => b.status === "assigned").length,
       searching: db.bookings.filter((b) => b.status === "searching").length,
       needsOps: db.bookings.filter((b) => b.status === "needs_ops").length,
+      /** Jobs a creator has taken that the client still has to pay for. */
+      awaitingPayment: db.bookings.filter((b) => b.status === "awaiting_payment").length,
       pipelineValue: openCampaigns.reduce((s, c) => s + (c.budget ?? 0), 0),
       revenueMonth: platformFee + campaignCommission,
       pendingVerification: db.creators.filter((c) => c.verification === "pending").length,

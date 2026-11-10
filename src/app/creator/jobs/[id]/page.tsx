@@ -5,14 +5,14 @@ import { call, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView } from "@/lib/domain/views";
 import { ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
 import { JobDetails } from "@/components/JobDetails";
-import { inr, when } from "@/lib/client/format";
+import { countdown, inr, when } from "@/lib/client/format";
 import { ReviewSection } from "@/components/Review";
 
 function Job() {
   const { id } = useParams<{ id: string }>();
   const { data: b, error, setData, reload } = useData<BookingView>(`/api/bookings/${id}`, 4000);
   const act = useAction();
-  const now = useTick(5000);
+  const now = useTick(1000);
 
   if (error) return <div className="container page"><p className="error">{error.message}</p></div>;
   if (!b) return <Loading />;
@@ -42,6 +42,29 @@ function Job() {
         <div className="card">This booking was {b.status}.</div>
       ) : (
         <>
+          {b.status === "awaiting_payment" && (
+            <section className="card card-selected stack">
+              <div className="row between">
+                <div className="stack" style={{ gap: 4 }}>
+                  <h2>Waiting for the client to pay</h2>
+                  <span className="small">
+                    This job is yours the moment their payment lands. You then get their name and phone number
+                    {b.online ? "" : ", and the exact address"} right here, and we’ll alert you.
+                  </span>
+                </div>
+                {b.paymentDueAt && (
+                  <span className="ring" style={{ background: "#fff", border: "5px solid var(--violet)" }} aria-label="Time the client has left to pay">
+                    {countdown(b.paymentDueAt - now)}
+                  </span>
+                )}
+              </div>
+              <p className="tiny muted">
+                We’re holding this slot in your day until then. If the money doesn’t arrive, the job is dropped, your time is free again and you lose nothing.
+              </p>
+            </section>
+          )}
+
+          {b.paid && (
           <section className="card stack" style={{ gap: 6 }}>
             <h2>Client</h2>
             <b>{b.clientName}</b>
@@ -58,6 +81,7 @@ function Job() {
               </a>
             )}
           </section>
+          )}
 
           <JobDetails b={b} money={{ label: "You earn", value: inr(b.creatorPayout) }} />
 

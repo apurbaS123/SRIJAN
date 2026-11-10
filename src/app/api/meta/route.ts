@@ -6,6 +6,7 @@ import {
   CREATOR_SHARE,
   DISPATCH,
   PACKAGES,
+  PAYMENT_WINDOW_MS,
   SERVICES,
 } from "@/lib/domain/config";
 
@@ -18,6 +19,7 @@ export async function GET() {
       cities: CITIES,
       services: SERVICES,
       creatorShare: CREATOR_SHARE,
+      paymentWindowMs: PAYMENT_WINDOW_MS,
       dispatch: DISPATCH,
       campaignStages: CAMPAIGN_STAGES,
       campaignCommission: CAMPAIGN_COMMISSION,

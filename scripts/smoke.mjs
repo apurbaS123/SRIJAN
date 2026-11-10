@@ -272,14 +272,28 @@ class Agent {
     ok(r.ok, `${this.name} joins as a creator in ${zoneId}`);
     return r.data.creatorId;
   }
-  /** Creates the booking and pays for it the way the /book page does. Returns the paid booking. */
-  async bookAndPay(input) {
+  /** Places the order the way the /book page does. Returns the first job it made. */
+  async book(input) {
     const made = await this.req("/api/bookings", input);
     if (!made.ok) return made;
-    const { id, signature } = customerPays(made.data.checkout.orderId);
-    const r = await this.req("/api/payments/verify", { bookingId: made.data.bookings[0].id, razorpay_payment_id: id, razorpay_signature: signature });
-    if (!r.ok) return r;
-    return this.req(`/api/bookings/${made.data.bookings[0].id}`);
+    return { ok: true, data: made.data.bookings[0], all: made.data.bookings };
+  }
+  /** Pays for a job a creator has accepted, the way the booking page does. Returns the booking. */
+  async pay(bookingId) {
+    const order = await this.req("/api/payments/order", { bookingId });
+    if (!order.ok) return order;
+    const { id, signature } = customerPays(order.data.checkout.orderId);
+    const paid = await this.req("/api/payments/verify", { bookingId, razorpay_payment_id: id, razorpay_signature: signature });
+    if (!paid.ok) return paid;
+    return this.req(`/api/bookings/${bookingId}`);
+  }
+  /** Takes the first open offer for a job: the creator's side of the handover. */
+  async accept(bookingId) {
+    const offers = await this.req("/api/offers");
+    if (!offers.ok) return offers;
+    const offer = offers.data.find((o) => o.bookingId === bookingId);
+    if (!offer) return { ok: false, error: `no open offer for ${bookingId}`, status: 404 };
+    return this.req(`/api/offers/${offer.id}`, { action: "accept" });
   }
 }
 
@@ -427,29 +441,14 @@ async function run() {
     scheduledAt,
     brief: "Opening-week reel for our café, warm look",
   };
-  r = await priya.req("/api/bookings", shootInput);
-  ok(r.ok && r.data.bookings[0].status === "awaiting_payment" && r.data.checkout.amount === 249900, "booking waits for a ₹2,499 payment, with no GST added");
-  const unpaid = r.data;
-  ok(unpaid.bookings[0].dispatch.notified === 0, "nobody is alerted before the client pays");
-  r = await priya.req("/api/bookings");
-  ok(!r.data.some((b) => b.id === unpaid.bookings[0].id), "an unpaid booking stays out of the client’s list");
-  let fakePay = customerPays(unpaid.checkout.orderId);
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: "forged" });
-  ok(r.status === 400, "a forged payment signature is refused");
-  r = await priya.req(`/api/bookings/${unpaid.bookings[0].id}`);
-  ok(r.data.status === "awaiting_payment", "a forged payment doesn’t start the job");
-  r = await rituraj.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
-  ok(r.status === 403, "nobody else can confirm someone’s payment");
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
-  ok(r.ok && r.data.outcome === "paid", "a real payment is verified");
-  ok(rzp.payments.get(fakePay.id).status === "captured", "the authorized payment is captured");
-  r = await priya.req("/api/payments/verify", { bookingId: unpaid.bookings[0].id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
-  ok(r.ok && r.data.outcome === "already", "confirming the same payment twice changes nothing");
-  r = await priya.req(`/api/bookings/${unpaid.bookings[0].id}`);
-  ok(r.ok && r.data.status === "searching", `booking paid for ${scheduledAt} IST and searching`);
+  r = await priya.book(shootInput);
+  ok(r.ok && r.data.status === "searching" && r.data.total === 2499, `booking placed for ${scheduledAt} IST, ₹2,499 to pay once a creator accepts, with no GST added`);
   const b1 = r.data;
-  ok(b1.dispatch.notified === 3 && b1.dispatch.radiusKm === 10, "the 3 Guwahati creators are alerted within 10 km");
-  ok(b1.total === 2499, "the client paid exactly ₹2,499");
+  ok(b1.dispatch.notified === 3 && b1.dispatch.radiusKm === 10, "the 3 Guwahati creators are alerted at once, within 10 km");
+  r = await priya.req("/api/bookings");
+  ok(r.data.some((b) => b.id === b1.id), "the client can follow the booking while it looks for a creator");
+  r = await priya.req("/api/payments/order", { bookingId: b1.id });
+  ok(r.status === 400 && /nothing to pay/.test(r.error), "there is nothing to pay before a creator accepts");
 
   r = await rituraj.req("/api/notifications");
   const alertNote = r.data.find((n) => n.lines.join(" ").includes("Opening-week reel"));
@@ -462,9 +461,7 @@ async function run() {
   ok(ritOffer && ritOffer.payout === 1999 && ritOffer.expiresAt - ritOffer.sentAt === 5 * MIN, "Rituraj sees the alert: ₹1,999 payout, 5 min to accept");
   ok(!("address" in ritOffer), "alert hides the exact address");
 
-  r = await ankita.req("/api/offers");
-  const ankOffer = r.data.find((o) => o.bookingId === b1.id);
-  r = await ankita.req(`/api/offers/${ankOffer.id}`, { action: "accept" });
+  r = await ankita.accept(b1.id);
   ok(r.ok, "Ankita accepts first");
   r = await rituraj.req(`/api/offers/${ritOffer.id}`, { action: "accept" });
   ok(r.status === 409, "Rituraj’s late accept is rejected (409)");
@@ -473,10 +470,39 @@ async function run() {
   ok(!r.data.some((n) => n.id === alertNote.id), "the alert disappears for creators who lost the job");
 
   r = await priya.req(`/api/bookings/${b1.id}`);
-  ok(r.data.status === "assigned" && r.data.creatorPhone === "+91 9864011111", "client sees the creator’s phone number");
+  ok(r.data.status === "awaiting_payment" && r.data.creatorPhone === undefined, "the job now waits for the client’s payment, and they don’t get the creator’s number yet");
+  ok(r.data.paymentDueAt > Date.now(), "the client is given a deadline to pay by");
   r = await ankita.req(`/api/bookings/${b1.id}`);
-  ok(r.data.address.includes("Café Brahma") && r.data.clientPhone === "+91 9854012345", "creator sees the address and the client’s number");
+  ok(r.data.clientPhone === undefined && r.data.address === "" && r.data.clientName === "Client", "Ankita holds the slot but learns nothing about the client until it’s paid for");
+  r = await priya.req("/api/notifications");
+  ok(r.data.some((n) => n.title === "Ankita Baruah accepted your job — pay to confirm"), "the client is alerted to pay");
+
+  r = await priya.req("/api/payments/order", { bookingId: b1.id });
+  ok(r.ok && r.data.checkout.amount === 249900, "the payment form opens for ₹2,499 once a creator has accepted");
+  const b1Order = r.data.checkout.orderId;
+  r = await priya.req("/api/payments/order", { bookingId: b1.id });
+  ok(r.ok && r.data.checkout.orderId === b1Order, "pressing Pay twice re-uses the same Razorpay order");
+  let fakePay = customerPays(b1Order);
+  r = await priya.req("/api/payments/verify", { bookingId: b1.id, razorpay_payment_id: fakePay.id, razorpay_signature: "forged" });
+  ok(r.status === 400, "a forged payment signature is refused");
+  r = await priya.req(`/api/bookings/${b1.id}`);
+  ok(r.data.status === "awaiting_payment", "a forged payment doesn’t confirm the job");
+  r = await rituraj.req("/api/payments/verify", { bookingId: b1.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.status === 403, "nobody else can confirm someone’s payment");
+  r = await priya.req("/api/payments/verify", { bookingId: b1.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.ok && r.data.outcome === "paid", "a real payment is verified");
+  ok(rzp.payments.get(fakePay.id).status === "captured", "the authorized payment is captured");
+  r = await priya.req("/api/payments/verify", { bookingId: b1.id, razorpay_payment_id: fakePay.id, razorpay_signature: fakePay.signature });
+  ok(r.ok && r.data.outcome === "already", "confirming the same payment twice changes nothing");
+
+  r = await priya.req(`/api/bookings/${b1.id}`);
+  ok(r.data.status === "assigned" && r.data.paid && r.data.creatorPhone === "+91 9864011111", "the payment confirms the job and the client gets the creator’s number");
+  ok(r.data.total === 2499, "the client paid exactly ₹2,499");
+  r = await ankita.req(`/api/bookings/${b1.id}`);
+  ok(r.data.address.includes("Café Brahma") && r.data.clientPhone === "+91 9854012345", "the creator now sees the address and the client’s number");
   ok(r.data.proofUploadUrl === DRIVE_URL, "creator gets the Drive link for proof of work");
+  r = await ankita.req("/api/notifications");
+  ok(r.data.some((n) => n.title === "The client has paid — the job is yours"), "the creator is told the job is confirmed");
   r = await rituraj.req(`/api/bookings/${b1.id}`);
   ok(r.status === 404, "another creator can’t open the job");
 
@@ -521,34 +547,44 @@ async function run() {
 
   // --- Webhook: the client closes the page right after paying -------------------
   r = await priya.req("/api/session");
-  r = await priya.req("/api/bookings", { ...shootInput, scheduledAt: slotFrom(r.serverNow), brief: "Reel paid for and confirmed by webhook" });
+  r = await priya.book({ ...shootInput, scheduledAt: slotFrom(r.serverNow), brief: "Reel paid for and confirmed by webhook" });
   const viaHook = r.data;
-  fakePay = customerPays(viaHook.checkout.orderId);
-  const hookPayload = { payment: { entity: { id: fakePay.id, order_id: viaHook.checkout.orderId } } };
+  r = await ankita.accept(viaHook.id);
+  ok(r.ok, "Ankita takes it, so the client is asked to pay");
+  r = await priya.req("/api/payments/order", { bookingId: viaHook.id });
+  const hookOrder = r.data.checkout.orderId;
+  fakePay = customerPays(hookOrder);
+  const hookPayload = { payment: { entity: { id: fakePay.id, order_id: hookOrder } } };
   ok((await sendWebhook("payment.authorized", hookPayload, "wrong-secret")) === 400, "a webhook with a bad signature is refused");
-  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`);
-  ok(r.data.status === "awaiting_payment", "a forged webhook doesn’t start the job");
+  r = await priya.req(`/api/bookings/${viaHook.id}`);
+  ok(r.data.status === "awaiting_payment", "a forged webhook doesn’t confirm the job");
   ok((await sendWebhook("payment.authorized", hookPayload)) === 200, "Razorpay’s webhook is accepted");
   ok((await sendWebhook("payment.captured", hookPayload)) === 200 && (await sendWebhook("order.paid", hookPayload)) === 200, "repeat webhook events are accepted");
-  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`);
-  ok(r.data.status === "searching" && r.data.events.filter((e) => e.text.startsWith("Paid")).length === 1, "the webhook alone confirms the booking, once");
-  r = await priya.req(`/api/bookings/${viaHook.bookings[0].id}`, { action: "cancel" });
-  ok(r.data.status === "cancelled" && r.data.refund?.status === "pending" && r.data.refund.amount === 2499, "cancelling leaves the full ₹2,499 waiting to be refunded");
+  r = await priya.req(`/api/bookings/${viaHook.id}`);
+  ok(r.data.status === "assigned" && r.data.events.filter((e) => e.text.startsWith("Paid")).length === 1, "the webhook alone confirms the job, once");
+  r = await priya.req(`/api/bookings/${viaHook.id}`, { action: "cancel" });
+  ok(r.status === 400 && /contact support/.test(r.error), "the client can’t cancel a job they have paid for");
+  r = await ops.req(`/api/bookings/${viaHook.id}`, { action: "refund", reason: "creator pulled out" });
+  ok(r.data.status === "refunded" && r.data.refund?.status === "pending" && r.data.refund.amount === 2499, "ops stopping a paid job leaves the full ₹2,499 waiting to be refunded");
   const dueAfterCancel = (await ops.req("/api/admin")).data.refundsDue.find((x) => x.paymentId === fakePay.id);
   ok(dueAfterCancel?.amount === 2499 && dueAfterCancel.clientPhone?.replace(/\D/g, "").endsWith(priya.phone), "ops is told to refund it, with the client’s phone number");
   const markSent = () => ops.req("/api/admin", { action: "mark_refund_sent", bookingId: dueAfterCancel.id, reference: "rfnd_manual_1" });
   r = await priya.req(`/api/bookings/${dueAfterCancel.id}`);
   ok(r.data.refund?.status === "pending", "the client sees the refund as waiting");
+  r = await priya.req("/api/admin", { action: "mark_refund_sent", bookingId: dueAfterCancel.id });
+  ok(r.status === 403, "only ops can mark a refund as sent");
   rzp.down = true;
   r = await markSent();
   rzp.down = false;
   ok(r.ok, "ops marks a refund sent outside Razorpay, without asking Razorpay");
+  r = await markSent();
+  ok(r.status === 409, "a sent refund can’t be marked twice");
   r = await ops.req("/api/admin");
   ok(!r.data.refundsDue.some((x) => x.paymentId === fakePay.id), "a sent refund leaves the list");
 
   // --- Online job: video editing ------------------------------------------------
   r = await priya.req("/api/session");
-  r = await priya.bookAndPay({ packageIds: ["edit_reel"], scheduledAt: slotFrom(r.serverNow), brief: "Edit my café clips into a 30 second reel" });
+  r = await priya.book({ packageIds: ["edit_reel"], scheduledAt: slotFrom(r.serverNow), brief: "Edit my café clips into a 30 second reel" });
   ok(r.ok && r.data.online && r.data.area === "Online" && r.data.total === 999, "an online job needs no address");
   const online = r.data;
   ok(online.dispatch.notified === 2, "only the 2 video editors are alerted, wherever they live");
@@ -561,7 +597,11 @@ async function run() {
   r = await nilakshi.req(`/api/offers/${onlineOffer.id}`, { action: "accept" });
   ok(r.ok, "Nilakshi accepts the online job");
   r = await nilakshi.req(`/api/bookings/${online.id}`);
-  ok(r.data.clientPhone === "+91 9854012345", "after accepting, the editor sees the client’s number");
+  ok(r.data.status === "awaiting_payment" && r.data.clientPhone === undefined, "the online job waits for the payment, with nothing shared yet");
+  r = await priya.pay(online.id);
+  ok(r.ok && r.data.status === "assigned", "the client pays and the online job is confirmed");
+  r = await nilakshi.req(`/api/bookings/${online.id}`);
+  ok(r.data.clientPhone === "+91 9854012345", "once paid for, the editor sees the client’s number");
   r = await priya.req(`/api/bookings/${online.id}`);
   ok(r.data.clientPhone === "+91 9854012345" && r.data.creatorPhone === "+91 9864044444" && r.data.brief.includes("café clips"), "the client’s approval page shows both numbers and the job details");
   r = await nilakshi.req(`/api/bookings/${online.id}`, { action: "finish" });
@@ -583,7 +623,7 @@ async function run() {
 
   // --- No taker → ops ----------------------------------------------------------
   r = await priya.req("/api/session");
-  r = await priya.bookAndPay({
+  r = await priya.book({
     packageIds: ["video_tour"],
     cityId: "silchar",
     zoneId: "silchar-town",
@@ -600,22 +640,15 @@ async function run() {
   const row = r.data.dispatch.find((x) => x.id === b2.id);
   ok(row && row.candidates.length > 0, "ops sees candidates to assign by hand");
   r = await ops.req(`/api/bookings/${b2.id}`, { action: "refund", reason: "no creator in Silchar yet" });
-  ok(r.data.status === "refunded" && r.data.refund?.status === "pending", "ops refunding a booking leaves the money to be sent");
+  ok(r.data.status === "cancelled" && !r.data.refund, "ops dropping a job nobody paid for owes the client nothing");
   r = await ops.req("/api/admin");
-  const b2Due = r.data.refundsDue.find((x) => x.id === b2.id);
-  ok(b2Due, "ops sees the refund to send");
-  r = await priya.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
-  ok(r.status === 403, "only ops can mark a refund as sent");
-  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
-  ok(r.ok, "ops marks it as sent");
+  ok(!r.data.refundsDue.some((x) => x.id === b2.id), "so it never reaches the refunds list");
   r = await priya.req(`/api/bookings/${b2.id}`);
-  ok(r.data.refund?.status === "sent", "the client sees the refund was sent");
-  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: b2.id });
-  ok(r.status === 409, "a sent refund can’t be marked twice");
+  ok(r.data.events.some((e) => e.text.includes("nothing to refund")), "the client is told plainly that nothing was charged");
 
   // --- A job offer sent to one creator from their profile -----------------------
   r = await priya.req("/api/session");
-  r = await priya.bookAndPay({
+  r = await priya.book({
     packageIds: ["video_milestone"],
     cityId: "jorhat",
     zoneId: "jorhat-town",
@@ -632,7 +665,9 @@ async function run() {
   ok(r.data.dispatch.phase === "broadcast", "everyone nearby is alerted after the chosen creator declines");
   await advance(6);
   r = await ops.req(`/api/bookings/${b3.id}`, { action: "assign", creatorId: cr.nilakshi });
-  ok(r.data.status === "assigned", "ops assigns by hand after the window");
+  ok(r.data.status === "awaiting_payment", "ops assigns by hand after the window, and the client is asked to pay");
+  r = await priya.pay(b3.id);
+  ok(r.ok && r.data.status === "assigned", "the client pays and the hand-assigned job is confirmed");
 
   // --- Two services in one order -------------------------------------------------
   r = await priya.req("/api/session");
@@ -644,22 +679,20 @@ async function run() {
     scheduledAt: slotFrom(r.serverNow),
     brief: "Shoot our café and edit a separate reel",
   });
-  ok(r.ok && r.data.bookings.length === 2 && r.data.checkout.amount === 249800, "two services add up to one ₹2,498 payment");
-  const pair = r.data;
-  ok(pair.bookings[0].online === false && pair.bookings[1].online === true, "each service is its own job");
-  const pairPay = customerPays(pair.checkout.orderId);
-  r = await priya.req("/api/payments/verify", { bookingId: pair.bookings[0].id, razorpay_payment_id: pairPay.id, razorpay_signature: pairPay.signature });
-  ok(r.ok && r.data.outcome === "paid", "one payment confirms the order");
-  r = await priya.req(`/api/bookings/${pair.bookings[1].id}`);
-  ok(r.data.status !== "awaiting_payment", "the second service starts its search too");
-  r = await priya.req(`/api/bookings/${pair.bookings[1].id}`, { action: "cancel" });
-  ok(r.ok && r.data.refund?.amount === 999, "cancelling one service leaves only its price to refund");
-  r = await ops.req(`/api/bookings/${pair.bookings[0].id}`);
-  ok(r.data.status !== "cancelled" && r.data.status !== "refunded", "the other service carries on");
-  r = await ops.req("/api/admin");
-  ok(r.data.refundsDue.find((x) => x.id === pair.bookings[1].id)?.amount === 999, "ops is told to send back only that service’s price");
-  r = await ops.req("/api/admin", { action: "mark_refund_sent", bookingId: pair.bookings[1].id });
-  ok(r.ok, "ops marks that one refund as sent");
+  ok(r.ok && r.data.bookings.length === 2, "two services become two jobs");
+  const pair = r.data.bookings;
+  ok(pair[0].online === false && pair[1].online === true, "each service is its own job");
+  ok(pair.every((b) => b.status === "searching" && !b.paid), "both start looking for their own creator, with nothing to pay yet");
+  r = await rituraj.accept(pair[0].id);
+  ok(r.ok, "Rituraj takes the shoot half of the order");
+  r = await priya.pay(pair[0].id);
+  ok(r.ok && r.data.status === "assigned" && r.data.total === 1499, "the client pays ₹1,499 for that service alone");
+  r = await priya.req(`/api/bookings/${pair[1].id}`);
+  ok(r.data.status === "searching", "the editing half carries on looking for its own creator");
+  r = await priya.req(`/api/bookings/${pair[1].id}`, { action: "cancel" });
+  ok(r.ok && r.data.status === "cancelled" && !r.data.refund, "cancelling the half nobody has paid for owes nothing");
+  r = await ops.req(`/api/bookings/${pair[0].id}`);
+  ok(r.data.status === "assigned", "the paid half carries on");
 
   // --- Campaign from a brand that isn't signed in --------------------------------
   const brand = new Agent("Mitali (brand)", "mitali@kazorganics.test", "9876543210");

@@ -122,8 +122,17 @@ export const MAX_SERVICES_PER_ORDER = 10;
 export const OPS_REMINDER_MS = 20 * MIN;
 
 export const AUTO_APPROVE_MS = 48 * HOUR; // after the creator marks the job finished
-/** An unpaid booking is dropped after this long. Checkout closes itself sooner (see /book). */
+/**
+ * How long the client has to pay once a creator has accepted. The creator's time is held for that
+ * long; if the money doesn't arrive, the job is dropped and the creator released. The job's own
+ * start time cuts this short — see `paymentDueAt` on a booking.
+ */
 export const PAYMENT_WINDOW_MS = 30 * MIN;
+
+/** The moment a client's time to pay runs out: 30 minutes from the accept, or the job's start time if that's sooner. */
+export function paymentDeadline(acceptedAt: number, scheduledAt: number) {
+  return Math.min(acceptedAt + PAYMENT_WINDOW_MS, scheduledAt);
+}
 
 export const CAMPAIGN_COMMISSION = { min: 0.3, max: 0.35, default: 0.3 };
 

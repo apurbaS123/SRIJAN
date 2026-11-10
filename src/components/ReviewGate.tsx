@@ -19,6 +19,10 @@ const ALWAYS_OPEN = ["/support", "/terms", "/privacy", "/login"];
  * The review of a finished job is compulsory: once a job is approved — by the client, or
  * automatically after 48 hours — this sits over the site until it is rated. There is no close
  * button and no way round it, by design. Only the client who paid sees it.
+ *
+ * One thing outranks it: a job a creator has just accepted and is waiting to be paid for. The
+ * server leaves the list empty until that payment is settled (see `pendingReviews`), so this can
+ * never stand between a waiting creator and the payment form.
  */
 export function ReviewGate() {
   const { session } = useSession();

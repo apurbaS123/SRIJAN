@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, SUPPORT_PHONE } from "@/lib/domain/config";
+import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, PAYMENT_WINDOW_MS, SUPPORT_PHONE } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "FAQs — Srijan" };
 
@@ -9,7 +9,7 @@ const NOTICE_HOURS = DISPATCH.onSiteNoticeMs / HOUR;
 const FAQS = [
   {
     q: "How do I book a service?",
-    a: `Choose one or more services from the menu, pick a time and pay online. One order can hold up to ${MAX_SERVICES_PER_ORDER} services. Jobs at your location need at least ${NOTICE_HOURS} hour’s notice and can be booked up to ${DISPATCH.maxDaysAhead} days ahead. Online jobs need no notice.`,
+    a: `Choose one or more services from the menu, pick a time and place the booking — there is nothing to pay at that point. One order can hold up to ${MAX_SERVICES_PER_ORDER} services, each of which finds its own creator and is paid for on its own. Jobs at your location need at least ${NOTICE_HOURS} hour’s notice and can be booked up to ${DISPATCH.maxDaysAhead} days ahead. Online jobs need no notice.`,
   },
   {
     q: "How do I get a creator?",
@@ -18,6 +18,10 @@ const FAQS = [
   {
     q: "Which cities do you cover?",
     a: "The city list on the booking and creators pages shows where on-site jobs are available right now. Online jobs like video editing don’t depend on your location.",
+  },
+  {
+    q: "When do I pay?",
+    a: `Only once a creator has accepted your job. We tell you on the site, on your phone and by email, and you then have ${PAYMENT_WINDOW_MS / 60_000} minutes to pay while the creator holds your slot. Paying confirms the job and gives you each other’s phone numbers. If the payment doesn’t arrive in time the job is dropped, the creator is released and you are charged nothing.`,
   },
   {
     q: "When is the creator paid?",
@@ -29,7 +33,7 @@ const FAQS = [
   },
   {
     q: "Can I cancel a booking?",
-    a: `Yes, for free, until a creator has accepted the job. After that, call the Srijan team on ${SUPPORT_PHONE}.`,
+    a: `Yes, for free, any time before you have paid — including while a creator waits for your payment. Once you have paid, call the Srijan team on ${SUPPORT_PHONE}.`,
   },
   {
     q: "How do refunds work?",

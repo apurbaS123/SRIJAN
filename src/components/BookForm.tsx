@@ -5,7 +5,6 @@ import { call, serverNow, useAction } from "@/lib/client/api";
 import type { ShootPackage } from "@/lib/domain/config";
 import type { ServiceKey } from "@/lib/domain/types";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
-import { openCheckout, type CheckoutDetails } from "@/lib/client/razorpay";
 import { useSession } from "@/components/Session";
 import { ErrorNote } from "@/components/ui";
 import { TimeWheel } from "@/components/TimeWheel";
@@ -50,10 +49,10 @@ function istDate(offsetDays: number) {
   return new Date(serverNow() + IST + offsetDays * 86400_000).toISOString().slice(0, 10);
 }
 
-/** What someone filled in before pressing Pay, kept for this tab while they sign in. They come back to the same order, and payment opens. */
+/** What someone filled in before pressing Book, kept for this tab while they sign in. They come back to the same order, and it is placed for them. */
 const DRAFT_KEY = "srijan.book.draft";
-/** After this long, a returning visitor still gets their order back, but payment waits for them to press Pay. */
-const RESUME_PAYMENT_MS = 30 * 60_000;
+/** After this long, a returning visitor still gets their order back, but it waits for them to press Book. */
+const RESUME_BOOKING_MS = 30 * 60_000;
 interface Draft {
   /** The creator the job offer goes to first, if it was sent from their profile. */
   creatorId?: string;
@@ -164,7 +163,7 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   const [referenceUrl, setReferenceUrl] = useState(draft?.referenceUrl ?? "");
   const [aspect, setAspect] = useState<Draft["aspect"]>(draft?.aspect ?? "9:16");
   const { busy, error, run } = useAction();
-  const payRow = useRef<HTMLDivElement>(null);
+  const bookRow = useRef<HTMLDivElement>(null);
   const resumed = useRef(false);
 
   useEffect(() => {
@@ -174,8 +173,8 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   const total = selected.reduce((sum, p) => sum + p.price, 0);
   const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta, noticeMs).length);
 
-  async function pay() {
-    // Not signed in with an account that can book: sign in first. Payment opens on the way back (see below).
+  async function book() {
+    // Not signed in with an account that can book: sign in first. The order is placed on the way back (see below).
     if (user?.role !== "client") {
       const saved: Draft = { creatorId: chosen?.id, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
@@ -183,8 +182,9 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
       router.push(`/login?next=${encodeURIComponent(chosen ? `/creators/${chosen.id}?offer=1` : "/book")}`);
       return;
     }
-    const paidPage = await run(async () => {
-      const { bookings, checkout } = await call<{ bookings: BookingView[]; checkout: CheckoutDetails }>("/api/bookings", {
+    // Nothing is charged here: each job's price is asked for once a creator has accepted it.
+    const next = await run(async () => {
+      const { bookings } = await call<{ bookings: BookingView[] }>("/api/bookings", {
         packageIds,
         cityId,
         zoneId,
@@ -195,22 +195,18 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
         referenceUrl,
         requestedCreatorId: chosen?.id,
       });
-      const paid = await openCheckout(checkout);
-      if (!paid) return undefined; // closed without paying; they can simply try again
-      // If this call is lost, Razorpay's webhook still confirms the payment.
-      await call("/api/payments/verify", { bookingId: bookings[0]!.id, ...paid }).catch(() => undefined);
       return bookings.length === 1 ? `/bookings/${bookings[0]!.id}` : "/bookings";
     });
-    if (paidPage) router.push(paidPage);
+    if (next) router.push(next);
   }
 
-  // Back from signing in: carry on with the payment they already asked for.
+  // Back from signing in: place the order they already asked for.
   useEffect(() => {
-    if (!draft || Date.now() - draft.savedAt > RESUME_PAYMENT_MS || resumed.current || user?.role !== "client" || !slot || selected.length === 0) return;
+    if (!draft || Date.now() - draft.savedAt > RESUME_BOOKING_MS || resumed.current || user?.role !== "client" || !slot || selected.length === 0) return;
     resumed.current = true;
     // If the order can't go through, the reason shows here, not out of sight at the bottom of the page.
-    payRow.current?.scrollIntoView({ block: "center" });
-    void pay();
+    bookRow.current?.scrollIntoView({ block: "center" });
+    void book();
   });
 
   return (
@@ -322,7 +318,7 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
             onChange={(e) => setAddress(e.target.value)}
             style={{ marginTop: 4 }}
           />
-          <span className="hint">The creator sees the exact address only after accepting.</span>
+          <span className="hint">The creator sees the exact address only once you’ve paid for the job.</span>
         </div>
 
         {/* Map picker modal */}
@@ -399,7 +395,9 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
           <span>{inr(total)}</span>
         </div>
         <p className="small" style={{ color: "var(--ink-2)" }}>
-          You pay Srijan now, and the creator is paid after you approve the finished job. Full refund if no creator is found or you cancel before one accepts.
+          Nothing to pay yet. Each service goes out to creators now, and you’re asked to pay for it only once a creator accepts — you then have
+          {" "}
+          {Math.round(meta.paymentWindowMs / 60_000)} minutes to pay, and they get your details once you have. The creator is paid after you approve the finished job.
         </p>
       </section>
 
@@ -412,9 +410,9 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
           </button>
         </div>
       ) : (
-        <div ref={payRow}>
-          <button className="btn btn-accent btn-lg btn-block" disabled={busy || (sessionLoading && !session) || !slot || selected.length === 0} onClick={pay}>
-            {busy ? "Processing…" : `Pay ${inr(total)}`}
+        <div ref={bookRow}>
+          <button className="btn btn-accent btn-lg btn-block" disabled={busy || (sessionLoading && !session) || !slot || selected.length === 0} onClick={book}>
+            {busy ? "Placing your booking…" : selected.length === 0 ? "Book now" : `Book now · pay ${inr(total)} when a creator accepts`}
           </button>
         </div>
       )}

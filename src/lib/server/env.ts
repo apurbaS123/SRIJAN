@@ -32,6 +32,16 @@ export function opsEmails() {
     .filter(Boolean);
 }
 
+/**
+ * Where the site lives, used for links in emails. Vercel sets the production URL itself; set
+ * SRIJAN_SITE_URL to override it (or for any other host). "" means "don't put a link in".
+ */
+export function siteUrl() {
+  const raw = (process.env.SRIJAN_SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "").trim().replace(/\/+$/, "");
+  if (!raw) return "";
+  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+}
+
 /** Only these get ops access, checked on every request. */
 export function isOpsEmail(email: string) {
   return !!email && opsEmails().includes(email);

@@ -17,14 +17,15 @@ export default function TermsPage() {
 
       <h2>Prices and payment</h2>
       <p>
-        Services are sold at the fixed price shown when you book, and you pay in full up front through Razorpay. An unpaid booking is dropped after {PAYMENT_WINDOW_MS / 60_000} minutes. Razorpay’s own
-        terms also apply to your payment.
+        Services are sold at the fixed price shown when you book. Booking itself costs nothing: once a creator accepts the job you are asked to pay that price in full through Razorpay, and you have{" "}
+        {PAYMENT_WINDOW_MS / 60_000} minutes to do so. If the payment doesn’t arrive in that time the job is dropped and the creator released, with nothing owed either way. Paying confirms the job,
+        and you and the creator are then given each other’s contact details. Razorpay’s own terms also apply to your payment.
       </p>
 
       <h2>Cancellations and refunds</h2>
       <p>
-        You can cancel for free until a creator has accepted the job. After that, call the Srijan team on {SUPPORT_PHONE}. Refunds are sent by the Srijan team by hand, so they aren’t instant, and we may contact you
-        for your bank or UPI details.
+        You can cancel for free any time before you pay, including while a creator is waiting for your payment. Once you have paid, call the Srijan team on {SUPPORT_PHONE}. Refunds are sent by the
+        Srijan team by hand, so they aren’t instant, and we may contact you for your bank or UPI details.
       </p>
 
       <h2>Approving the work</h2>
