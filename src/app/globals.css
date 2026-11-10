@@ -520,6 +520,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
   scroll-snap-align: center;
 }
 .wheel-item.on { font-size: 26px; font-weight: 700; color: var(--violet-ink); }
+/* The compulsory review pop-up: covers the site until the job is rated. */
+.review-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(26, 0, 46, .55);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+.review-gate-card {
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+}
 .check {
   display: flex;
   align-items: center;

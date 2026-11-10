@@ -9,6 +9,7 @@ import { JobDetails } from "@/components/JobDetails";
 import { countdown, inr, time, when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
 import { ReviewBody, ReviewSection } from "@/components/Review";
+import { REVIEW_EVENT } from "@/components/ReviewGate";
 
 const ORDER = ["searching", "assigned", "delivered", "completed"];
 
@@ -57,6 +58,8 @@ function Tracking() {
     const r = await act.run(() => call<BookingView>(`/api/bookings/${b!.id}`, body));
     if (r) setData(r);
     else void reload();
+    // Approving leaves a review owing: bring the pop-up up now rather than at the next poll.
+    if (r && body.action === "approve") window.dispatchEvent(new Event(REVIEW_EVENT));
   }
 
   return (

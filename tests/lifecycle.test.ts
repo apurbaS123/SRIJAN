@@ -5,6 +5,7 @@ import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { campaignMath, inviteCreator, respondToInvite, settleCampaign, updateCampaign } from "@/lib/domain/campaigns";
+import { pendingReviews } from "@/lib/domain/views";
 import { CREATOR_SHARE, HOUR, lowestPrice, MIN, PACKAGES, sellable } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
@@ -278,6 +279,52 @@ describe("reviews", () => {
     expect(b.reviewOfClient).toEqual({ rating: 5, text: "Clear brief, on time", at: SHOOT + 7 * HOUR });
     expect(() => reviewClient(db, b.id, "cr_ankita", 3, "", SHOOT + 8 * HOUR)).toThrow(/already/);
     expect(clientRating(db, "u_priya")).toEqual({ rating: 5, count: 1 });
+  });
+
+  it("holds a client to reviewing every job they approved", () => {
+    const db = seedDb(T0);
+    const client = { userId: "u_priya", role: "client" as const };
+    expect(pendingReviews(db, client)).toEqual([]);
+
+    const b = finished(db);
+    // Delivered but not approved yet: nothing is owed.
+    expect(pendingReviews(db, client)).toEqual([]);
+
+    approve(db, b.id, "u_priya", SHOOT + 6 * HOUR);
+    const due = pendingReviews(db, client);
+    expect(due).toHaveLength(1);
+    expect(due[0]!.bookingId).toBe(b.id);
+    expect(due[0]!.creatorName).toBe("Ankita Baruah");
+    expect(due[0]!.packageName).toBe("Milestone Capture");
+    expect(due[0]!.autoApproved).toBe(false);
+
+    reviewCreator(db, b.id, "u_priya", 5, "Brilliant", SHOOT + 7 * HOUR);
+    expect(pendingReviews(db, client)).toEqual([]);
+  });
+
+  it("asks for a review on an auto-approved job, and says it was automatic", () => {
+    const db = seedDb(T0);
+    const b = finished(db);
+    tickAll(db, SHOOT + 5 * HOUR + 48 * HOUR);
+    expect(b.status).toBe("completed");
+    expect(b.autoApproved).toBe(true);
+
+    const due = pendingReviews(db, { userId: "u_priya", role: "client" });
+    expect(due).toHaveLength(1);
+    expect(due[0]!.autoApproved).toBe(true);
+
+    // The client isn't on the site when this happens, so they are told.
+    const asked = (db.notifications ?? []).filter((n) => n.userId === "u_priya" && n.title.startsWith("Please rate"));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.href).toBe(`/bookings/${b.id}`);
+  });
+
+  it("never holds a creator or the ops team to reviewing a creator", () => {
+    const db = seedDb(T0);
+    const b = finished(db);
+    approve(db, b.id, "u_priya", SHOOT + 6 * HOUR);
+    expect(pendingReviews(db, { userId: "u_ops", role: "ops" })).toEqual([]);
+    expect(pendingReviews(db, { userId: db.creators.find((c) => c.id === "cr_ankita")!.userId, role: "creator" })).toEqual([]);
   });
 
   it("can review an auto-approved booking", () => {

@@ -28,6 +28,35 @@ export function tickAll(db: DB, now: number) {
   return alerts;
 }
 
+export interface PendingReview {
+  bookingId: string;
+  code: string;
+  creatorName: string;
+  packageName: string;
+  /** When the job was approved — by the client, or automatically after 48 hours. */
+  approvedAt: number;
+  autoApproved: boolean;
+}
+
+/**
+ * Completed jobs this client hasn't reviewed, oldest first. A creator's or the ops team's list is
+ * always empty: only the client who paid reviews the creator.
+ */
+export function pendingReviews(db: DB, viewer: Viewer): PendingReview[] {
+  if (!viewer.userId || viewer.role !== "client") return [];
+  return db.bookings
+    .filter((b) => b.clientId === viewer.userId && b.status === "completed" && !b.rating && b.creatorId)
+    .sort((a, b) => (a.approvedAt ?? 0) - (b.approvedAt ?? 0))
+    .map((b) => ({
+      bookingId: b.id,
+      code: b.code,
+      creatorName: db.creators.find((c) => c.id === b.creatorId)?.name ?? "your creator",
+      packageName: findPackage(b.packageId)?.name ?? b.packageId,
+      approvedAt: b.approvedAt ?? 0,
+      autoApproved: !!b.autoApproved,
+    }));
+}
+
 export function creatorPublic(c: Creator) {
   return {
     id: c.id,

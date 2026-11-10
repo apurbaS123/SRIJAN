@@ -334,6 +334,13 @@ export function tickBooking(db: DB, b: Booking, now: number) {
     b.autoApproved = true;
     const s = settleBooking(db, b, at);
     log(b, at, `Auto-approved after 48 h · ₹${s.creatorNet.toLocaleString("en-IN")} to be paid to the creator`);
+    // Nobody is looking at the page when this happens, so ask for the review that is now owed.
+    const creator = db.creators.find((c) => c.id === b.creatorId);
+    notifyUser(db, b.clientId, at, {
+      title: `Please rate ${creator?.name.split(" ")[0] ?? "your creator"}`,
+      lines: [b.code, "Your job was approved automatically after 48 hours. Rating your creator takes a moment and is the last step."],
+      href: `/bookings/${b.id}`,
+    });
   }
   return reminder;
 }

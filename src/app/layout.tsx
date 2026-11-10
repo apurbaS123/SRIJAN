@@ -4,6 +4,7 @@ import { SessionProvider } from "@/components/Session";
 import { Header } from "@/components/Header";
 import { SiteFooter } from "@/components/SiteFooter";
 import { DemoNotifications } from "@/components/DemoNotifications";
+import { ReviewGate } from "@/components/ReviewGate";
 import { HelpButton } from "@/components/HelpButton";
 
 export const metadata: Metadata = {
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main>{children}</main>
           <SiteFooter />
           <HelpButton />
+          <ReviewGate />
         </SessionProvider>
       </body>
     </html>
