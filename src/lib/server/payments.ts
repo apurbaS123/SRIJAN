@@ -2,9 +2,8 @@
 // request would have to wait for it.
 import { recordPayment } from "@/lib/domain/bookings";
 import { withDb } from "./store";
-import { sendOpsAlerts } from "./alerts";
+import { bookingAlertLines, sendOpsAlerts } from "./alerts";
 import { capturePayment, fetchPayment, RazorpayError, type RazorpayPayment } from "./razorpay";
-import { bookingAlertLines } from "./whatsapp";
 
 /** Asks Razorpay what really happened and captures the money if it's only authorized. */
 async function capturedPayment(paymentId: string, paise: number): Promise<RazorpayPayment> {

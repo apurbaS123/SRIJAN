@@ -31,7 +31,6 @@ export default function PrivacyPage() {
         <li>Razorpay takes payments. You enter your card or UPI details with Razorpay, not on Srijan.</li>
         <li>Vercel hosts the site and Supabase stores its data.</li>
         <li>Brevo sends our emails.</li>
-        <li>WhatsApp (Meta) carries booking and campaign alerts to the Srijan team.</li>
         <li>OpenStreetMap provides the map you use to choose a location.</li>
       </ul>
 

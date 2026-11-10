@@ -3,7 +3,7 @@
 //        node scripts/smoke.mjs   (uses the existing build in .next)
 //
 // The script starts its own `next start` on a free port with a throwaway data file, a test
-// session secret, and email and WhatsApp switched off, so it never touches your real data or
+// session secret, and email switched off, so it never touches your real data or
 // sends messages. Razorpay is a small fake server started by this script, so no real money moves.
 // It signs everyone in through the real email-code flow. Two things it does from
 // outside, by editing the throwaway store between requests (the server reads it on every request):
@@ -135,13 +135,9 @@ async function startServer() {
       DATABASE_URL: SMOKE_DB,
       POSTGRES_URL: "",
       SRIJAN_OPS_EMAILS: OPS_EMAIL,
-      // Empty values win over .env.local, so no email or WhatsApp message is ever sent.
+      // Empty values win over .env.local, so no email is ever sent.
       BREVO_API_KEY: "",
       EMAIL_FROM: "",
-      WHATSAPP_TOKEN: "",
-      WHATSAPP_PHONE_NUMBER_ID: "",
-      WHATSAPP_NOTIFY_TO: "",
-      WHATSAPP_TEMPLATE: "",
       RAZORPAY_KEY_ID: "rzp_test_smoke",
       RAZORPAY_KEY_SECRET: RZP_SECRET,
       RAZORPAY_WEBHOOK_SECRET: RZP_WEBHOOK_SECRET,

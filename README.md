@@ -18,7 +18,7 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (83 checks). Runs its own server on a free port with a throwaway data file and email and WhatsApp off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (83 checks). Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
 | `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
@@ -121,24 +121,15 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 
 Prices are suggested starting points, not market data — adjust them in `config.ts` after talking to creators and clients.
 
-## WhatsApp booking alerts
+## Alerts to the Srijan team
 
-Every paid booking (package, time, address, client contact, brief, amount paid) and brand campaign request (brand, contact, call time, goal, regions, budget) is sent to your WhatsApp via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started). Add to `.env.local`:
+Three things are emailed to every address in `SRIJAN_OPS_EMAILS`: a paid booking (package, time, address, client contact, brief, amount paid), a brand campaign request (brand, contact, call time, goal, regions, budget), and a job that starts in 20 minutes (who the creator is and their number, or that nobody has taken it). They need `BREVO_API_KEY` and `EMAIL_FROM`, the same settings sign-in codes use. With no config, alerts are skipped; failures are logged and never block a booking.
 
-```
-WHATSAPP_TOKEN=...              # permanent System User access token
-WHATSAPP_PHONE_NUMBER_ID=...    # the sending business number's ID (WhatsApp > API Setup)
-WHATSAPP_NOTIFY_TO=919876543210 # your number with country code; comma-separate several
-# Optional, recommended: an approved Utility template with one body variable {{1}}
-WHATSAPP_TEMPLATE=new_booking
-WHATSAPP_TEMPLATE_LANG=en
-```
-
-Without `WHATSAPP_TEMPLATE`, alerts go as plain text, which WhatsApp only delivers if your number has messaged the business number in the last 24 hours. With no config, alerts are skipped. Failures are logged and never block a booking.
+Creators are alerted in the app only, while they have the site open — see the note on `notifyUser` in `src/lib/domain/notifications.ts` for where real push notifications would go.
 
 ## Production setup
 
-Set these on your host (Vercel → Settings → Environment Variables, or the server's environment), in addition to the optional WhatsApp alert settings above:
+Set these on your host (Vercel → Settings → Environment Variables, or the server's environment):
 
 | Variable | What it is |
 | --- | --- |
@@ -146,7 +137,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `BREVO_API_KEY` | **Required for sign-in.** A Brevo API key (Brevo → SMTP & API → API Keys). Sign-in codes are emailed with it. |
 | `EMAIL_FROM` | **Required for sign-in.** The address codes come from. It must be a sender verified in Brevo (Senders, Domains & Dedicated IPs); verifying your domain keeps codes out of spam. |
 | `EMAIL_FROM_NAME` | Optional sender name shown in the inbox (default `Srijan`). |
-| `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access. |
+| `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access, and alerts are emailed to them. |
 | `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |

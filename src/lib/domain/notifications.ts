@@ -36,7 +36,7 @@ export function notifyCreatorOfOffer(db: DB, b: Booking, offer: Offer) {
 
 /**
  * "Starts in 20 minutes" for the ops team: who the creator is, or that nobody has it yet. Returned as
- * lines so the server layer can also send them to WhatsApp and the ops inbox.
+ * lines so the server layer can also email them to the ops inbox.
  */
 export function opsStartingSoonLines(db: DB, b: Booking, now: number): string[] {
   const place = findZone(b.cityId, b.zoneId);

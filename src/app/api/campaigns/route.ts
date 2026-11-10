@@ -1,8 +1,7 @@
 import { api, readJson, setSession } from "@/lib/server/api";
 import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
-import { sendOpsAlerts } from "@/lib/server/alerts";
-import { campaignAlertLines } from "@/lib/server/whatsapp";
+import { campaignAlertLines, sendOpsAlerts } from "@/lib/server/alerts";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { campaignView } from "@/lib/domain/views";
 import { createCampaign, type NewCampaignInput } from "@/lib/domain/campaigns";
@@ -32,7 +31,7 @@ export async function GET() {
  * (created on first use) so they can follow the request.
  */
 export async function POST(req: Request) {
-  // Public form that also pings WhatsApp: keep spam down.
+  // Public form that also emails the team: keep spam down.
   const limited = await limitByIp("campaign", 5, 60 * 60_000);
   if (limited) return limited;
   const input = await readJson<NewCampaignInput & { code?: string }>(req);
