@@ -1,5 +1,6 @@
-// Sign-in codes by email through Brevo's transactional email API.
+// Sign-in codes, help tickets and ops alerts by email through Brevo's transactional email API.
 // Configure BREVO_API_KEY and EMAIL_FROM (a sender verified in Brevo); see README.
+import { opsEmails } from "./env";
 
 export const emailConfigured = () => !!(process.env.BREVO_API_KEY && process.env.EMAIL_FROM);
 
@@ -29,6 +30,40 @@ export async function sendEmailCode(email: string, code: string) {
     console.error(`Sign-in email to ${email.replace(/^(.).*@/, "$1…@")} failed: ${res.status} ${(await res.text()).slice(0, 500)}`);
   } catch (e) {
     console.error("Sign-in email failed", e);
+  }
+  return false;
+}
+
+/**
+ * Sends an ops alert (such as "job starts in 20 minutes") to every address in SRIJAN_OPS_EMAILS.
+ * The first line is the subject. Returns false (and logs) if it couldn't be sent. Never throws.
+ */
+export async function sendOpsAlertEmail(lines: string[]) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  const to = opsEmails().map((email) => ({ email }));
+  if (!apiKey || !from || !to.length || !lines.length) return false;
+  const [subject, ...rest] = lines;
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: process.env.EMAIL_FROM_NAME || "Srijan", email: from },
+        to,
+        subject: subject!,
+        htmlContent: `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a002e">
+  <h2 style="margin:0 0 16px">${esc(subject!)}</h2>
+  ${rest.map((l) => `<p style="margin:0 0 6px">${esc(l)}</p>`).join("")}
+  <p style="margin:16px 0 0;color:#6b5a7e">Open the ops dashboard to act on this.</p>
+</div>`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return true;
+    console.error(`Ops alert email failed: ${res.status} ${(await res.text()).slice(0, 500)}`);
+  } catch (e) {
+    console.error("Ops alert email failed", e);
   }
   return false;
 }

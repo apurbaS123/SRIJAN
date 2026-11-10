@@ -4,8 +4,14 @@ import { useEffect, useRef } from "react";
 /** Keep in step with .wheel-item in globals.css. */
 const ROW_PX = 44;
 
+/** "08" → "8 am", "13" → "1 pm", "00" → "12 am". The value stays a 24-hour "HH". */
+function hourLabel(hh: string) {
+  const h = Number(hh);
+  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "am" : "pm"}`;
+}
+
 /** One scrolling column. It settles on whichever row stops in the middle. */
-function Wheel({ label, values, value, onChange }: { label: string; values: string[]; value: string; onChange: (v: string) => void }) {
+function Wheel({ label, values, value, onChange, format }: { label: string; values: string[]; value: string; onChange: (v: string) => void; format?: (v: string) => string }) {
   const list = useRef<HTMLDivElement>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const placed = useRef(false);
@@ -43,14 +49,17 @@ function Wheel({ label, values, value, onChange }: { label: string; values: stri
     <div ref={list} className="wheel" role="listbox" aria-label={label} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown}>
       {values.map((v) => (
         <div key={v} role="option" aria-selected={v === value} className={`wheel-item${v === value ? " on" : ""}`} onClick={() => onChange(v)}>
-          {v}
+          {format ? format(v) : v}
         </div>
       ))}
     </div>
   );
 }
 
-/** A 24-hour time picker like a phone's alarm: hours and minutes on two scrolling wheels. `slots` are "HH:mm". */
+/**
+ * A 12-hour time picker like a phone's alarm: hours (shown as "9 am") and minutes on two scrolling
+ * wheels. `slots` and the value stay 24-hour "HH:mm", so nothing downstream has to change.
+ */
 export function TimeWheel({ slots, value, onChange }: { slots: string[]; value: string; onChange: (slot: string) => void }) {
   const hours = [...new Set(slots.map((s) => s.slice(0, 2)))];
   const hour = value.slice(0, 2);
@@ -64,7 +73,7 @@ export function TimeWheel({ slots, value, onChange }: { slots: string[]; value: 
   return (
     <div className="time-wheel">
       <div className="time-wheel-band" aria-hidden="true" />
-      <Wheel label="Hour" values={hours} value={hour} onChange={pickHour} />
+      <Wheel label="Hour" values={hours} value={hour} onChange={pickHour} format={hourLabel} />
       <span className="time-wheel-colon" aria-hidden="true">:</span>
       <Wheel label="Minute" values={minutes} value={value.slice(3)} onChange={(m) => onChange(`${hour}:${m}`)} />
     </div>

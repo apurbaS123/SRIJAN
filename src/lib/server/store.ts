@@ -14,27 +14,29 @@ import { ensureSchema as pgEnsureSchema, load as pgLoad, save as pgSave } from "
 import type { DB } from "@/lib/domain/types";
 import { tickAll } from "@/lib/domain/views";
 import { DomainError } from "@/lib/domain/util";
+import { sendOpsAlerts } from "./alerts";
 
 /** First run: an empty marketplace. */
 function initialDb(): DB {
   return { version: 1, seq: 1000, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [], otps: [], notifications: [] };
 }
 
-type Outcome<T> = { ok: true; result: T; now: number } | { ok: false; error: unknown };
+type Outcome<T> = { ok: true; result: T; now: number; alerts: string[][] } | { ok: false; error: unknown; alerts: string[][] };
 
 /** Ticks, runs `fn` and saves. A failed change is dropped, but the tick's changes are kept. */
 async function runAndSave<T>(db: DB, save: (db: DB) => Promise<void> | void, fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
   const now = Date.now();
-  tickAll(db, now);
+  // Ops alerts that fell due while ticking. They're sent after the database is unlocked, never during.
+  const alerts = tickAll(db, now);
   const ticked = JSON.stringify(db);
   try {
     const result = await fn(db, now);
     await save(db);
-    return { ok: true, result, now };
+    return { ok: true, result, now, alerts };
   } catch (error) {
     // Some errors (like a wrong sign-in code) must still record what happened.
     await save(error instanceof DomainError && error.keepChanges ? db : (JSON.parse(ticked) as DB));
-    return { ok: false, error };
+    return { ok: false, error, alerts };
   }
 }
 
@@ -123,6 +125,9 @@ function withFile<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<Outco
 
 export async function withDb<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<{ result: T; now: number }> {
   const out = await (DATABASE_URL ? withPostgres(fn) : withFile(fn));
+  // Sent even when `fn` failed: the tick that raised them was saved either way, and each one is
+  // marked as sent in the database, so a dropped alert is never raised again.
+  sendOpsAlerts(out.alerts);
   if (!out.ok) throw out.error;
   return { result: out.result, now: out.now };
 }

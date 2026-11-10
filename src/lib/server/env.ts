@@ -24,11 +24,15 @@ export function normalizeEmail(raw: unknown) {
   return v.length <= 200 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : "";
 }
 
-/** Srijan team (ops) email addresses. Only these get ops access, checked on every request. */
-export function isOpsEmail(email: string) {
-  return !!email && (process.env.SRIJAN_OPS_EMAILS ?? "")
+/** Srijan team (ops) email addresses, from SRIJAN_OPS_EMAILS. Where ops alerts are sent. */
+export function opsEmails() {
+  return (process.env.SRIJAN_OPS_EMAILS ?? "")
     .split(",")
     .map(normalizeEmail)
-    .filter(Boolean)
-    .includes(email);
+    .filter(Boolean);
+}
+
+/** Only these get ops access, checked on every request. */
+export function isOpsEmail(email: string) {
+  return !!email && opsEmails().includes(email);
 }

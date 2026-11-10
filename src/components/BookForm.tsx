@@ -20,8 +20,18 @@ const LocationPickerModal = dynamic(
 
 const IST = 5.5 * 3600_000;
 const SLOT_MINUTES = 5;
-/** Where the wheel starts, so nobody books midnight just by not touching it. */
+/** Where the wheel starts on a later date, so nobody books midnight just by not touching it. */
 const DEFAULT_SLOT = "10:00";
+
+/**
+ * Where the wheel starts. Today it opens on the earliest time that can still be booked — an hour
+ * from now for on-site work — so the creator always has that hour to get ready and reach the place.
+ * A later date opens mid-morning instead.
+ */
+function openingSlot(date: string, slots: string[]) {
+  if (date === istDate(0)) return slots[0] ?? "";
+  return slots.includes(DEFAULT_SLOT) ? DEFAULT_SLOT : (slots[0] ?? "");
+}
 
 /** Bookable start times for a date, as "HH:mm", respecting notice and hours. */
 function slotsFor(date: string, meta: Meta, noticeMs: number) {
@@ -158,8 +168,8 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   const resumed = useRef(false);
 
   useEffect(() => {
-    if (!slots.includes(slot)) setSlot(slots.includes(DEFAULT_SLOT) ? DEFAULT_SLOT : (slots[0] ?? ""));
-  }, [slots, slot]);
+    if (!slots.includes(slot)) setSlot(openingSlot(date, slots));
+  }, [date, slots, slot]);
 
   const total = selected.reduce((sum, p) => sum + p.price, 0);
   const days = [0, 1, 2, 3, 4, 5, 6].map((d) => istDate(d)).filter((d) => slotsFor(d, meta, noticeMs).length);
@@ -349,7 +359,9 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
           />
         </div>
         {slot ? <TimeWheel slots={slots} value={slot} onChange={setSlot} /> : <span className="small">No times left on this date. Please pick another.</span>}
-        <span className="hint">Scroll to set the time (24-hour clock).{onSite && " On-site jobs need 1 hour’s notice, so the creator can reach you on time."}</span>
+        <span className="hint">
+          Scroll to set the time.{onSite && " On-site jobs start an hour from now at the earliest, so the creator has time to get ready and reach you."}
+        </span>
       </section>
 
       <section className="stack">

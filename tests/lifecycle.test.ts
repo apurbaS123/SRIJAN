@@ -120,6 +120,59 @@ describe("the service menu", () => {
   });
 });
 
+describe("telling the ops team a job is about to start", () => {
+  const unread = (db: DB) => (db.notifications ?? []).filter((n) => n.userId === "u_ops" && !n.readAt);
+
+  it("says nothing until 20 minutes before the start", () => {
+    const db = seedDb(T0);
+    bookedAndAccepted(db);
+    expect(tickAll(db, SHOOT - 21 * MIN)).toEqual([]);
+    expect(unread(db)).toHaveLength(0);
+  });
+
+  it("alerts ops once, 20 minutes before, with the creator's phone number", () => {
+    const db = seedDb(T0);
+    const b = bookedAndAccepted(db);
+    const alerts = tickAll(db, SHOOT - 20 * MIN);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]![0]).toBe(`Job ${b.code} starts in 20 min`);
+    expect(alerts[0]!.join(" ")).toContain("Ankita Baruah");
+    expect(alerts[0]!.join(" ")).toContain("98640 11111");
+    expect(unread(db)).toHaveLength(1);
+    expect(b.opsRemindedAt).toBe(SHOOT - 20 * MIN);
+
+    // Every later tick is silent: the alert is marked as sent on the booking.
+    expect(tickAll(db, SHOOT - 10 * MIN)).toEqual([]);
+    expect(unread(db)).toHaveLength(1);
+  });
+
+  it("shouts when the job starts in 20 minutes and still has no creator", () => {
+    const db = seedDb(T0);
+    const b = paid(db);
+    const alerts = tickAll(db, SHOOT - 15 * MIN);
+    expect(b.status).toBe("needs_ops");
+    expect(alerts[0]![0]).toBe(`Job ${b.code} starts in 15 min and has NO creator`);
+    expect(alerts[0]!.join(" ")).toContain("waiting for the Srijan team to assign someone");
+  });
+
+  it("doesn't chase a job that was cancelled", () => {
+    const db = seedDb(T0);
+    const b = paid(db);
+    cancelByClient(db, b.id, "u_priya", T0 + MIN);
+    expect(tickAll(db, SHOOT - 15 * MIN)).toEqual([]);
+    expect(unread(db)).toHaveLength(0);
+  });
+
+  it("doesn't chase a job once its start time has passed", () => {
+    const db = seedDb(T0);
+    const b = bookedAndAccepted(db);
+    // Nobody opened the site between 20 minutes before and the start, so the moment has gone.
+    expect(tickAll(db, SHOOT + MIN)).toEqual([]);
+    expect(b.opsRemindedAt).toBeUndefined();
+    expect(unread(db)).toHaveLength(0);
+  });
+});
+
 describe("finishing and approving a job", () => {
   it("owes the creator 80% and keeps 20% once the client approves", () => {
     const db = seedDb(T0);

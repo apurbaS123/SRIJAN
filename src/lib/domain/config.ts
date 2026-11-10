@@ -118,6 +118,9 @@ export const DISPATCH = {
 /** How many services one order on /book can hold. */
 export const MAX_SERVICES_PER_ORDER = 10;
 
+/** How long before a job starts the ops team is alerted, so someone can chase a job that isn't ready. */
+export const OPS_REMINDER_MS = 20 * MIN;
+
 export const AUTO_APPROVE_MS = 48 * HOUR; // after the creator marks the job finished
 /** An unpaid booking is dropped after this long. Checkout closes itself sooner (see /book). */
 export const PAYMENT_WINDOW_MS = 30 * MIN;

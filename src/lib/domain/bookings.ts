@@ -12,7 +12,7 @@ import {
   findZone,
 } from "./config";
 import { cancelSearch, startDispatch, tickDispatch } from "./dispatch";
-import { notifyUser } from "./notifications";
+import { notifyUser, remindOpsIfStartingSoon } from "./notifications";
 import type { Booking, BookingStatus, DB } from "./types";
 import { assert, cleanText, cleanUrl, istHour, newId, nextCode, parseIstLocal, rupees } from "./util";
 
@@ -324,7 +324,9 @@ export function tickBooking(db: DB, b: Booking, now: number) {
     log(b, now, "Payment wasn’t completed");
     return;
   }
+  // Anything this returns has to reach the ops team, so it's handed back to the server layer.
   tickDispatch(db, b, now);
+  const reminder = remindOpsIfStartingSoon(db, b, now);
   if (b.status === "delivered" && b.deliveredAt && now >= b.deliveredAt + AUTO_APPROVE_MS) {
     const at = b.deliveredAt + AUTO_APPROVE_MS;
     b.status = "completed";
@@ -333,4 +335,5 @@ export function tickBooking(db: DB, b: Booking, now: number) {
     const s = settleBooking(db, b, at);
     log(b, at, `Auto-approved after 48 h · ₹${s.creatorNet.toLocaleString("en-IN")} to be paid to the creator`);
   }
+  return reminder;
 }

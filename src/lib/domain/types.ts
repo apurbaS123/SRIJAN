@@ -146,6 +146,8 @@ export interface Booking {
   /** The client's "Report a problem" note. */
   report?: { note: string; at: number };
   dispatch: DispatchState;
+  /** When the ops team was told this job starts in 20 minutes. Set once, so the alert can't repeat. */
+  opsRemindedAt?: number;
   assignedAt?: number;
   /** When the creator pressed Mark As Finished. */
   deliveredAt?: number;

@@ -12,12 +12,20 @@ export interface Viewer {
   creatorId?: string;
 }
 
-/** Run every time-based rule up to `now`. */
+/**
+ * Run every time-based rule up to `now`. Returns the ops alerts that fell due, for the server layer
+ * to send once the database is unlocked.
+ */
 export function tickAll(db: DB, now: number) {
-  for (const b of db.bookings) tickBooking(db, b, now);
+  const alerts: string[][] = [];
+  for (const b of db.bookings) {
+    const reminder = tickBooking(db, b, now);
+    if (reminder) alerts.push(reminder);
+  }
   // Profiles saved before the rename keep their own copy of this title.
   for (const c of db.creators) for (const s of c.services) if (s.title === "1-day shoot") s.title = "1-day service";
   pruneNotifications(db, now);
+  return alerts;
 }
 
 export function creatorPublic(c: Creator) {
