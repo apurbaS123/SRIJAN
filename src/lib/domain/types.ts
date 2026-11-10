@@ -15,6 +15,15 @@ export type ServiceKey =
 
 export type SocialPlatform = "instagram" | "youtube" | "facebook" | "other";
 
+/** A browser or phone signed up for push notifications, as the Push API describes it. */
+export interface PushSub {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  addedAt: number;
+  /** Set when the push service last rejected it, so a dead one can be dropped. */
+  failedAt?: number;
+}
+
 export interface User {
   id: string;
   role: Role;
@@ -28,6 +37,8 @@ export interface User {
   passwordHash?: string;
   passwordFails?: number;
   passwordLockedUntil?: number;
+  /** Every device this person turned push notifications on for. */
+  push?: PushSub[];
 }
 
 export interface CreatorService {
@@ -277,6 +288,8 @@ export interface Notification {
   /** Job alerts disappear once the offer is no longer open. */
   offerId?: string;
   readAt?: number;
+  /** Set once this has been handed to the push service, so a phone is never buzzed twice. */
+  pushedAt?: number;
 }
 
 export interface DB {

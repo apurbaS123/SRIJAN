@@ -125,7 +125,22 @@ Prices are suggested starting points, not market data — adjust them in `config
 
 Three things are emailed to every address in `SRIJAN_OPS_EMAILS`: a paid booking (package, time, address, client contact, brief, amount paid), a brand campaign request (brand, contact, call time, goal, regions, budget), and a job that starts in 20 minutes (who the creator is and their number, or that nobody has taken it). They need `BREVO_API_KEY` and `EMAIL_FROM`, the same settings sign-in codes use. With no config, alerts are skipped; failures are logged and never block a booking.
 
-Creators are alerted in the app only, while they have the site open — see the note on `notifyUser` in `src/lib/domain/notifications.ts` for where real push notifications would go.
+## Phone notifications
+
+Every message the app creates goes through `notifyUser`, and each one is also pushed to the person's
+phone with the [Web Push](https://developer.mozilla.org/docs/Web/API/Push_API) protocol, so a creator
+gets a job alert with Srijan closed. People turn it on per device from the card on **/creator** or
+**/ops**; `public/sw.js` shows the notification and opens the job when it is tapped.
+
+Generate a key pair once and set all three (see Production setup):
+
+```
+node --input-type=module -e "import {generateVAPIDKeys} from 'web-push'; console.log(generateVAPIDKeys())"
+```
+
+On **iPhone this only works once Srijan is added to the home screen** (iOS 16.4+); the card says so
+when it detects an iPhone that hasn't. Android, desktop Chrome, Edge and Firefox need no install.
+With no keys set, push is skipped and the in-app pop-up still works.
 
 ## Production setup
 
@@ -138,6 +153,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `EMAIL_FROM` | **Required for sign-in.** The address codes come from. It must be a sender verified in Brevo (Senders, Domains & Dedicated IPs); verifying your domain keeps codes out of spam. |
 | `EMAIL_FROM_NAME` | Optional sender name shown in the inbox (default `Srijan`). |
 | `SRIJAN_OPS_EMAILS` | Comma-separated email addresses of the Srijan team. Only these get ops (admin) access, and alerts are emailed to them. |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Phone notifications. The public key is sent to the browser, the private key is a secret, and the subject is a `mailto:` address push services can reach you at. Without them push is skipped. |
 | `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |

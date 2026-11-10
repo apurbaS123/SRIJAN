@@ -5,7 +5,9 @@
 //    The first to accept gets the job.
 // 3. At minute 3 the search widens to 25 km for the rest of the same window.
 // 4. Creators who come online during the window are alerted too.
-// 5. If nobody accepts by the end of the window, the booking goes to the ops team.
+// 5. If nobody accepts by the end of the window, the booking goes to the ops team. The alerts are
+//    left open: creators can still accept while ops works the phones, whoever gets there first.
+//    Only the job's own start time closes them.
 //
 // Only creators who offer the job's service are alerted. Online jobs skip the distance rules.
 //
@@ -70,7 +72,8 @@ function createOffer(db: DB, b: Booking, creatorId: string, kind: Offer["kind"],
     creatorId,
     kind,
     sentAt: at,
-    expiresAt: b.dispatch.roundEndsAt,
+    // The countdown a creator sees. Only a direct offer is really closed by it: see acceptOffer.
+    expiresAt: kind === "direct" ? b.dispatch.roundEndsAt : at + DISPATCH.broadcastWindowMs,
     distanceKm: Math.round(distanceKm * 10) / 10,
     status: "pending",
   };
@@ -147,7 +150,8 @@ function expirePending(db: DB, bookingId: string, status: "expired" | "taken", a
 
 /** Advance the search for one booking up to `now`. Safe to call any number of times. */
 export function tickDispatch(db: DB, b: Booking, now: number) {
-  if (b.status !== "searching") return;
+  // needs_ops keeps ticking: the job is the ops team's to place, but creators can still take it.
+  if (b.status !== "searching" && b.status !== "needs_ops") return;
   const d = b.dispatch;
 
   // Sent to one creator first: move on to everyone when they decline or their 5 minutes are up.
@@ -169,20 +173,26 @@ export function tickDispatch(db: DB, b: Booking, now: number) {
 
   if (d.phase === "broadcast") {
     const widenAt = d.roundStartedAt + DISPATCH.widenAfterMs;
-    if (!d.widened && now >= widenAt && widenAt < d.roundEndsAt) widen(db, b, widenAt);
-    if (now >= d.roundEndsAt) {
-      expirePending(db, b.id, "expired", d.roundEndsAt);
-      d.phase = "done";
+    if (!d.widened && now >= widenAt) widen(db, b, widenAt);
+    if (now >= d.roundEndsAt && b.status === "searching") {
       b.status = "needs_ops";
       log(
         b,
         d.roundEndsAt,
-        `No one accepted in 5 min (${d.notifiedCreatorIds.length} alerted) — Srijan team is assigning a creator`,
+        `No one accepted in 5 min (${d.notifiedCreatorIds.length} alerted) — Srijan team is taking over, and the alerts stay open`,
       );
-    } else {
-      const n = alertNearby(db, b, now);
-      if (n > 0) log(b, now, `${n} more creator${n === 1 ? "" : "s"} came online and ${n === 1 ? "was" : "were"} alerted`);
     }
+    // The job's own start time is the only thing that closes the search. One tick can arrive after
+    // both that and the window, so this runs after the hand-over above, never instead of it.
+    if (now >= b.scheduledAt) {
+      expirePending(db, b.id, "expired", b.scheduledAt);
+      d.phase = "done";
+      log(b, b.scheduledAt, "The job’s start time passed with no creator — it needs cancelling and refunding");
+      return;
+    }
+    // Creators who come online later are still alerted, during the window and after it.
+    const n = alertNearby(db, b, now);
+    if (n > 0) log(b, now, `${n} more creator${n === 1 ? "" : "s"} came online and ${n === 1 ? "was" : "were"} alerted`);
   }
 }
 
@@ -204,11 +214,15 @@ export function acceptOffer(db: DB, offerId: string, creatorId: string, now: num
   assert(o && o.creatorId === creatorId, "Offer not found", 404);
   const b = db.bookings.find((x) => x.id === o.bookingId);
   assert(b, "Booking not found", 404);
-  if (o.status === "taken" || (b.status !== "searching" && b.creatorId !== creatorId)) {
+  const open = b.status === "searching" || b.status === "needs_ops";
+  if (o.status === "taken" || (!open && b.creatorId !== creatorId)) {
     throw new DomainError("Another creator accepted this job first", 409);
   }
   assert(o.status === "pending", "This offer is no longer open", 409);
-  assert(now < o.expiresAt, "This offer has expired", 409);
+  // A direct offer is the client's chosen creator alone, so it really does run out. A broadcast
+  // offer stays open until the job starts, even once the ops team has stepped in.
+  if (o.kind === "direct") assert(now < o.expiresAt, "This offer has expired", 409);
+  else assert(now < b.scheduledAt, "This job has already started", 409);
   assert(!isCreatorBusy(db, creatorId, b), "You already have a shoot around this time", 409);
   const creator = db.creators.find((c) => c.id === creatorId)!;
   o.status = "accepted";

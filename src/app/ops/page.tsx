@@ -6,6 +6,7 @@ import type { BookingView, CreatorPublic } from "@/lib/domain/views";
 import type { PayoutDue } from "@/lib/domain/payouts";
 import type { RefundDue } from "@/lib/domain/bookings";
 import { Guard, StatusBadge } from "@/components/ui";
+import { PushToggle } from "@/components/PushToggle";
 import { countdown, inr, lakh, time, when } from "@/lib/client/format";
 
 interface Overview {
@@ -192,6 +193,8 @@ function Dashboard() {
           <h1>Dispatch</h1>
         </div>
       </div>
+
+      <PushToggle what="new bookings and jobs starting soon" />
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(170px,100%),1fr))" }}>
         <div className="card stack" style={{ gap: 4 }}>

@@ -124,7 +124,7 @@ function Tracking() {
       {b.status === "needs_ops" && (
         <section className="card card-orange stack">
           <h2>Our team is finding you a creator</h2>
-          <p className="small">No one accepted in the first 5 minutes. A Srijan team member is calling creators now. If we can’t fill it, you get a full refund.</p>
+          <p className="small">No one accepted in the first 5 minutes, so a Srijan team member is calling creators now. Your job is still showing to every creator nearby too, so one of them may take it first. If we can’t fill it, you get a full refund.</p>
           {isClient && (
             <button className="btn btn-sm btn-ghost" style={{ alignSelf: "flex-start" }} disabled={act.busy} onClick={() => post({ action: "cancel" })}>
               Cancel · full refund

@@ -9,6 +9,7 @@ import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { SocialPlatform } from "@/lib/domain/types";
 import { useSession } from "@/components/Session";
 import { countdown, inr, when } from "@/lib/client/format";
+import { PushToggle } from "@/components/PushToggle";
 
 /** Short beep so creators don't miss an alert (works after the first tap on the page). */
 function beep() {
@@ -47,13 +48,18 @@ function Alert({ o, onDone }: { o: OfferView; onDone: () => void }) {
         <span className="tag" style={{ background: "var(--orange)", color: "var(--ink)" }}>
           {o.kind === "direct" ? "Client picked you" : o.online ? "New online job" : "New job near you"}
         </span>
-        <span
-          className="ring"
-          style={{ background: `conic-gradient(var(--orange) ${pct * 360}deg, #3a3b45 0)`, color: "#fff" }}
-          aria-label={`${countdown(left)} left to accept`}
-        >
-          <span style={{ background: "var(--ink)", borderRadius: "50%", width: 58, height: 58, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{countdown(left)}</span>
-        </span>
+        {left > 0 ? (
+          <span
+            className="ring"
+            style={{ background: `conic-gradient(var(--orange) ${pct * 360}deg, #3a3b45 0)`, color: "#fff" }}
+            aria-label={`${countdown(left)} left to accept`}
+          >
+            <span style={{ background: "var(--ink)", borderRadius: "50%", width: 58, height: 58, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{countdown(left)}</span>
+          </span>
+        ) : (
+          // Nobody took it in the first 5 minutes, so it is still going. Only the start time ends it.
+          <span className="tag" style={{ background: "var(--violet)", color: "#fff" }}>Still open</span>
+        )}
       </div>
       <div>
         <span className="small muted">You earn</span>
@@ -167,6 +173,8 @@ function Home() {
             </button>
           </div>
       </section>
+
+      <PushToggle what="job alerts" />
 
       <ErrorNote error={act.error} />
 

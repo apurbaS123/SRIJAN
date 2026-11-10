@@ -9,6 +9,8 @@ import type { DB } from "@/lib/domain/types";
 
 // 26 Oct 2026, 10:00 IST
 const T0 = Date.UTC(2026, 9, 26, 4, 30);
+// The booked start time, 15:00 IST the same day.
+const SHOOT = Date.UTC(2026, 9, 26, 9, 30);
 
 function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, now = T0) {
   const b = createBooking(
@@ -41,14 +43,49 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     expect(b.dispatch.roundEndsAt - T0).toBe(5 * MIN);
   });
 
-  it("goes to ops after 5 minutes if nobody accepts", () => {
+  it("goes to ops after 5 minutes if nobody accepts, leaving every alert open", () => {
     const db = seedDb(T0);
     const b = book(db);
     tickAll(db, T0 + 4 * MIN + 59_000);
     expect(b.status).toBe("searching");
     tickAll(db, T0 + 5 * MIN);
     expect(b.status).toBe("needs_ops");
+    // Ops takes over, but the job keeps showing to every creator who was alerted.
+    expect(pendingFor(db, b.id)).toEqual(["cr_ankita", "cr_dhruba", "cr_rituraj"]);
+  });
+
+  it("lets a creator accept hours later, while ops is still working on it", () => {
+    const db = seedDb(T0);
+    const b = book(db);
+    tickAll(db, T0 + 90 * MIN);
+    expect(b.status).toBe("needs_ops");
+    const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
+    acceptOffer(db, o.id, "cr_ankita", T0 + 90 * MIN);
+    expect(b.status).toBe("assigned");
+    expect(b.creatorId).toBe("cr_ankita");
     expect(pendingFor(db, b.id)).toEqual([]);
+  });
+
+  it("keeps alerting creators who come online long after the window", () => {
+    const db = seedDb(T0);
+    db.creators.find((c) => c.id === "cr_rituraj")!.available = false;
+    const b = book(db);
+    tickAll(db, T0 + 30 * MIN);
+    expect(b.status).toBe("needs_ops");
+    expect(pendingFor(db, b.id)).not.toContain("cr_rituraj");
+    db.creators.find((c) => c.id === "cr_rituraj")!.available = true;
+    tickAll(db, T0 + 31 * MIN);
+    expect(pendingFor(db, b.id)).toContain("cr_rituraj");
+  });
+
+  it("closes the alerts when the job’s own start time passes", () => {
+    const db = seedDb(T0);
+    const b = book(db);
+    const o = db.offers.find((x) => x.bookingId === b.id && x.creatorId === "cr_ankita")!;
+    tickAll(db, SHOOT + MIN);
+    expect(pendingFor(db, b.id)).toEqual([]);
+    expect(b.status).toBe("needs_ops");
+    expect(() => acceptOffer(db, o.id, "cr_ankita", SHOOT + MIN)).toThrow(/no longer open/);
   });
 
   it("widens to 25 km at minute 3 within the same window", () => {
@@ -58,8 +95,9 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     tickAll(db, T0 + 3 * MIN);
     expect(b.dispatch.widened).toBe(true);
     expect(pendingFor(db, b.id)).toEqual(["cr_dhruba", "cr_rituraj"]);
+    // Each creator gets their own five minutes on the clock, counted from their own alert.
     const late = db.offers.find((o) => o.creatorId === "cr_rituraj")!;
-    expect(late.expiresAt).toBe(T0 + 5 * MIN);
+    expect(late.expiresAt).toBe(T0 + 8 * MIN);
   });
 
   it("alerts creators who come online during the window", () => {

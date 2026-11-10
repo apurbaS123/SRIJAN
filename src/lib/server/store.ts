@@ -15,13 +15,22 @@ import type { DB } from "@/lib/domain/types";
 import { tickAll } from "@/lib/domain/views";
 import { DomainError } from "@/lib/domain/util";
 import { sendOpsAlerts } from "./alerts";
+import { after } from "next/server";
+import { deadEndpoints, dropDeadSubs, sendPushes, takePushes, type Push } from "./push";
 
 /** First run: an empty marketplace. */
 function initialDb(): DB {
   return { version: 1, seq: 1000, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [], otps: [], notifications: [] };
 }
 
-type Outcome<T> = { ok: true; result: T; now: number; alerts: string[][] } | { ok: false; error: unknown; alerts: string[][] };
+interface Side {
+  /** Ops alerts raised by the tick. */
+  alerts: string[][];
+  /** Phone notifications waiting to go out. */
+  pushes: Push[];
+}
+
+type Outcome<T> = ({ ok: true; result: T; now: number } | { ok: false; error: unknown }) & Side;
 
 /** Ticks, runs `fn` and saves. A failed change is dropped, but the tick's changes are kept. */
 async function runAndSave<T>(db: DB, save: (db: DB) => Promise<void> | void, fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
@@ -31,12 +40,17 @@ async function runAndSave<T>(db: DB, save: (db: DB) => Promise<void> | void, fn:
   const ticked = JSON.stringify(db);
   try {
     const result = await fn(db, now);
+    dropDeadSubs(db, deadEndpoints());
+    // Taken from the data about to be saved, so each message is pushed exactly once.
+    const pushes = takePushes(db, now);
     await save(db);
-    return { ok: true, result, now, alerts };
+    return { ok: true, result, now, alerts, pushes };
   } catch (error) {
     // Some errors (like a wrong sign-in code) must still record what happened.
-    await save(error instanceof DomainError && error.keepChanges ? db : (JSON.parse(ticked) as DB));
-    return { ok: false, error, alerts };
+    const keep = error instanceof DomainError && error.keepChanges ? db : (JSON.parse(ticked) as DB);
+    const pushes = takePushes(keep, now);
+    await save(keep);
+    return { ok: false, error, alerts, pushes };
   }
 }
 
@@ -123,11 +137,22 @@ function withFile<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<Outco
 
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** Phones are buzzed after the reply, so a slow push service never delays anyone. */
+function sendInBackground(pushes: Push[]) {
+  if (!pushes.length) return;
+  try {
+    after(() => sendPushes(pushes));
+  } catch {
+    void sendPushes(pushes).catch((e) => console.error("Push failed", e));
+  }
+}
+
 export async function withDb<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<{ result: T; now: number }> {
   const out = await (DATABASE_URL ? withPostgres(fn) : withFile(fn));
   // Sent even when `fn` failed: the tick that raised them was saved either way, and each one is
   // marked as sent in the database, so a dropped alert is never raised again.
   sendOpsAlerts(out.alerts);
+  sendInBackground(out.pushes);
   if (!out.ok) throw out.error;
   return { result: out.result, now: out.now };
 }
