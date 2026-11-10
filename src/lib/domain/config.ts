@@ -21,6 +21,11 @@ export interface ShootPackage {
   online?: boolean;
   /** No longer sold: hidden from the menu and can't be booked. */
   retired?: boolean;
+  /**
+   * A live payment test, not a real product. Still bookable, so a real Razorpay charge can be put
+   * through end to end, but kept out of every "services start from ₹X" price shown to clients.
+   */
+  test?: boolean;
 }
 
 /**
@@ -32,6 +37,7 @@ export const PACKAGES: ShootPackage[] = [
   { id: "video_tour", name: "Hyperlocal Tour", price: 1499, hours: 1.5, service: "videography", summary: "90 mins on-site. Gimbal walkthrough of venue/store. Transfers raw 4K footage instantly to client on-spot." },
   { id: "video_milestone", name: "Milestone Capture", price: 2499, hours: 2, service: "videography", summary: "2 hrs on-site. Shoot car delivery, proposal, or micro-event. Raw delivery on-spot + 1 edited reel in 24h." },
   { id: "video_full_day", name: "Full-Day Event Video", price: 6499, hours: 8, service: "videography", summary: "8 hrs on-site. Comprehensive event coverage (wedding, corporate event). All raw files transferred on-site." },
+  { id: "video_drone", name: "Drone", price: 1, hours: 1, service: "videography", test: true, summary: "1 hr on-site. Aerial drone coverage of a venue, property or event. Raw 4K footage transferred to client on-spot." },
   { id: "video_direction", name: "Virtual Shoot Direction (1 Hr)", price: 999, hours: 0, service: "videography", online: true, summary: "Connects via video call to help a founder or business owner set up their own lights/camera and directs their solo shoot live." },
   // Photographers
   { id: "photo_click_drop", name: "Click & Drop", price: 1999, hours: 2, service: "photography", summary: "2 hrs on-site. Social function (party/farewell). Min. 100 raw images transferred to client immediately." },
@@ -224,8 +230,13 @@ export const SOCIAL_PLATFORMS: { key: SocialPlatform; label: string; hosts: stri
 
 /** The cheapest fixed price on the menu for a kind of service. Prices are never set per creator. */
 export function lowestPrice(service: ServiceKey) {
-  const prices = PACKAGES.filter((p) => p.service === service && !p.retired).map((p) => p.price);
+  const prices = sellable().filter((p) => p.service === service).map((p) => p.price);
   return prices.length ? Math.min(...prices) : null;
+}
+
+/** Everything a client can be quoted a price from: on sale, and not a payment test. */
+export function sellable() {
+  return PACKAGES.filter((p) => !p.retired && !p.test);
 }
 
 export function findPackage(id: string) {

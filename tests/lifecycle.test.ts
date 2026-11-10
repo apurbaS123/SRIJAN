@@ -5,7 +5,7 @@ import { acceptOffer } from "@/lib/domain/dispatch";
 import { tickAll } from "@/lib/domain/views";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { campaignMath, inviteCreator, respondToInvite, settleCampaign, updateCampaign } from "@/lib/domain/campaigns";
-import { CREATOR_SHARE, HOUR, MIN, PACKAGES } from "@/lib/domain/config";
+import { CREATOR_SHARE, HOUR, lowestPrice, MIN, PACKAGES, sellable } from "@/lib/domain/config";
 import type { DB } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
@@ -87,7 +87,7 @@ describe("paying for a job", () => {
 });
 
 describe("the service menu", () => {
-  const sold = PACKAGES.filter((p) => !p.retired);
+  const sold = sellable();
 
   it("sells the 31 services from the pricing matrices", () => {
     expect(sold.filter((p) => !p.online)).toHaveLength(15);
@@ -104,6 +104,14 @@ describe("the service menu", () => {
     const db = seedDb(T0);
     const b = createBooking(db, "u_priya", { ...JOB, packageId: "photo_click_drop" }, T0);
     expect(b.total).toBe(1999);
+  });
+
+  it("keeps the ₹1 payment test bookable but out of the prices quoted to clients", () => {
+    const drone = PACKAGES.find((p) => p.id === "video_drone")!;
+    expect(drone.price).toBe(1);
+    expect(drone.retired).toBeUndefined();
+    expect(sellable()).not.toContain(drone);
+    expect(lowestPrice("videography")).toBe(999);
   });
 
   it("refuses a service that is no longer sold", () => {

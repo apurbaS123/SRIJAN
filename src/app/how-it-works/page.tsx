@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MIN, PACKAGES } from "@/lib/domain/config";
+import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MIN, sellable } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "How it works — Srijan" };
 
-const LOWEST_PRICE = Math.min(...PACKAGES.filter((p) => !p.retired).map((p) => p.price));
+const LOWEST_PRICE = Math.min(...sellable().map((p) => p.price));
 
 export default function HowItWorksPage() {
   return (
