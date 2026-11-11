@@ -17,7 +17,6 @@ function WalletView() {
   return (
     <div className="container page narrow">
       <h1>Wallet</h1>
-      <p className="muted">Everything you’ve earned on Srijan. Each line appears once a client has approved your job.</p>
 
       <section className="card card-dark stack">
         <span className="small muted">Total earned</span>
@@ -32,12 +31,8 @@ function WalletView() {
         </div>
       </section>
 
-      <div className="card card-orange stack" style={{ gap: 4 }}>
+      <div className="card card-orange">
         <b className="small">{data.payoutWindowText}</b>
-        <span className="tiny muted">
-          Srijan sends the money itself, to the bank account or UPI ID on your profile. There is nothing for you to withdraw
-          here, and this wallet never holds your money.
-        </span>
       </div>
 
       <section className="card stack">
