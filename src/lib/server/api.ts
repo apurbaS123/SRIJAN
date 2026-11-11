@@ -41,6 +41,11 @@ function sessionUserId(token: string | undefined) {
   return userId;
 }
 
+/** The signed-in user's id, for the few routes that answer with a redirect instead of JSON. */
+export async function signedInUserId() {
+  return sessionUserId((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
 /**
  * Wraps a route: loads data, checks the signed-in role, runs `fn`, saves, and replies
  * `{ ok, data, serverNow }` or `{ ok: false, error }`.

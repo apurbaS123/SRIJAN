@@ -86,6 +86,21 @@ describe("creator KYC", () => {
     expect(creator.verification).toBe("verified");
     expect(creator.kyc).toEqual({ aadhaar: true, pan: true });
   });
+
+  it("can’t be verified, or its KYC ticked off, from the creator’s own dashboard", () => {
+    const db = seedDb(T0);
+    const { creator } = signUpCreator(
+      db,
+      { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] },
+      { email: "new.creator@example.com", phone: "9876511111" },
+      T0,
+    );
+    // Only DigiLocker's own reply, or ops, can move these — never anything the creator sends us.
+    updateOwnCreator(db, creator.id, { verification: "verified", kyc: { aadhaar: true, pan: true } } as never);
+    expect(creator.verification).toBe("pending");
+    expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
+    expect(() => updateOwnCreator(db, creator.id, { available: true })).toThrow(/verified/);
+  });
 });
 
 describe("creator social media link", () => {

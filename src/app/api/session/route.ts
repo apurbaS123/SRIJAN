@@ -6,6 +6,7 @@ import { hashNewPassword, passwordProblem } from "@/lib/server/password";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorPublic } from "@/lib/domain/views";
 import { payoutSummary } from "@/lib/domain/creators";
+import { kycSummary } from "@/lib/domain/kyc";
 import { assert, cleanText, newId } from "@/lib/domain/util";
 import type { User } from "@/lib/domain/types";
 
@@ -16,7 +17,7 @@ export async function GET() {
     const creator = user.creatorId ? db.creators.find((c) => c.id === user.creatorId) : undefined;
     return {
       user: { id: user.id, role: user.role, name: user.name, phone: user.phone, email: user.email },
-      creator: creator ? { ...creatorPublic(creator), payout: payoutSummary(creator), kyc: creator.kyc } : null,
+      creator: creator ? { ...creatorPublic(creator), payout: payoutSummary(creator), kyc: kycSummary(creator) } : null,
     };
   });
 }

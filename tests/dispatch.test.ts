@@ -299,9 +299,15 @@ describe("only the right field is alerted", () => {
     expect(pendingFor(db, b.id)).not.toContain("cr_bhaswati");
   });
 
-  it("skips creators who haven't linked a bank or UPI", () => {
+  it("still alerts a creator who hasn't linked a bank or UPI yet", () => {
     const db = seedDb(T0);
     db.creators.find((c) => c.id === "cr_ankita")!.upiId = undefined;
+    expect(pendingFor(db, book(db).id)).toContain("cr_ankita");
+  });
+
+  it("skips creators who aren't verified", () => {
+    const db = seedDb(T0);
+    db.creators.find((c) => c.id === "cr_ankita")!.verification = "pending";
     expect(pendingFor(db, book(db).id)).not.toContain("cr_ankita");
   });
 });

@@ -194,10 +194,9 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
   const c = db.creators.find((x) => x.id === creatorId);
   assert(c, "Creator not found", 404);
   if (patch.available !== undefined) {
-    if (patch.available) {
-      assert(c.verification === "verified", "You can go online once your profile is verified");
-      assert(hasPayoutDetails(c), "Link your bank account or UPI ID before going online");
-    }
+    // Verification is the only gate. A payment receive method can be added whenever the creator
+    // likes: it holds up the money, not the work. See `wallet.ts`.
+    if (patch.available) assert(c.verification === "verified", "You can go online once your profile is verified");
     c.available = !!patch.available;
   }
   if (patch.maxTravelKm !== undefined) {

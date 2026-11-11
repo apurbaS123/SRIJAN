@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, PAYMENT_WINDOW_MS, SUPPORT_PHONE } from "@/lib/domain/config";
+import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "FAQs — Srijan" };
 
@@ -41,7 +41,15 @@ const FAQS = [
   },
   {
     q: "How much do creators earn?",
-    a: `Creators keep ${Math.round(CREATOR_SHARE * 100)}% of the price of every service. Srijan sends the money to their bank or UPI after the job is approved.`,
+    a: `Creators keep ${Math.round(CREATOR_SHARE * 100)}% of the price of every service. Once the client approves the job, that money shows in the creator's wallet and Srijan sends it to their bank or UPI within ${PAYOUT_MIN_HOURS}–${PAYOUT_MAX_HOURS} hours.`,
+  },
+  {
+    q: "How does a creator get verified?",
+    a: "In under a minute, by yourself: sign in to DigiLocker from your Srijan account and agree to share your Aadhaar details. You're verified on the spot and can start accepting jobs. If you'd rather not use DigiLocker, the Srijan team will verify your documents by hand.",
+  },
+  {
+    q: "Does a creator need a bank account or UPI ID to start?",
+    a: `No. Verify yourself and you can go online and accept jobs straight away. Add your bank account or UPI ID whenever you like — Srijan needs it only to send your earnings, which wait in your wallet until it's there.`,
   },
   {
     q: "How do brands run a campaign?",

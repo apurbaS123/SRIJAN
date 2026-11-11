@@ -15,7 +15,7 @@
 // It wipes the `srijan` schema there first, so it only accepts localhost / 127.0.0.1.
 
 import { spawn } from "node:child_process";
-import { createHmac } from "node:crypto";
+import crypto, { createHmac } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -106,6 +106,76 @@ async function sendWebhook(event, payload, secret = RZP_WEBHOOK_SECRET) {
   return res.status;
 }
 
+// ── Fake DigiLocker ───────────────────────────────────────────────────────────
+// Stands in for the government's MeriPehchaan OAuth server, so the KYC flow is exercised for real
+// without anyone's Aadhaar. `people` is who it will say signed in, keyed by the state we sent it.
+
+const dl = {
+  clientId: "dl_test_smoke",
+  secret: "smoke-digilocker-secret",
+  codes: new Map(), // code → { challenge, person }
+  tokens: new Map(), // access token → person
+  next: null, // who signs in next
+  seq: 0,
+  server: null,
+  base: "",
+};
+
+function startFakeDigilocker() {
+  return new Promise((resolve) => {
+    dl.server = http.createServer(async (req, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const url = new URL(req.url, "http://dl.test");
+      const reply = (status, data, type = "application/json") => {
+        res.writeHead(status, { "Content-Type": type });
+        res.end(type === "application/json" ? JSON.stringify(data) : data);
+      };
+
+      // The sign-in page. A browser lands here; we answer with the redirect back to Srijan.
+      if (url.pathname === "/public/oauth2/1/authorize") {
+        const code = `dlcode_${++dl.seq}`;
+        dl.codes.set(code, { challenge: url.searchParams.get("code_challenge"), person: dl.next });
+        const back = new URL(url.searchParams.get("redirect_uri"));
+        back.searchParams.set("code", code);
+        back.searchParams.set("state", url.searchParams.get("state"));
+        res.writeHead(302, { Location: back.toString() });
+        return res.end();
+      }
+
+      if (url.pathname === "/public/oauth2/1/token") {
+        const body = new URLSearchParams(raw);
+        if (body.get("client_id") !== dl.clientId || body.get("client_secret") !== dl.secret) {
+          return reply(401, { error_description: "Bad client" });
+        }
+        const entry = dl.codes.get(body.get("code"));
+        if (!entry) return reply(400, { error_description: "Unknown code" });
+        dl.codes.delete(body.get("code")); // one use only, like the real thing
+        const expected = crypto.createHash("sha256").update(body.get("code_verifier") ?? "").digest("base64url");
+        if (expected !== entry.challenge) return reply(400, { error_description: "PKCE check failed" });
+        const token = `dltok_${++dl.seq}`;
+        dl.tokens.set(token, entry.person);
+        const p = entry.person;
+        return reply(200, { access_token: token, token_type: "Bearer", expires_in: 3600, digilockerid: p.id, name: p.name, dob: p.dob, gender: p.gender, eaadhaar: "Y" });
+      }
+
+      const person = dl.tokens.get((req.headers.authorization ?? "").replace(/^Bearer /, ""));
+      if (!person) return reply(401, { error_description: "Bad token" });
+      if (url.pathname === "/public/oauth2/3/xml/eaadhaar") {
+        return reply(200, `<?xml version="1.0"?><Certificate><UidData uid="${person.aadhaar}"/></Certificate>`, "application/xml");
+      }
+      if (url.pathname === "/public/oauth2/2/files/issued") {
+        return reply(200, { items: person.pan ? [{ doctype: "PANCR", name: "PAN Verification Record" }, { doctype: "DRVLC", name: "Driving Licence" }] : [{ doctype: "DRVLC", name: "Driving Licence" }] });
+      }
+      reply(404, { error_description: "Not found" });
+    });
+    dl.server.listen(0, "127.0.0.1", () => {
+      dl.base = `http://127.0.0.1:${dl.server.address().port}`;
+      resolve();
+    });
+  });
+}
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 function freePort() {
@@ -143,6 +213,11 @@ async function startServer() {
       RAZORPAY_WEBHOOK_SECRET: RZP_WEBHOOK_SECRET,
       RAZORPAY_API_BASE: rzp.base,
       SRIJAN_PROOF_DRIVE_URL: DRIVE_URL,
+      DIGILOCKER_CLIENT_ID: dl.clientId,
+      DIGILOCKER_CLIENT_SECRET: dl.secret,
+      DIGILOCKER_AUTH_BASE: dl.base,
+      DIGILOCKER_API_BASE: dl.base,
+      DIGILOCKER_REDIRECT_URI: `${BASE}/api/kyc/digilocker/callback`,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -272,6 +347,21 @@ class Agent {
     ok(r.ok, `${this.name} joins as a creator in ${zoneId}`);
     return r.data.creatorId;
   }
+  /**
+   * Verifies with DigiLocker, following the redirects a browser would: Srijan → DigiLocker →
+   * Srijan's callback. `person` is who the fake DigiLocker will say signed in. Returns the
+   * `result` the callback sent the creator back to /creator/kyc with.
+   */
+  async verifyWithDigilocker(person) {
+    dl.next = person;
+    const started = await this.req("/api/kyc/digilocker", {}, "POST");
+    if (!started.ok) return { ...started, result: null };
+    // DigiLocker's sign-in page, which answers with a redirect back to us.
+    const consent = await fetch(started.data.url, { redirect: "manual" });
+    const callback = consent.headers.get("location");
+    const back = await fetch(callback, { headers: { cookie: this.cookie }, redirect: "manual" });
+    return { ok: true, status: back.status, result: new URL(back.headers.get("location"), BASE).searchParams.get("result") };
+  }
   /** Places the order the way the /book page does. Returns the first job it made. */
   async book(input) {
     const made = await this.req("/api/bookings", input);
@@ -314,6 +404,7 @@ function slotFrom(serverNow) {
 async function run() {
   await connectTestDb();
   await startFakeRazorpay();
+  await startFakeDigilocker();
   await startServer();
   console.log(`Server running at ${BASE} with ${sql ? "the local test database (Postgres)" : "a throwaway data file"}\n`);
 
@@ -401,27 +492,58 @@ async function run() {
   ok(r.status === 400, "a creator can’t go online before verification");
   r = await ankita.req("/api/session");
   ok(r.data.creator.payout === null, "a new creator has no bank or UPI linked yet");
+
+  // --- KYC: DigiLocker verifies the creator, nobody else involved ---------------
+
+  r = await ankita.verifyWithDigilocker({ id: "dl-ankita", name: "Ankita Baruah", dob: "1997-02-11", gender: "F", aadhaar: "xxxxxxxx4321", pan: true });
+  ok(r.result === "verified", "Ankita verifies her Aadhaar through DigiLocker and is verified on the spot");
+  r = await ankita.req("/api/session");
+  ok(r.data.creator.verification === "verified" && r.data.creator.kyc.aadhaar && r.data.creator.kyc.pan, "her Aadhaar and PAN are both ticked off, with no ops involvement");
+  ok(r.data.creator.kyc.digilocker.aadhaarLast4 === "4321" && !JSON.stringify(r.data).includes("xxxxxxxx4321"), "only the last 4 digits of her Aadhaar are kept");
+  ok(!JSON.stringify(r.data).includes("verifier") && !JSON.stringify(r.data).includes("dl-ankita"), "no handshake secrets or DigiLocker id reach the browser");
+
+  // Going online no longer waits on a bank account or UPI ID: the money waits, not the work.
+  r = await ankita.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.ok && r.data.available, "Ankita goes online with no payment receive method linked");
   r = await ankita.req("/api/me/creator", { payout: { method: "upi", upiId: "not-a-upi" } }, "PATCH");
   ok(r.status === 400, "a badly formed UPI ID is refused");
   r = await ankita.req("/api/me/creator", { payout: { method: "upi", upiId: "ankita@ybl" } }, "PATCH");
-  ok(r.ok && r.data.payout.upiId === "ankita@ybl", "Ankita links her UPI ID on the page after sign-up");
+  ok(r.ok && r.data.payout.upiId === "ankita@ybl", "Ankita adds her UPI ID later, when she feels like it");
+  r = await ankita.verifyWithDigilocker({ id: "dl-ankita", name: "Ankita Baruah", aadhaar: "xxxxxxxx4321" });
+  ok(!r.ok && /already verified/.test(r.error), "a verified creator can’t run DigiLocker again");
+
+  // A name that doesn't match goes to the Srijan team instead of verifying itself.
+  r = await rituraj.verifyWithDigilocker({ id: "dl-someone", name: "Someone Else Entirely", dob: "1990-01-01", aadhaar: "xxxxxxxx9999" });
+  ok(r.result === "needs_review", "a DigiLocker name that doesn’t match the profile isn’t verified automatically");
+  r = await rituraj.req("/api/session");
+  ok(r.data.creator.verification === "pending" && !r.data.creator.kyc.aadhaar && r.data.creator.kyc.needsReview.reason === "name_mismatch", "Rituraj stays pending, with the mismatch flagged for ops");
+
+  // The same Aadhaar on a second account is refused outright.
+  r = await dhruba.verifyWithDigilocker({ id: "dl-ankita", name: "Dhruba Kalita", aadhaar: "xxxxxxxx4321" });
+  ok(r.result === "already_used", "one Aadhaar can’t verify a second creator account");
+  r = await dhruba.req("/api/session");
+  ok(r.data.creator.kyc.needsReview.reason === "duplicate", "the clash is flagged for ops");
+  r = await dhruba.verifyWithDigilocker({ id: "dl-dhruba", name: "Dhruba Kalita", aadhaar: "xxxxxxxx1111" });
+  ok(!r.ok && /another Srijan account/.test(r.error), "and they can’t simply try again with a different Aadhaar");
+
+  // A creator who never used DigiLocker, and the two above, are left for ops to do by hand.
   r = await dhruba.req("/api/me/creator", { payout: { method: "bank", accountName: "Dhruba Kalita", accountNumber: "123456789012", ifsc: "SBIN0001234" } }, "PATCH");
   ok(r.ok && r.data.payout.accountLast4 === "9012" && !JSON.stringify(r.data).includes("123456789012"), "Dhruba links a bank account and only sees its last 4 digits back");
   r = await nilakshi.req("/api/me/creator", { payout: { method: "upi", upiId: "nilakshi@ybl" } }, "PATCH");
   ok(r.ok, "Nilakshi links her UPI ID");
   r = await ops.req("/api/admin");
-  ok(r.data.pendingCreators.length === 4, "ops sees the 4 new creators waiting for review");
-  r = await ops.req("/api/admin", { action: "verify", creatorId: cr.ankita, decision: "verified" });
-  ok(r.status === 400, "ops must confirm the KYC check before approving");
-  for (const [who, id] of Object.entries(cr)) {
-    r = await ops.req("/api/admin", { action: "verify", creatorId: id, decision: "verified", kycChecked: true });
-    ok(r.ok, `ops approves ${who}`);
+  ok(r.data.pendingCreators.length === 3, "ops sees only the 3 creators DigiLocker couldn’t verify by itself");
+  const flagged = r.data.pendingCreators.find((c) => c.id === cr.rituraj);
+  ok(flagged.kyc.needsReview.name === "Someone Else Entirely" && flagged.kyc.digilocker === null, "ops is shown the name DigiLocker sent back, and nothing is marked verified");
+  r = await ops.req("/api/admin", { action: "verify", creatorId: cr.rituraj, decision: "verified" });
+  ok(r.status === 400, "ops must confirm the KYC check before approving by hand");
+  for (const who of ["rituraj", "dhruba", "nilakshi"]) {
+    r = await ops.req("/api/admin", { action: "verify", creatorId: cr[who], decision: "verified", kycChecked: true });
+    ok(r.ok, `ops approves ${who} by hand`);
   }
-  r = await rituraj.req("/api/me/creator", { available: true }, "PATCH");
-  ok(r.status === 400 && /bank account or UPI/.test(r.error), "a verified creator can’t go online until they link a bank or UPI");
   r = await rituraj.req("/api/me/creator", { payout: { method: "upi", upiId: "rituraj@ybl" } }, "PATCH");
   ok(r.ok, "Rituraj links his UPI ID");
-  for (const c of [ankita, rituraj, dhruba, nilakshi]) {
+  for (const c of [rituraj, dhruba, nilakshi]) {
     r = await c.req("/api/me/creator", { available: true }, "PATCH");
     ok(r.ok && r.data.available, `${c.name} goes online`);
   }
@@ -536,6 +658,19 @@ async function run() {
   const shootPayout = r.data.payoutsDue[0].id;
   r = await ankita.req(`/api/bookings/${b1.id}`);
   ok(r.data.payoutStatus === "owed", "Ankita sees that payment is on its way");
+
+  // --- The wallet: what the creator has earned, and when it reaches them --------
+
+  r = await ankita.req("/api/me/wallet");
+  const earned = r.data.lines.find((l) => l.bookingId === b1.id);
+  ok(r.ok && earned.amount === 1999 && earned.status === "on_the_way", "her wallet shows the ₹1,999 she earned, on the way");
+  ok(earned.expectedBy > earned.at && earned.expectedBy - earned.at === 72 * 3600_000, "with the 72-hour outside date it should arrive by");
+  ok(r.data.totals.onTheWay === 1999 && r.data.totals.sent === 0 && r.data.totals.earned === 1999, "and the totals to match");
+  ok(/within 48 to 72 hours/.test(r.data.payoutWindowText) && r.data.hasPayoutMethod === true, "the wallet promises 48–72 hours and knows where the money goes");
+  ok(!JSON.stringify(r.data).includes("ankita@ybl"), "the wallet doesn’t repeat her UPI ID");
+  r = await priya.req("/api/me/wallet");
+  ok(r.status === 403, "a client has no creator wallet");
+
   r = await ankita.req("/api/admin", { action: "mark_paid", payoutId: shootPayout });
   ok(r.status === 403, "a creator can’t mark their own payout as paid");
   r = await ops.req("/api/admin", { action: "mark_paid", payoutId: shootPayout, reference: "UTR-1" });
@@ -544,6 +679,10 @@ async function run() {
   ok(r.status === 409, "the same payout can’t be marked paid twice");
   r = await ankita.req(`/api/bookings/${b1.id}`);
   ok(r.data.payoutStatus === "paid", "Ankita sees the payment was sent");
+  r = await ankita.req("/api/me/wallet");
+  const sentLine = r.data.lines.find((l) => l.bookingId === b1.id);
+  ok(sentLine.status === "sent" && sentLine.reference === "UTR-1" && sentLine.sentAt, "her wallet turns that line into ‘sent’, with ops’ reference");
+  ok(r.data.totals.sent === 1999 && r.data.totals.onTheWay === 0, "and moves it out of ‘on the way’");
 
   // --- Webhook: the client closes the page right after paying -------------------
   r = await priya.req("/api/session");
@@ -742,10 +881,14 @@ async function run() {
   ok(done.math === undefined && done.commissionRate === undefined, "the brand doesn’t see Srijan’s commission");
 
   r = await ankita.req("/api/wallet");
-  ok(r.status === 404 || r.status === 405, "the wallet is gone");
+  ok(r.status === 404 || r.status === 405, "the old withdraw-from-wallet API is gone");
+  r = await ankita.req("/api/me/wallet", { amount: 100 });
+  ok(r.status === 404 || r.status === 405, "and nothing can be withdrawn from the new one: it only reports");
+  r = await ankita.req("/api/me/wallet");
+  ok(r.data.lines.some((l) => l.kind === "campaign" && l.amount === 20000), "her campaign fee shows in the same wallet as her shoot earnings");
 
   // --- Pages render ------------------------------------------------------------
-  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
+  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
     const res = await fetch(BASE + p);
     ok(res.status === 200, `page ${p} renders`);
   }

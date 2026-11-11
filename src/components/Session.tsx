@@ -3,11 +3,12 @@ import type { payoutSummary } from "@/lib/domain/creators";
 import { createContext, useContext, type ReactNode } from "react";
 import { useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
+import type { KycSummary } from "@/lib/domain/kyc";
 import type { Role } from "@/lib/domain/types";
 
 export interface SessionData {
   user: { id: string; role: Role; name: string; phone?: string; email?: string } | null;
-  creator?: (CreatorPublic & { payout: ReturnType<typeof payoutSummary>; kyc: { aadhaar: boolean; pan: boolean } }) | null;
+  creator?: (CreatorPublic & { payout: ReturnType<typeof payoutSummary>; kyc: KycSummary }) | null;
 }
 
 const Ctx = createContext<{ session?: SessionData; loading: boolean; error: string | null; refresh: () => Promise<void> }>({

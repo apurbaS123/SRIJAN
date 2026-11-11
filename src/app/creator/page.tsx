@@ -9,6 +9,9 @@ import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { SocialPlatform } from "@/lib/domain/types";
 import { useSession } from "@/components/Session";
 import { countdown, inr, when } from "@/lib/client/format";
+import { PAYOUT_WINDOW_TEXT } from "@/lib/domain/config";
+import type { Wallet } from "@/lib/domain/wallet";
+import type { KycSummary } from "@/lib/domain/kyc";
 import { PushToggle } from "@/components/PushToggle";
 
 /** Short beep so creators don't miss an alert (works after the first tap on the page). */
@@ -132,19 +135,32 @@ function Home() {
         {me.verification === "verified" ? <span className="badge badge-violet">Verified</span> : <span className="badge badge-amber">Verification {me.verification}</span>}
       </div>
 
-      {me.verification !== "verified" && (
-        <div className="card card-orange small">
-          {me.verification === "pending"
-            ? "Your profile is with the Srijan team for review. You can go online once it’s approved."
-            : "Your profile wasn’t approved. Contact Srijan support."}
-        </div>
-      )}
+      {me.verification !== "verified" &&
+        (me.verification === "pending" ? (
+          <div className="card card-orange row between">
+            <span className="small">
+              {me.kyc.needsReview
+                ? "The name DigiLocker sent back doesn’t match your profile, so the Srijan team is checking it by hand."
+                : "Verify your Aadhaar with DigiLocker and you can go online straight away."}
+            </span>
+            {!me.kyc.needsReview && (
+              <Link href="/creator/kyc" className="btn btn-sm btn-accent">
+                Verify now
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="card card-orange small">Your profile wasn’t approved. Contact Srijan support.</div>
+        ))}
 
       {!me.payout && (
         <div className="card card-orange row between">
-          <span className="small">Link your bank account or UPI ID so you can go online and get paid.</span>
-          <Link href="/creator/payout" className="btn btn-sm btn-accent">
-            Link now
+          <span className="small">
+            Add a payment receive method whenever you like — you can take jobs without it, but Srijan needs it to send your
+            earnings.
+          </span>
+          <Link href="/creator/payout" className="btn btn-sm">
+            Add it
           </Link>
         </div>
       )}
@@ -157,7 +173,7 @@ function Home() {
                 {me.available ? "Getting alerts for jobs in your field" : "Go online to get job alerts"}
               </span>
             </div>
-            <button className={`btn btn-lg ${me.available ? "" : "btn-accent"}`} disabled={act.busy || me.verification !== "verified" || !me.payout} onClick={() => patch({ available: !me.available })}>
+            <button className={`btn btn-lg ${me.available ? "" : "btn-accent"}`} disabled={act.busy || me.verification !== "verified"} onClick={() => patch({ available: !me.available })}>
               {me.available ? "Go offline" : "Go online"}
             </button>
           </div>
@@ -178,6 +194,9 @@ function Home() {
       <PushToggle what="job alerts" />
 
       <ErrorNote error={act.error} />
+
+      <WalletCard />
+      <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} />
 
       <PortfolioCard url={me.portfolio} />
       <SocialCard social={me.social} followers={me.followers} />
@@ -286,6 +305,60 @@ function SentOffers({ list }: { list: SentOfferView[] }) {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+/** Earnings at a glance, with the 48–72 hour promise, and a way into the full wallet. */
+function WalletCard() {
+  const { data } = useData<Wallet>("/api/me/wallet", 30000);
+  return (
+    <section className="card stack">
+      <div className="row between">
+        <h2>Wallet</h2>
+        <Link href="/creator/wallet" className="btn btn-sm">
+          Open wallet
+        </Link>
+      </div>
+      <div className="row between" style={{ fontSize: 14 }}>
+        <span className="muted">
+          Earned <b>{inr(data?.totals.earned ?? 0)}</b>
+        </span>
+        <span className="muted">
+          On the way <b style={{ color: "var(--orange-ink)" }}>{inr(data?.totals.onTheWay ?? 0)}</b>
+        </span>
+      </div>
+      <span className="tiny muted">{data?.payoutWindowText ?? PAYOUT_WINDOW_TEXT}</span>
+    </section>
+  );
+}
+
+/** Aadhaar KYC: the one thing a creator must do before they can go online. */
+function VerificationCard({ kyc, verified }: { kyc: KycSummary; verified: boolean }) {
+  const dl = kyc.digilocker;
+  return (
+    <section className="card stack">
+      <div className="row between">
+        <h2>Verification</h2>
+        {dl ? <span className="badge badge-green">Aadhaar ✓ DigiLocker</span> : kyc.aadhaar ? <span className="badge badge-green">Aadhaar ✓</span> : <span className="badge badge-amber">Not verified</span>}
+      </div>
+      {dl ? (
+        <span className="small muted">
+          {dl.name}
+          {dl.aadhaarLast4 ? ` · Aadhaar •••• ${dl.aadhaarLast4}` : ""} · verified {when(dl.verifiedAt)}
+          {dl.pan ? " · PAN ✓" : ""}
+        </span>
+      ) : kyc.needsReview ? (
+        <span className="small muted">DigiLocker came back with “{kyc.needsReview.name}”. The Srijan team is checking it by hand.</span>
+      ) : (
+        <div className="row between">
+          <span className="small muted">Verify your Aadhaar through DigiLocker to go online. It takes under a minute.</span>
+          <Link href="/creator/kyc" className="btn btn-sm btn-accent">
+            Verify now
+          </Link>
+        </div>
+      )}
+      {dl && !verified && <span className="tiny muted">Waiting on the Srijan team for the last check.</span>}
     </section>
   );
 }

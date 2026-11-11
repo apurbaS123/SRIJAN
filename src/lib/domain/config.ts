@@ -129,6 +129,18 @@ export const AUTO_APPROVE_MS = 48 * HOUR; // after the creator marks the job fin
  */
 export const PAYMENT_WINDOW_MS = 30 * MIN;
 
+/**
+ * How long a creator waits for their money once a job is approved. Srijan sends it to the bank
+ * account or UPI ID on their profile; the wallet on /creator/wallet promises this window.
+ */
+export const PAYOUT_MIN_HOURS = 48;
+export const PAYOUT_MAX_HOURS = 72;
+/** The promise the wallet makes, in one sentence, so every screen and message words it the same way. */
+export const PAYOUT_WINDOW_TEXT = `Payments are sent to your payment receive method automatically within ${PAYOUT_MIN_HOURS} to ${PAYOUT_MAX_HOURS} hours.`;
+
+/** How long a DigiLocker sign-in handshake stays good for, from the moment the creator starts it. */
+export const KYC_HANDSHAKE_MS = 15 * MIN;
+
 /** The moment a client's time to pay runs out: 30 minutes from the accept, or the job's start time if that's sooner. */
 export function paymentDeadline(acceptedAt: number, scheduledAt: number) {
   return Math.min(acceptedAt + PAYMENT_WINDOW_MS, scheduledAt);

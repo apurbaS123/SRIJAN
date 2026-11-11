@@ -57,6 +57,38 @@ export interface BankDetails {
 
 export type Verification = "pending" | "verified" | "rejected";
 
+/**
+ * Aadhaar KYC done by the creator themselves through DigiLocker, the government's document wallet.
+ * They sign in to DigiLocker, agree to share their Aadhaar, and come back verified — no waiting for
+ * the Srijan team. Only what we need is kept: never the full Aadhaar or PAN number.
+ */
+export interface DigilockerKyc {
+  /** While the handshake is open: the one-time value DigiLocker sends back, so the reply can be trusted. */
+  state?: string;
+  /** While the handshake is open: the PKCE verifier that proves this app started it. Never sent to a browser. */
+  verifier?: string;
+  /** When the creator was sent to DigiLocker. The handshake is only good for a few minutes. */
+  startedAt?: number;
+  /** When DigiLocker confirmed who they are. */
+  verifiedAt?: number;
+  /** The name on their Aadhaar, as DigiLocker spells it. */
+  name?: string;
+  dob?: string;
+  gender?: string;
+  /** Last 4 digits of the Aadhaar number, for support. The rest is never stored. */
+  aadhaarLast4?: string;
+  /** DigiLocker's own id for this person, so a second account can't claim the same Aadhaar. */
+  digilockerId?: string;
+  /** True once their PAN card was found in their DigiLocker. */
+  pan?: boolean;
+  /**
+   * Why this reply couldn't verify the creator by itself, so the Srijan team looks at it by hand
+   * instead: the Aadhaar name doesn't look like the name on the profile, or the same Aadhaar is
+   * already verified on another Srijan account.
+   */
+  review?: "name_mismatch" | "duplicate";
+}
+
 export interface Creator {
   id: string;
   userId: string;
@@ -86,7 +118,8 @@ export interface Creator {
   /** Furthest the creator is willing to travel for a job. */
   maxTravelKm: number;
   verification: Verification;
-  kyc: { aadhaar: boolean; pan: boolean };
+  /** `aadhaar` and `pan` are true once checked — by DigiLocker, or by the Srijan team by hand. */
+  kyc: { aadhaar: boolean; pan: boolean; digilocker?: DigilockerKyc };
   /** How this creator gets paid. Older accounts have only upiId, which means UPI. */
   payoutMethod?: "upi" | "bank";
   upiId?: string;

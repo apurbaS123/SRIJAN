@@ -7,6 +7,7 @@ import {
   DAY,
   DISPATCH,
   MAX_SERVICES_PER_ORDER,
+  PAYOUT_WINDOW_TEXT,
   PLATFORM_SHARE,
   findPackage,
   findZone,
@@ -184,8 +185,8 @@ export function settleBooking(db: DB, b: Booking, now: number) {
     c.jobsDone += 1;
     notifyUser(db, c.userId, now, {
       title: "Job approved",
-      lines: [b.code, `Srijan will send ₹${creatorNet.toLocaleString("en-IN")} to your bank or UPI.`],
-      href: `/creator/jobs/${b.id}`,
+      lines: [b.code, `₹${creatorNet.toLocaleString("en-IN")} has been added to your wallet.`, PAYOUT_WINDOW_TEXT],
+      href: `/creator/wallet`,
     });
   }
   return { creatorNet, platformFee };

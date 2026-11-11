@@ -255,6 +255,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .card-violet { background: var(--violet-soft); border-color: #d8b4fe; }
 .card-orange { background: var(--orange-soft); border-color: #f5d0fe; }
+.card-green { background: var(--green-soft); border-color: #6ee7b7; }
+.card-amber { background: var(--amber-soft); border-color: #fcd34d; }
 .card-selected { border: 2px solid var(--violet); box-shadow: var(--shadow-glow); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }

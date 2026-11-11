@@ -16,7 +16,6 @@
 // time, so it works without background jobs (and on serverless hosting).
 
 import { DISPATCH, HOUR, findPackage, paymentDeadline } from "./config";
-import { hasPayoutDetails } from "./creators";
 import { closeOfferNotifications, notifyCreatorOfOffer, notifyJobConfirmed, notifyPaymentDue } from "./notifications";
 import type { Booking, Creator, DB, Offer, ServiceKey } from "./types";
 import { DomainError, assert, haversineKm, newId } from "./util";
@@ -46,9 +45,12 @@ export function jobService(b: Booking): ServiceKey {
   return findPackage(b.packageId)?.service ?? "videography";
 }
 
-/** Verified, offers this kind of work and can be paid for it. */
+/**
+ * Verified and offers this kind of work. Having somewhere to send the money is not required: a
+ * creator can earn first and add their payment receive method before Srijan pays out.
+ */
 export function canTakeJob(c: Creator, service: ServiceKey) {
-  return c.verification === "verified" && hasPayoutDetails(c) && c.services.some((s) => s.key === service);
+  return c.verification === "verified" && c.services.some((s) => s.key === service);
 }
 
 /** Creators who should be alerted now, nearest first. Skips anyone already alerted or who declined. */

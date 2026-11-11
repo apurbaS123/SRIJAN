@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { call, useAction } from "@/lib/client/api";
 import { ErrorNote, Guard, Loading } from "@/components/ui";
 import { useSession } from "@/components/Session";
+import { PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, PAYOUT_WINDOW_TEXT } from "@/lib/domain/config";
 
 function PayoutForm() {
   const { session, refresh } = useSession();
@@ -34,10 +35,14 @@ function PayoutForm() {
 
   return (
     <div className="container page narrow">
-      <h1>{welcome ? "One last step: how should we pay you?" : "How you get paid"}</h1>
+      <h1>{welcome ? "How should we pay you?" : "How you get paid"}</h1>
       <p className="muted">
-        {welcome ? "Your profile has been sent for verification. " : ""}
-        When a client approves your job, Srijan sends your 80% to the account you link here. Use an account in your own name.
+        When a client approves your job, Srijan sends your 80% to the account you link here, within {PAYOUT_MIN_HOURS}–{PAYOUT_MAX_HOURS} hours. Use an
+        account in your own name.
+      </p>
+      <p className="small muted">
+        This isn’t a gate: you can go online and take jobs without it. Your earnings simply wait in your{" "}
+        <Link href="/creator/wallet">wallet</Link> until you’ve added somewhere to send them.
       </p>
 
       {current && !editing && (
@@ -99,11 +104,15 @@ function PayoutForm() {
       )}
 
       {current && !editing && (
-        <Link href="/creator" className="btn btn-accent btn-lg btn-block">
+        <Link href={welcome ? "/creator/kyc?welcome=1" : "/creator"} className="btn btn-accent btn-lg btn-block">
           {welcome ? "Continue" : "Back to jobs"}
         </Link>
       )}
-      {!current && <p className="tiny muted">You can’t go online or get job alerts until this is linked.</p>}
+      {!current && (
+        <p className="tiny muted">
+          Only the Srijan team sees these details, and only to pay you. {PAYOUT_WINDOW_TEXT}
+        </p>
+      )}
     </div>
   );
 }

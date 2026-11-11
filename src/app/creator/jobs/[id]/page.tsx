@@ -7,6 +7,7 @@ import { ErrorNote, Guard, Loading, Stars, StatusBadge } from "@/components/ui";
 import { JobDetails } from "@/components/JobDetails";
 import { countdown, inr, when } from "@/lib/client/format";
 import { ReviewSection } from "@/components/Review";
+import { PAYOUT_WINDOW_TEXT } from "@/lib/domain/config";
 
 function Job() {
   const { id } = useParams<{ id: string }>();
@@ -132,9 +133,14 @@ function Job() {
                 {b.payoutStatus === "paid"
                   ? `Srijan has sent ${inr(b.creatorPayout)} to your bank or UPI.`
                   : b.payoutStatus === "owed"
-                    ? `Srijan will send ${inr(b.creatorPayout)} to your bank or UPI.`
+                    ? `Srijan is sending ${inr(b.creatorPayout)} to your bank or UPI. ${PAYOUT_WINDOW_TEXT}`
                     : "This job is complete."}
               </p>
+              {b.payoutStatus && (
+                <Link href="/creator/wallet" className="btn btn-sm" style={{ alignSelf: "flex-start" }}>
+                  See it in your wallet
+                </Link>
+              )}
             </section>
           )}
 

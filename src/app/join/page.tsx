@@ -73,7 +73,7 @@ export default function JoinPage() {
     );
     if (r) {
       await refresh();
-      router.push("/creator/payout?welcome=1");
+      router.push("/creator/kyc?welcome=1");
     }
   }
 
@@ -208,9 +208,9 @@ export default function JoinPage() {
 
       <ErrorNote error={error} />
       <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
-        Submit for verification
+        Create my creator account
       </button>
-      <p className="tiny muted">Next, you’ll link your bank account or UPI ID. The Srijan team reviews your profile before you can go online.</p>
+      <p className="tiny muted">Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid.</p>
     </div>
   );
 }

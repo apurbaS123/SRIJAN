@@ -52,14 +52,21 @@ describe("creator bank and UPI details", () => {
   };
   const bank = { method: "bank" as const, accountName: "New Creator", accountNumber: "123456789012", ifsc: "sbin0001234" };
 
-  it("starts with nothing linked, and stays offline until it's linked", () => {
+  it("starts with nothing linked, and doesn't hold the creator back from working", () => {
     const { db, creator } = fresh();
     expect(hasPayoutDetails(creator)).toBe(false);
     creator.verification = "verified";
-    expect(() => updateOwnCreator(db, creator.id, { available: true })).toThrow(/bank account or UPI/);
-    updateOwnCreator(db, creator.id, { payout: { method: "upi", upiId: "new@okaxis" } });
+    // Nothing linked yet: they can still go online and take jobs. The money waits, not the work.
     updateOwnCreator(db, creator.id, { available: true });
     expect(creator.available).toBe(true);
+    updateOwnCreator(db, creator.id, { payout: { method: "upi", upiId: "new@okaxis" } });
+    expect(hasPayoutDetails(creator)).toBe(true);
+  });
+
+  it("still won't let an unverified creator go online", () => {
+    const { db, creator } = fresh();
+    updateOwnCreator(db, creator.id, { payout: { method: "upi", upiId: "new@okaxis" } });
+    expect(() => updateOwnCreator(db, creator.id, { available: true })).toThrow(/verified/);
   });
 
   it("validates what's entered", () => {

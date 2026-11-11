@@ -1,6 +1,7 @@
 import { api, readJson } from "@/lib/server/api";
 import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
 import { setVerification } from "@/lib/domain/creators";
+import { kycSummary } from "@/lib/domain/kyc";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { markRefundSent, refundsDue } from "@/lib/domain/bookings";
 import { canTakeJob, isCreatorBusy, jobService } from "@/lib/domain/dispatch";
@@ -36,7 +37,7 @@ export async function GET() {
           .filter((c) => c.verification === "pending")
           .map((c) => {
             const u = db.users.find((x) => x.id === c.userId);
-            return { ...creatorPublic(c), kyc: c.kyc, phone: u?.phone, email: u?.email };
+            return { ...creatorPublic(c), kyc: kycSummary(c), phone: u?.phone, email: u?.email };
           }),
         creators: db.creators.filter((c) => c.verification === "verified").map(creatorPublic),
       };

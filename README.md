@@ -2,7 +2,7 @@
 
 A working prototype of the Srijan web app: clients book same-day video shoots, brands book managed influencer campaigns, creators take jobs and get paid, and the Srijan team runs dispatch, campaigns and payouts.
 
-Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay. KYC and phone notifications aren't connected yet.
+Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay, creator KYC through DigiLocker, and phone notifications through Web Push.
 
 ## Run it
 
@@ -18,7 +18,7 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (83 checks). Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (208 checks). Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
 | `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
@@ -39,12 +39,12 @@ Without Brevo set up, `npm run dev` prints each sign-in code in the server log. 
 ## Try the full flow
 
 1. Put your own email in `SRIJAN_OPS_EMAILS` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
-2. In a private window, sign up a creator at **/join** with a second email, then approve them as ops under **Creators**.
+2. In a private window, sign up a creator at **/join** with a second email. They land on **/creator/kyc** and verify their own Aadhaar through DigiLocker — or, with no DigiLocker keys set, approve them as ops under **Creators**.
 3. In another window, sign in at **/login** with a third email (a client account is created) and book a job. Nothing is paid yet: only creators in that field get the alert, within 2 seconds, with a 5-minute countdown.
 4. As the creator: **accept** the job. You are told the client has to pay, and you get nothing about them yet.
 5. As the client: the booking page now shows **Pay ₹X** (and the request is emailed to you). Pay with [Razorpay's test details](https://razorpay.com/docs/payments/payments/test-card-details/). Both sides immediately get the other's phone number, and the creator gets the exact address.
 6. As the creator: upload proof of work to the Drive folder and press **Mark As Finished**.
-7. As the client: press **Mark As Approved** (or report a problem). The job appears under **Creators to pay** on the ops page, for 80% of the price.
+7. As the client: press **Mark As Approved** (or report a problem). The job appears under **Creators to pay** on the ops page, for 80% of the price — and in the creator's **wallet** at **/creator/wallet**, as “on the way”.
 
 ## Payments
 
@@ -70,7 +70,7 @@ accepts → the client pays → the two sides are introduced.
 6. A client can cancel for free any time before they pay, including while a creator waits. Once paid,
    only ops can stop the job, and that goes under **Refunds to send**. Razorpay isn't used for refunds
    (see the last step).
-7. **Creator payouts are manual:** approved jobs and settled campaigns appear under **Creators to pay** on the ops page with the creator's bank or UPI details. Send the money, then mark it paid. To automate this later with RazorpayX or Route, start at `src/lib/domain/payouts.ts`.
+7. **Creator payouts are manual:** approved jobs and settled campaigns appear under **Creators to pay** on the ops page with the creator's bank or UPI details. Send the money, then mark it paid — within the **48–72 hours** the creator's wallet promises them. To automate this later with RazorpayX or Route, start at `src/lib/domain/payouts.ts`.
 8. **Refunds are manual too, and don't go through Razorpay:** a refunded booking appears under **Refunds to send** on the ops page with the amount and the client's contact details. Send the money, then mark it as sent. The site can't check this, so marking it is a promise to the client. Only jobs that were actually paid for are ever listed — a job dropped before payment owes nothing. Completed jobs aren't listed.
 
 Add to `.env.local` and to Vercel:
@@ -86,11 +86,74 @@ In the Razorpay dashboard, add a webhook pointing to `https://YOUR-DOMAIN/api/pa
 
 Until the keys are set, the site refuses new bookings rather than taking them unpaid.
 
+## Creator KYC with DigiLocker
+
+`src/lib/domain/kyc.ts` and `src/lib/server/digilocker.ts`
+
+A creator verifies themselves. They press **Verify with DigiLocker** on **/creator/kyc**, sign in to
+[DigiLocker](https://www.digilocker.gov.in) — the government's own document wallet — and agree to share
+their Aadhaar. They land back on Srijan verified, usually inside a minute, and can go online straight
+away. Nobody from the Srijan team is in the loop.
+
+It is the standard OAuth 2.0 authorization-code flow with PKCE:
+
+1. `POST /api/kyc/digilocker` opens a one-time handshake (a random `state` and a PKCE verifier, both
+   stored on the creator's record for 15 minutes) and returns the DigiLocker sign-in link.
+2. The creator signs in at DigiLocker and consents.
+3. DigiLocker sends them back to `/api/kyc/digilocker/callback` with a short-lived code. That `state`
+   is what ties the reply to the handshake, so a reply nobody asked for is thrown away.
+4. The code and the verifier are swapped for a token, which comes back with their name, date of birth
+   and gender. The Aadhaar's last 4 digits and whether they hold a PAN card are read with it.
+
+**Srijan keeps the name, date of birth, gender, the last 4 digits of the Aadhaar and DigiLocker's own
+id for that person. The full Aadhaar number is never stored, and no document is downloaded.**
+
+Two things stop it verifying someone by itself, and hand them to the Srijan team under **Creators** on
+the ops page instead:
+
+- **The name doesn't match.** `namesMatch` ignores case, punctuation, titles and extra middle names, so
+  "Mitali Deka" matches "Mitali Rani Deka" — but not a different person. Nothing is ticked off, and
+  ops sees both names side by side.
+- **The Aadhaar is already verified on another Srijan account.** One person, one creator account.
+
+Ops can still approve or reject by hand, exactly as before, which is also the route for a creator who
+can't or won't use DigiLocker.
+
+```
+DIGILOCKER_CLIENT_ID=...            # from DigiLocker partner onboarding
+DIGILOCKER_CLIENT_SECRET=...
+DIGILOCKER_REDIRECT_URI=https://YOUR-DOMAIN/api/kyc/digilocker/callback   # must match what you registered
+```
+
+Register at [partners.digilocker.gov.in](https://partners.digilocker.gov.in). DigiLocker gives each
+partner its own host names and scope, and has changed them before, so `DIGILOCKER_AUTH_BASE`,
+`DIGILOCKER_API_BASE`, `DIGILOCKER_SCOPE` and `DIGILOCKER_FLOW` are settings too — the defaults are the
+public MeriPehchaan ones. Until the keys are set, the button explains that the team will verify by hand,
+and the ops approval flow carries the whole load.
+
+## The creator wallet
+
+`src/lib/domain/wallet.ts`
+
+**/creator/wallet** is a statement, not an account. It holds no money, is not joined up to Razorpay, and
+has no withdraw button. Every line is a `creator_earning` the ledger already recorded when a job was
+approved or a campaign settled, so the wallet can never disagree with the books.
+
+Each line is either **on the way** (ops still owes it) or **sent** (ops has paid it, with their bank or
+UPI reference). The wallet tells the creator that *payments are sent to your payment receive method
+automatically within 48 to 72 hours* — `PAYOUT_MIN_HOURS` and `PAYOUT_MAX_HOURS` in `config.ts`, and the
+one sentence lives there as `PAYOUT_WINDOW_TEXT` so every screen and message words it the same way.
+**That is a promise ops has to keep by hand**, since payouts are manual (see Payments, step 7).
+
+A creator does **not** need a bank account or UPI ID to work: verification is the only gate on going
+online. Earnings simply sit in the wallet as "on the way" until they add one from **/creator/payout**,
+and the wallet says so when there's money waiting.
+
 ## How dispatch works
 
 `src/lib/domain/dispatch.ts`
 
-1. **Every** available, verified creator who offers that service, has linked a bank or UPI and is within **10 km** is alerted at once, with **5 minutes** to accept. First to accept wins. Online jobs have no distance limit.
+1. **Every** available, verified creator who offers that service and is within **10 km** is alerted at once, with **5 minutes** to accept. First to accept wins. Online jobs have no distance limit.
 2. At **minute 3** the search widens to **25 km** (same window).
 3. Creators who come online during the window are alerted too.
 4. Nobody by minute 5 → booking moves to **ops**, who assign by hand or drop it. The alerts stay open, so a creator can still take it.
@@ -112,8 +175,10 @@ src/lib/domain/      Business logic — plain TypeScript, no framework, fully te
   bookings.ts        Job lifecycle (book, pay after accepting, approve) and the money split
   campaigns.ts       Managed campaigns and commission
   payouts.ts         What Srijan owes creators (paid by hand for now)
+  wallet.ts          The creator's earnings statement, built from the ledger
   notifications.ts   Demo notifications; add real phone push here
   creators.ts        Sign-up, availability, verification
+  kyc.ts             DigiLocker KYC rules: auto-verify, name matching, one Aadhaar per account
   views.ts           What each role is allowed to see
 src/lib/server/      Storage (Postgres or JSON file) and the API wrapper
 src/app/api/         REST API used by the screens (and later the mobile app)
@@ -134,7 +199,7 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 | Creator polling every 2 s | Push notifications (FCM) **plus SMS or auto-call fallback after 60 s**, so creators don't miss alerts |
 | Zone centre points | Google Maps / Ola Maps geocoding and live location |
 | Shared Drive folder for proof of work | Direct upload to cloud storage |
-| KYC checkboxes | DigiLocker (Aadhaar) and PAN verification APIs |
+| Manual ops approval as the fallback when DigiLocker can't verify someone | Nothing: a human check is the right answer for a name that doesn't match |
 | Ledger totals | GST invoices, and TDS/TCS handling — confirm obligations with your CA |
 | Single process lock | Database transactions (the "first to accept" check) |
 
@@ -179,6 +244,9 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_SITE_URL` | Where the site lives, e.g. `https://srijan.example`, used for the link in the "please pay" email. On Vercel the production URL is picked up automatically; set this to override it. |
+| `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET` | Creator KYC. From DigiLocker partner onboarding. Without them, creators can't self-verify and the ops team approves everyone by hand. |
+| `DIGILOCKER_REDIRECT_URI` | Where DigiLocker sends the creator back to. Must match what you registered with DigiLocker, character for character. Defaults to `<site>/api/kyc/digilocker/callback`. |
+| `DIGILOCKER_AUTH_BASE`, `DIGILOCKER_API_BASE`, `DIGILOCKER_SCOPE`, `DIGILOCKER_FLOW` | Only if DigiLocker gave you different ones. Defaults: `https://digilocker.meripehchaan.gov.in`, `https://api.digitallocker.gov.in`, no scope, `signin`. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |
 | `SRIJAN_DATA_FILE` | Only without Postgres: where the JSON file is stored (default `.data/db.json`). Must be on a persistent disk. |
 
@@ -190,3 +258,4 @@ Notes:
 - **Postgres tables** (schema `srijan`, not exposed by Supabase's public API, row level security on): `users`, `creators`, `bookings`, `offers`, `ledger`, `campaigns`, `sign_in_codes`, `notifications` and `meta`. Each row keeps the full record in `data` (jsonb), which is what the app reads and writes; the other columns (name, email, status, totals, dates…) are generated from it by Postgres for browsing and SQL, and can't drift. In Supabase: Table Editor → schema `srijan`. Defined in `src/lib/server/pg.ts`.
 - Data from the earlier single-row store (`srijan.state`) is copied into the tables automatically on first run. `srijan.state` is left untouched as a backup; drop it once you're happy (`drop table srijan.state;`).
 - Creators' bank details are stored in the database so ops can pay them. Only the ops page shows them in full. Limit who has access to Supabase accordingly.
+- Creators' KYC is stored with them: name, date of birth, gender, the **last 4 digits** of the Aadhaar and DigiLocker's id for that person. The full Aadhaar number never reaches Srijan, and no document is downloaded or stored.

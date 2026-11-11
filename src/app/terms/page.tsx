@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, SUPPORT_PHONE } from "@/lib/domain/config";
+import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "Terms & conditions — Srijan" };
 
@@ -36,8 +36,13 @@ export default function TermsPage() {
 
       <h2>For creators</h2>
       <p>
-        You keep {Math.round(CREATOR_SHARE * 100)}% of the price of each service you complete. Srijan sends your share to your bank or UPI after the job is approved. Only accept jobs you can deliver,
-        and only upload work you have the right to share.
+        You keep {Math.round(CREATOR_SHARE * 100)}% of the price of each service you complete. Once a job is approved, your share appears in your wallet and Srijan sends it to the bank account or UPI
+        ID on your profile within {PAYOUT_MIN_HOURS}–{PAYOUT_MAX_HOURS} hours. The wallet is a record of what you have earned; it doesn’t hold money, and there is nothing to withdraw. If you haven’t
+        added a payment receive method yet, your earnings wait there until you do. Only accept jobs you can deliver, and only upload work you have the right to share.
+      </p>
+      <p>
+        Before you can go online you must verify your identity, either by sharing your Aadhaar details through DigiLocker or by sending your documents to the Srijan team. The name must be your own:
+        one person may hold one creator account, and an account verified with someone else’s documents will be closed.
       </p>
 
       <h2>For brands</h2>
