@@ -50,6 +50,8 @@ function Kyc() {
   const act = useAction();
   const [leaving, setLeaving] = useState(false);
   const me = session?.creator;
+  // No DigiLocker partner keys on this server: creators are verified as they sign up instead.
+  const direct = session?.creatorVerification === "direct";
 
   // Coming back from DigiLocker: pick up the new verification state.
   useEffect(() => {
@@ -66,6 +68,37 @@ function Kyc() {
     if (!r) return;
     setLeaving(true);
     window.location.href = r.url;
+  }
+
+  if (direct) {
+    return (
+      <div className="container page narrow">
+        <h1>You’re verified</h1>
+        <p className="muted">
+          Every creator who signs up is verified right away, so there is nothing for you to do here. Go online and start
+          taking jobs.
+        </p>
+        <section className="card card-green stack" style={{ gap: 4 }}>
+          <b>Verified{me.verification === "verified" ? "" : " — just a moment"}</b>
+          <span className="small">
+            {me.verification === "verified"
+              ? "Your profile is live and clients can send you jobs."
+              : "Your profile is being set up. Refresh in a moment."}
+          </span>
+        </section>
+        <p className="small muted">
+          Aadhaar verification through DigiLocker is coming. When it arrives you’ll be asked to verify once; nothing you’ve
+          already earned or booked is affected.
+        </p>
+        <Link href="/creator" className="btn btn-accent btn-lg btn-block">
+          {welcome ? "Start taking jobs" : "Back to jobs"}
+        </Link>
+        <p className="tiny muted">
+          You don’t have to add a payment receive method to work. Add your bank account or UPI ID from{" "}
+          <Link href="/creator/payout">how you get paid</Link> whenever you like — Srijan needs it only to send your earnings.
+        </p>
+      </div>
+    );
   }
 
   return (

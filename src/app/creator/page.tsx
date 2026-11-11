@@ -100,6 +100,9 @@ function Home() {
   const sent = useData<SentOfferView[]>("/api/offers/sent", 15000);
   const act = useAction();
   const seen = useRef<Set<string>>(new Set());
+  // No DigiLocker partner keys on this server: creators are verified as they sign up, so there is
+  // nothing to ask them to do. Setting the keys brings the Verify prompts back by itself.
+  const direct = session?.creatorVerification === "direct";
 
   useEffect(() => {
     const fresh = offers.data?.filter((o) => !seen.current.has(o.id)) ?? [];
@@ -141,9 +144,11 @@ function Home() {
             <span className="small">
               {me.kyc.needsReview
                 ? "The name DigiLocker sent back doesn’t match your profile, so the Srijan team is checking it by hand."
-                : "Verify your Aadhaar with DigiLocker and you can go online straight away."}
+                : direct
+                  ? "Your profile is with the Srijan team. You can go online once it’s approved."
+                  : "Verify your Aadhaar with DigiLocker and you can go online straight away."}
             </span>
-            {!me.kyc.needsReview && (
+            {!me.kyc.needsReview && !direct && (
               <Link href="/creator/kyc" className="btn btn-sm btn-accent">
                 Verify now
               </Link>
@@ -196,7 +201,7 @@ function Home() {
       <ErrorNote error={act.error} />
 
       <WalletCard />
-      <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} />
+      {(!direct || me.kyc.digilocker || me.kyc.needsReview) && <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} />}
 
       <PortfolioCard url={me.portfolio} />
       <SocialCard social={me.social} followers={me.followers} />

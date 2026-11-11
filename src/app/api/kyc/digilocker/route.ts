@@ -10,10 +10,11 @@ import { limitByIp } from "@/lib/server/rateLimit";
 export async function POST() {
   const limited = await limitByIp("kyc", 10, 10 * 60_000);
   if (limited) return limited;
-  // Checked before the database is locked, so a server with no DigiLocker keys fails fast.
-  assertDigilockerConfigured();
   return api(
     ({ db, user, now }) => {
+      // Inside `api`, so a server with no DigiLocker keys answers 503 with something the creator can
+      // read, rather than throwing out of the route.
+      assertDigilockerConfigured();
       const { state, verifier } = startDigilocker(db, user!.creatorId!, now);
       return { url: authorizeUrl(state, verifier) };
     },

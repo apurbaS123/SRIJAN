@@ -1,4 +1,14 @@
-// Creator KYC through DigiLocker, the Indian government's document wallet.
+// Creator KYC: how a creator's profile becomes "verified", which is the one gate on taking paid work.
+//
+// There are two modes, and which one is on depends only on whether the DigiLocker partner keys are
+// set (see `creatorVerificationMode` in `src/lib/server/digilocker.ts`):
+//
+//   "direct"     — no keys: every creator is verified as they sign up, and anyone still waiting for a
+//                  check is verified on the next request. This is where Srijan is today.
+//   "digilocker" — keys set: a creator verifies their own Aadhaar through DigiLocker, below. Adding
+//                  the keys is the whole switch; nothing else has to change.
+//
+// DigiLocker, the Indian government's document wallet:
 //
 // The creator signs in to DigiLocker themselves and agrees to share their Aadhaar. DigiLocker sends
 // us the name, date of birth and the last 4 digits of the Aadhaar number — never the full number —
@@ -13,6 +23,25 @@
 import { KYC_HANDSHAKE_MS } from "./config";
 import type { Creator, DB, DigilockerKyc } from "./types";
 import { assert, newId } from "./util";
+
+/** How creators get verified right now. Set by whether the DigiLocker partner keys are configured. */
+export type VerificationMode = "digilocker" | "direct";
+
+/**
+ * Direct verification: nobody has to check anything, so every creator waiting for a check is
+ * verified. Runs on every request while the mode is "direct", so a creator who signed up before the
+ * switch isn't left waiting for a review that no longer happens.
+ *
+ * Two kinds of creator are left alone: one DigiLocker flagged (a name that doesn't match, or an
+ * Aadhaar already used — those are the Srijan team's to judge, whatever the mode), and one the team
+ * has already rejected.
+ */
+export function verifyWaitingCreators(db: DB) {
+  for (const c of db.creators) {
+    if (c.verification !== "pending" || c.kyc.digilocker?.review) continue;
+    c.verification = "verified";
+  }
+}
 
 /** Honorifics and initials that shouldn't decide whether two names are the same person. */
 const TITLES = new Set(["mr", "mrs", "ms", "miss", "dr", "shri", "smt", "sri", "md"]);

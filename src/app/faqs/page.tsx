@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { creatorVerificationMode } from "@/lib/server/digilocker";
 import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "FAQs — Srijan" };
@@ -6,7 +7,7 @@ export const metadata: Metadata = { title: "FAQs — Srijan" };
 const AUTO_APPROVE_HOURS = AUTO_APPROVE_MS / HOUR;
 const NOTICE_HOURS = DISPATCH.onSiteNoticeMs / HOUR;
 
-const FAQS = [
+const faqs = () => [
   {
     q: "How do I book a service?",
     a: `Choose one or more services from the menu, pick a time and place the booking — there is nothing to pay at that point. One order can hold up to ${MAX_SERVICES_PER_ORDER} services, each of which finds its own creator and is paid for on its own. Jobs at your location need at least ${NOTICE_HOURS} hour’s notice and can be booked up to ${DISPATCH.maxDaysAhead} days ahead. Online jobs need no notice.`,
@@ -45,7 +46,10 @@ const FAQS = [
   },
   {
     q: "How does a creator get verified?",
-    a: "In under a minute, by yourself: sign in to DigiLocker from your Srijan account and agree to share your Aadhaar details. You're verified on the spot and can start accepting jobs. If you'd rather not use DigiLocker, the Srijan team will verify your documents by hand.",
+    a:
+      creatorVerificationMode() === "direct"
+        ? "Right now, just by signing up at /join: you're verified straight away and can start accepting jobs. We're adding Aadhaar verification through DigiLocker, and we'll ask you to verify once when it arrives."
+        : "In under a minute, by yourself: sign in to DigiLocker from your Srijan account and agree to share your Aadhaar details. You're verified on the spot and can start accepting jobs. If you'd rather not use DigiLocker, the Srijan team will verify your documents by hand.",
   },
   {
     q: "Does a creator need a bank account or UPI ID to start?",
@@ -65,7 +69,7 @@ export default function FaqsPage() {
   return (
     <div className="container narrow page">
       <h1>FAQs</h1>
-      {FAQS.map((f) => (
+      {faqs().map((f) => (
         <section key={f.q}>
           <h2>{f.q}</h2>
           <p>{f.a}</p>

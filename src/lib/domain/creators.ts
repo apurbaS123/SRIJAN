@@ -1,4 +1,5 @@
 import { DISPATCH, SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
+import type { VerificationMode } from "./kyc";
 import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from "./types";
 import { assert, cleanText, newId } from "./util";
 
@@ -114,8 +115,13 @@ function cleanList(v: unknown, maxItems: number, maxLen: number, label: string) 
 /**
  * `email` must already be verified by the caller (sign-in code) and lower-cased; `phone` is a
  * 10-digit contact number for shoot day.
+ *
+ * `mode` is how creators get verified right now (see `kyc.ts`). On "direct" the new creator is
+ * verified as they sign up and can go online immediately; on "digilocker" they start out pending and
+ * verify their own Aadhaar. It defaults to "digilocker", so a caller that forgets asks for a check
+ * rather than skipping one.
  */
-export function signUpCreator(db: DB, input: SignupInput, contact: { email: string; phone: string }, now: number) {
+export function signUpCreator(db: DB, input: SignupInput, contact: { email: string; phone: string }, now: number, mode: VerificationMode = "digilocker") {
   const { email, phone } = contact;
   const name = cleanText(input.name, 80, "your name");
   assert(name.length >= 2, "Enter your name");
@@ -162,8 +168,9 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     available: false,
     // Not asked at sign-up: as far as the widest search reaches, so new creators aren't left out of it.
     maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : DISPATCH.widenedRadiusKm,
-    verification: "pending",
-    // Set by the Srijan team after they check the documents — never self-declared.
+    verification: mode === "direct" ? "verified" : "pending",
+    // Ticked off by DigiLocker's own reply, or by the Srijan team once they've seen the documents —
+    // never by anything the creator sends us, and never by signing up.
     kyc: { aadhaar: false, pan: false },
     ratingSum: 0,
     ratingCount: 0,

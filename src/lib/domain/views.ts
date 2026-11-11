@@ -3,6 +3,7 @@ import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, findPackage, findZone,
 import { campaignMath } from "./campaigns";
 import { clientRating, tickBooking } from "./bookings";
 import { pruneNotifications } from "./notifications";
+import { verifyWaitingCreators, type VerificationMode } from "./kyc";
 import type { Booking, Campaign, Creator, DB, Offer, Role } from "./types";
 import { istDay, istMonth, rupees } from "./util";
 
@@ -15,9 +16,13 @@ export interface Viewer {
 /**
  * Run every time-based rule up to `now`. Returns the ops alerts that fell due, for the server layer
  * to send once the database is unlocked.
+ *
+ * `verification` is how creators get verified right now (see `kyc.ts`); the server layer reads it
+ * from the environment. It defaults to "digilocker", so a caller that forgets verifies nobody.
  */
-export function tickAll(db: DB, now: number) {
+export function tickAll(db: DB, now: number, verification: VerificationMode = "digilocker") {
   const alerts: string[][] = [];
+  if (verification === "direct") verifyWaitingCreators(db);
   for (const b of db.bookings) {
     const reminder = tickBooking(db, b, now);
     if (reminder) alerts.push(reminder);

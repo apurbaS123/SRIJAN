@@ -189,7 +189,7 @@ function freePort() {
   });
 }
 
-async function startServer() {
+async function startServer(extraEnv = {}) {
   if (!fs.existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
     throw new Error("No production build found. Run `npm run smoke` (or `npm run build` first).");
   }
@@ -218,6 +218,7 @@ async function startServer() {
       DIGILOCKER_AUTH_BASE: dl.base,
       DIGILOCKER_API_BASE: dl.base,
       DIGILOCKER_REDIRECT_URI: `${BASE}/api/kyc/digilocker/callback`,
+      ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -232,6 +233,17 @@ async function startServer() {
     await new Promise((r) => setTimeout(r, 300));
   }
   throw new Error("The server didn't start within 60 seconds");
+}
+
+/** Stops the server and starts another one on the same data, with different settings. */
+async function restartServer(extraEnv, why) {
+  server.kill();
+  await new Promise((r) => server.on("exit", r));
+  serverLog = "";
+  await startServer(extraEnv);
+  console.log(`
+— server restarted ${why} —
+`);
 }
 
 // ── Throwaway store (JSON file, or the local test database) ─────────────────
@@ -887,8 +899,41 @@ async function run() {
   r = await ankita.req("/api/me/wallet");
   ok(r.data.lines.some((l) => l.kind === "campaign" && l.amount === 20000), "her campaign fee shows in the same wallet as her shoot earnings");
 
+  // --- With no DigiLocker keys: creators are verified directly ------------------
+  // This is how Srijan runs today. The whole switch is the two DigiLocker keys, so the same build is
+  // checked both ways: everything above ran with them set, everything below runs without.
+
+  const biju = new Agent("Biju Nath", "biju@creators.test", "9864055555");
+  cr.biju = await biju.joinAsCreator("guwahati", "zoo-road");
+  r = await biju.req("/api/session");
+  ok(r.data.creator.verification === "pending" && r.data.creatorVerification === "digilocker", "and is left pending, because DigiLocker is set up");
+
+  await restartServer({ DIGILOCKER_CLIENT_ID: "", DIGILOCKER_CLIENT_SECRET: "" }, "with no DigiLocker keys");
+
+  r = await biju.req("/api/session");
+  ok(r.data.creatorVerification === "direct", "the server now verifies creators directly");
+  ok(r.data.creator.verification === "verified", "the creator who was left waiting is verified without anyone checking");
+  r = await biju.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.ok && r.data.available, "Biju goes online, with no KYC and no payment receive method");
+  r = await biju.req("/api/kyc/digilocker", {}, "POST");
+  ok(r.status === 503 && /by hand/.test(r.error), "the DigiLocker API says so plainly instead of half-working");
+  r = await ops.req("/api/admin");
+  ok(r.data.pendingCreators.length === 0, "ops has nobody left to approve by hand");
+
+  const hemanta = new Agent("Hemanta Saikia", "hemanta@creators.test", "9864066666");
+  cr.hemanta = await hemanta.joinAsCreator("guwahati", "beltola");
+  r = await hemanta.req("/api/session");
+  ok(r.data.creator.verification === "verified" && !r.data.creator.kyc.aadhaar, "a creator signing up now is verified on the spot, with no KYC claimed");
+  r = await hemanta.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.ok && r.data.available, "and can go online immediately");
+  r = await priya.req("/api/session");
+  const freshJob = await priya.book({ packageIds: ["video_milestone"], cityId: "guwahati", zoneId: "beltola", address: "Beltola Tiniali", scheduledAt: slotFrom(Date.now()), brief: "A quick reel for the shop" });
+  ok(freshJob.ok, "a client books a job in Beltola");
+  r = await hemanta.req("/api/offers");
+  ok(r.data.some((o) => o.bookingId === freshJob.data.id), "and the creator who signed up a minute ago is alerted for it");
+
   // --- Pages render ------------------------------------------------------------
-  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators"]) {
+  for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {
     const res = await fetch(BASE + p);
     ok(res.status === 200, `page ${p} renders`);
   }

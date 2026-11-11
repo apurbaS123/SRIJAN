@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { creatorVerificationMode } from "@/lib/server/digilocker";
 import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
 
 export const metadata: Metadata = { title: "Terms & conditions — Srijan" };
@@ -41,8 +42,10 @@ export default function TermsPage() {
         added a payment receive method yet, your earnings wait there until you do. Only accept jobs you can deliver, and only upload work you have the right to share.
       </p>
       <p>
-        Before you can go online you must verify your identity, either by sharing your Aadhaar details through DigiLocker or by sending your documents to the Srijan team. The name must be your own:
-        one person may hold one creator account, and an account verified with someone else’s documents will be closed.
+        {creatorVerificationMode() === "direct"
+          ? "Your account is verified when you sign up, and we don’t check your identity documents yet. We are adding Aadhaar verification through DigiLocker and will ask you to verify once it is live."
+          : "Before you can go online you must verify your identity, either by sharing your Aadhaar details through DigiLocker or by sending your documents to the Srijan team."}{" "}
+        Either way, one person may hold one creator account, you must use your own name, and an account opened or verified with someone else’s details will be closed.
       </p>
 
       <h2>For brands</h2>

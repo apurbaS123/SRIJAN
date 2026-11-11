@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { DomainError } from "@/lib/domain/util";
-import type { DigilockerIdentity } from "@/lib/domain/kyc";
+import type { DigilockerIdentity, VerificationMode } from "@/lib/domain/kyc";
 import { siteUrl } from "./env";
 
 /** Where the creator signs in. The end-to-end test points this at a fake DigiLocker. */
@@ -29,6 +29,18 @@ export class DigilockerError extends Error {}
 
 export function digilockerConfigured() {
   return !!process.env.DIGILOCKER_CLIENT_ID && !!process.env.DIGILOCKER_CLIENT_SECRET;
+}
+
+/**
+ * How creators get verified right now — **the one switch for creator KYC**.
+ *
+ * With no DigiLocker partner keys there is nothing to verify against, so creators are verified
+ * directly as they sign up and go online straight away. Setting DIGILOCKER_CLIENT_ID and
+ * DIGILOCKER_CLIENT_SECRET turns Aadhaar verification back on by itself, for creators who sign up
+ * from then on; everyone already verified stays verified.
+ */
+export function creatorVerificationMode(): VerificationMode {
+  return digilockerConfigured() ? "digilocker" : "direct";
 }
 
 export function assertDigilockerConfigured() {

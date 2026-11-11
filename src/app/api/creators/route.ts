@@ -7,6 +7,7 @@ import { normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
 import { hashNewPassword, passwordProblem } from "@/lib/server/password";
 import { limitByIp } from "@/lib/server/rateLimit";
+import { creatorVerificationMode } from "@/lib/server/digilocker";
 import type { ServiceKey } from "@/lib/domain/types";
 
 /** Public directory: ?service=videography&city=guwahati&available=1 */
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     assert(passwordHash, passwordProblem(input.password)!);
     // Check the code first without using it up, then again once the profile is valid.
     verifyOtp(db, email, input.code, now, false);
-    const { user, creator } = signUpCreator(db, input, { email, phone }, now);
+    const { user, creator } = signUpCreator(db, input, { email, phone }, now, creatorVerificationMode());
     verifyOtp(db, email, input.code, now);
     user.passwordHash = passwordHash;
     newUserId = user.id;

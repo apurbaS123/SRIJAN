@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { api, readJson, setSession } from "@/lib/server/api";
 import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { verifyOtp } from "@/lib/server/auth";
+import { creatorVerificationMode } from "@/lib/server/digilocker";
 import { hashNewPassword, passwordProblem } from "@/lib/server/password";
 import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorPublic } from "@/lib/domain/views";
@@ -13,11 +14,14 @@ import type { User } from "@/lib/domain/types";
 /** Who is signed in. */
 export async function GET() {
   return api(({ db, user }) => {
-    if (!user) return { user: null };
+    /** How creators get verified right now. Also sent to visitors, for the wording on /join. */
+    const creatorVerification = creatorVerificationMode();
+    if (!user) return { user: null, creatorVerification };
     const creator = user.creatorId ? db.creators.find((c) => c.id === user.creatorId) : undefined;
     return {
       user: { id: user.id, role: user.role, name: user.name, phone: user.phone, email: user.email },
       creator: creator ? { ...creatorPublic(creator), payout: payoutSummary(creator), kyc: kycSummary(creator) } : null,
+      creatorVerification,
     };
   });
 }

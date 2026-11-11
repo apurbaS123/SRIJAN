@@ -2,7 +2,7 @@
 
 A working prototype of the Srijan web app: clients book same-day video shoots, brands book managed influencer campaigns, creators take jobs and get paid, and the Srijan team runs dispatch, campaigns and payouts.
 
-Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay, creator KYC through DigiLocker, and phone notifications through Web Push.
+Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay and phone notifications through Web Push. Creators are verified as they sign up for now; the DigiLocker Aadhaar flow is built and waiting on partner keys.
 
 ## Run it
 
@@ -18,7 +18,7 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (208 checks). Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (226 checks), run both with and without DigiLocker keys. Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
 | `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
@@ -39,7 +39,7 @@ Without Brevo set up, `npm run dev` prints each sign-in code in the server log. 
 ## Try the full flow
 
 1. Put your own email in `SRIJAN_OPS_EMAILS` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
-2. In a private window, sign up a creator at **/join** with a second email. They land on **/creator/kyc** and verify their own Aadhaar through DigiLocker — or, with no DigiLocker keys set, approve them as ops under **Creators**.
+2. In a private window, sign up a creator at **/join** with a second email. With no DigiLocker keys set (the default) they're verified at once and can go straight online.
 3. In another window, sign in at **/login** with a third email (a client account is created) and book a job. Nothing is paid yet: only creators in that field get the alert, within 2 seconds, with a 5-minute countdown.
 4. As the creator: **accept** the job. You are told the client has to pay, and you get nothing about them yet.
 5. As the client: the booking page now shows **Pay ₹X** (and the request is emailed to you). Pay with [Razorpay's test details](https://razorpay.com/docs/payments/payments/test-card-details/). Both sides immediately get the other's phone number, and the creator gets the exact address.
@@ -86,9 +86,27 @@ In the Razorpay dashboard, add a webhook pointing to `https://YOUR-DOMAIN/api/pa
 
 Until the keys are set, the site refuses new bookings rather than taking them unpaid.
 
-## Creator KYC with DigiLocker
+## Creator verification
 
 `src/lib/domain/kyc.ts` and `src/lib/server/digilocker.ts`
+
+Being **verified** is the one gate on taking paid work. There are two modes, and **the only switch
+between them is whether the DigiLocker partner keys are set** — `creatorVerificationMode()` in
+`src/lib/server/digilocker.ts`:
+
+| Mode | When | What happens |
+| --- | --- | --- |
+| `direct` | No `DIGILOCKER_CLIENT_ID` / `DIGILOCKER_CLIENT_SECRET`. **This is how Srijan runs today.** | A creator is verified as they sign up and can go online immediately. Anyone left waiting for a check is verified on the next request, so nobody is stuck. `kyc.aadhaar` and `kyc.pan` stay false: verified isn't the same as checked, and nothing is ticked off that nobody looked at. |
+| `digilocker` | Both keys set | A creator verifies their own Aadhaar, below. Creators already verified stay verified. |
+
+**Adding the two keys is the whole switch.** No code change, no migration, and the screens follow: the
+Verify prompts appear, **/join** sends new creators to **/creator/kyc**, and `/api/kyc/digilocker` stops
+answering 503. Everything below describes that mode, which is built and tested but not on yet.
+
+The FAQs, terms and privacy pages say which of the two is on, and they're prerendered — so they pick the
+new wording up on the **redeploy** that setting the keys needs anyway, not before.
+
+### Aadhaar through DigiLocker
 
 A creator verifies themselves. They press **Verify with DigiLocker** on **/creator/kyc**, sign in to
 [DigiLocker](https://www.digilocker.gov.in) — the government's own document wallet — and agree to share
@@ -128,8 +146,8 @@ DIGILOCKER_REDIRECT_URI=https://YOUR-DOMAIN/api/kyc/digilocker/callback   # must
 Register at [partners.digilocker.gov.in](https://partners.digilocker.gov.in). DigiLocker gives each
 partner its own host names and scope, and has changed them before, so `DIGILOCKER_AUTH_BASE`,
 `DIGILOCKER_API_BASE`, `DIGILOCKER_SCOPE` and `DIGILOCKER_FLOW` are settings too — the defaults are the
-public MeriPehchaan ones. Until the keys are set, the button explains that the team will verify by hand,
-and the ops approval flow carries the whole load.
+public MeriPehchaan ones. **Set the keys in a preview deployment first:** that's the whole switch, so
+it's also the whole test.
 
 ## The creator wallet
 
@@ -199,7 +217,7 @@ All time-based rules (offer expiry, widening, auto-approve) run lazily on each r
 | Creator polling every 2 s | Push notifications (FCM) **plus SMS or auto-call fallback after 60 s**, so creators don't miss alerts |
 | Zone centre points | Google Maps / Ola Maps geocoding and live location |
 | Shared Drive folder for proof of work | Direct upload to cloud storage |
-| Manual ops approval as the fallback when DigiLocker can't verify someone | Nothing: a human check is the right answer for a name that doesn't match |
+| Creators verified as they sign up, with no identity check | Set the two `DIGILOCKER_*` keys. The Aadhaar flow is already built and tested; nothing else changes |
 | Ledger totals | GST invoices, and TDS/TCS handling — confirm obligations with your CA |
 | Single process lock | Database transactions (the "first to accept" check) |
 
@@ -244,7 +262,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_SITE_URL` | Where the site lives, e.g. `https://srijan.example`, used for the link in the "please pay" email. On Vercel the production URL is picked up automatically; set this to override it. |
-| `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET` | Creator KYC. From DigiLocker partner onboarding. Without them, creators can't self-verify and the ops team approves everyone by hand. |
+| `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET` | Creator KYC, from DigiLocker partner onboarding. **Not set today**, so creators are verified as they sign up. Setting both turns Aadhaar verification on, and that is the only change needed. |
 | `DIGILOCKER_REDIRECT_URI` | Where DigiLocker sends the creator back to. Must match what you registered with DigiLocker, character for character. Defaults to `<site>/api/kyc/digilocker/callback`. |
 | `DIGILOCKER_AUTH_BASE`, `DIGILOCKER_API_BASE`, `DIGILOCKER_SCOPE`, `DIGILOCKER_FLOW` | Only if DigiLocker gave you different ones. Defaults: `https://digilocker.meripehchaan.gov.in`, `https://api.digitallocker.gov.in`, no scope, `signin`. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |

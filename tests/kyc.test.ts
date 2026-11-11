@@ -4,6 +4,7 @@ import { seedDb } from "./fixtures/seed";
 import { signUpCreator, updateOwnCreator } from "@/lib/domain/creators";
 import { cancelDigilocker, completeDigilocker, kycSummary, namesMatch, pendingDigilocker, startDigilocker } from "@/lib/domain/kyc";
 import { KYC_HANDSHAKE_MS, MIN } from "@/lib/domain/config";
+import { tickAll } from "@/lib/domain/views";
 import { assertDigilockerConfigured, authorizeUrl, digilockerConfigured } from "@/lib/server/digilocker";
 import type { DB } from "@/lib/domain/types";
 
@@ -33,6 +34,60 @@ const identity = (over: Partial<Parameters<typeof completeDigilocker>[2]> = {}) 
 });
 
 const verify = (db: DB, creatorId: string, over = {}, now = T0 + MIN) => completeDigilocker(db, creatorId, identity(over), now);
+
+describe("direct verification (no DigiLocker keys set)", () => {
+  it("verifies a creator as they sign up, without claiming any KYC", () => {
+    const db = seedDb(T0);
+    const { creator } = signUpCreator(
+      db,
+      { name: "Biju Nath", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] },
+      { email: "biju@example.com", phone: "9876533333" },
+      T0,
+      "direct",
+    );
+    expect(creator.verification).toBe("verified");
+    // Verified isn't the same as checked: nothing is ticked off that nobody looked at.
+    expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
+    updateOwnCreator(db, creator.id, { available: true });
+    expect(creator.available).toBe(true);
+  });
+
+  it("defaults to asking for a check, so a caller that forgets the mode can’t wave someone through", () => {
+    // `joined()` leaves the mode off.
+    expect(joined().creator.verification).toBe("pending");
+    const { db, creator } = joined();
+    tickAll(db, T0 + MIN);
+    expect(creator.verification).toBe("pending");
+  });
+
+  it("verifies anyone still waiting, so nobody is stuck after the switch", () => {
+    const { db, creator } = joined();
+    expect(creator.verification).toBe("pending");
+    // The mode the server passes in is what decides: "digilocker" changes nothing.
+    tickAll(db, T0 + MIN, "digilocker");
+    expect(creator.verification).toBe("pending");
+    tickAll(db, T0 + MIN, "direct");
+    expect(creator.verification).toBe("verified");
+    expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
+  });
+
+  it("still leaves a DigiLocker flag and a rejection to the Srijan team", () => {
+    const { db, creator } = joined();
+    startDigilocker(db, creator.id, T0);
+    verify(db, creator.id, { name: "Someone Else" });
+    const { creator: turned } = signUpCreator(
+      db,
+      { name: "Rejected Creator", phone: "9876544444", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] },
+      { email: "rejected@example.com", phone: "9876544444" },
+      T0,
+    );
+    turned.verification = "rejected";
+
+    tickAll(db, T0 + MIN, "direct");
+    expect(creator.verification).toBe("pending");
+    expect(turned.verification).toBe("rejected");
+  });
+});
 
 describe("name matching", () => {
   it("accepts the same person spelled a bit differently", () => {

@@ -24,7 +24,9 @@ const GEAR: Record<ServiceKey, string[]> = {
 export default function JoinPage() {
   const meta = useMeta();
   const router = useRouter();
-  const { refresh } = useSession();
+  const { session, refresh } = useSession();
+  // With no DigiLocker keys set, signing up verifies you: there is no KYC step to send anyone to.
+  const direct = session?.creatorVerification === "direct";
   const { busy, error, run } = useAction();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -73,7 +75,7 @@ export default function JoinPage() {
     );
     if (r) {
       await refresh();
-      router.push("/creator/kyc?welcome=1");
+      router.push(direct ? "/creator" : "/creator/kyc?welcome=1");
     }
   }
 
@@ -210,7 +212,11 @@ export default function JoinPage() {
       <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
         Create my creator account
       </button>
-      <p className="tiny muted">Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid.</p>
+      <p className="tiny muted">
+        {direct
+          ? "You’re verified as soon as you sign up, so you can go online and start taking jobs right away. Your bank account or UPI ID can wait until you want to be paid."
+          : "Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid."}
+      </p>
     </div>
   );
 }
