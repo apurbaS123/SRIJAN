@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "next build && node scripts/smoke.mjs",
+    "logo": "node scripts/make-logo.mjs",
     "reset-data": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('Local data cleared — the app starts empty on the next request.')\""
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "web-push": "^4.0.0"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.1.1",
     "@types/node": "22.15.3",
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",

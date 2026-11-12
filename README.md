@@ -20,6 +20,7 @@ Other commands:
 | `npm run build && npm start` | Production build |
 | `npm run smoke` | Production build, then an end-to-end check of every flow (255 checks), run both with and without DigiLocker keys. Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
 | `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
+| `npm run logo` | Re-renders `public/logo.png` (the mark, wordmark and dot) from the hero's own proportions. Pass `--mark 1024` for a bigger one, or `--bg "#12001f"` for a version that works on light backgrounds |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
 Data is stored in `.data/db.json`. Delete it any time to start fresh.
