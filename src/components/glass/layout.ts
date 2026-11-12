@@ -78,6 +78,20 @@ export function measure(text: string, weight: number, size: number, family: stri
   return w;
 }
 
+/**
+ * How far a line box's baseline sits below its vertical centre, for a line box of
+ * `line-height: 1` — the same figure `drawText` puts the text on, so anything lined up with this
+ * lands on the baseline in both the canvas and the DOM layer.
+ */
+export function baselineDrop(weight: number, size: number, family: string) {
+  const c = ctx2d();
+  c.font = font(weight, size, family);
+  const m = c.measureText("n");
+  const a = m.fontBoundingBoxAscent ?? size * 0.8;
+  const d = m.fontBoundingBoxDescent ?? size * 0.2;
+  return (a - d) / 2;
+}
+
 function wrap(text: string, maxW: number, weight: number, size: number, family: string) {
   const words = text.split(" ");
   const lines: string[] = [];
@@ -131,7 +145,7 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const brandW = measure("srijan", 800, brandSize, DISPLAY, -0.03);
   // The full stop after the wordmark, same as the header logo on every other page.
   const dotSize = Math.max(brandSize * 0.27, 5);
-  const dotGap = Math.max(brandSize * 0.1, 2);
+  const dotGap = Math.max(brandSize * 0.18, 4);
   const brandEnd = brandX + brandW + dotGap + dotSize;
   const accountSize = px(15, 13);
   const accountW = measure(content.account.label, 700, accountSize, BODY);
@@ -164,9 +178,11 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     id: "brand", kind: "link", group: "nav", text: "srijan", x: brandX, cy: navCy,
     size: brandSize, weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/",
   });
-  // Sits on the wordmark's baseline, not its middle, so it reads as a full stop.
+  // Sits on the wordmark's baseline, like the full stop it is: the dot's bottom edge and the foot
+  // of the "n" are the same line.
   items.push({
-    id: "brand-dot", kind: "dot", group: "nav", text: "", x: brandX + brandW + dotGap, cy: navCy + brandSize * 0.28,
+    id: "brand-dot", kind: "dot", group: "nav", text: "", x: brandX + brandW + dotGap,
+    cy: navCy + baselineDrop(800, brandSize, DISPLAY) - dotSize / 2,
     w: dotSize, h: dotSize, size: dotSize, weight: 400, family: DISPLAY, tracking: 0, fill: WHITE(0.96), align: "left",
   });
   text({
