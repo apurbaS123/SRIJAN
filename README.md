@@ -2,7 +2,7 @@
 
 A working prototype of the Srijan web app: clients book same-day video shoots, brands book managed influencer campaigns, creators take jobs and get paid, and the Srijan team runs dispatch, campaigns and payouts.
 
-Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay and phone notifications through Web Push. Creators are verified as they sign up for now; the DigiLocker Aadhaar flow is built and waiting on partner keys.
+Built with **Next.js 15 (App Router) + TypeScript**. Payments run through Razorpay and phone notifications through Web Push. Creators are verified by hand: they upload their Aadhaar when they join and the Srijan team approves them from the ops dashboard. The DigiLocker Aadhaar flow is built and waiting on partner keys.
 
 ## Run it
 
@@ -18,7 +18,7 @@ Other commands:
 | `npm test` | Unit tests for the business rules (dispatch, money, campaigns) |
 | `npm run typecheck` | TypeScript check |
 | `npm run build && npm start` | Production build |
-| `npm run smoke` | Production build, then an end-to-end check of every flow (226 checks), run both with and without DigiLocker keys. Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
+| `npm run smoke` | Production build, then an end-to-end check of every flow (255 checks), run both with and without DigiLocker keys. Runs its own server on a free port with a throwaway data file and email off, so it never touches your data or sends messages. Set `SMOKE_DATABASE_URL` to a throwaway **local** Postgres to run it on the Postgres store instead (it wipes the `srijan` schema there) |
 | `TEST_DATABASE_URL=… npm test` | Also runs the Postgres store tests against a throwaway **local** database (skipped otherwise) |
 | `npm run reset-data` | Wipe all local data (starts again with an empty marketplace) |
 
@@ -39,7 +39,7 @@ Without Brevo set up, `npm run dev` prints each sign-in code in the server log. 
 ## Try the full flow
 
 1. Put your own email in `SRIJAN_OPS_EMAILS` in `.env.local` and sign in at **/login**: you land on the ops dashboard.
-2. In a private window, sign up a creator at **/join** with a second email. With no DigiLocker keys set (the default) they're verified at once and can go straight online.
+2. In a private window, sign up a creator at **/join** with a second email, uploading any two images as the two sides of an Aadhaar (the number has to be a real 12-digit one — `499118665246` works). They stay unverified until you approve them as ops under **/ops/creators**, and only then can they go online and take jobs.
 3. In another window, sign in at **/login** with a third email (a client account is created) and book a job. Nothing is paid yet: only creators in that field get the alert, within 2 seconds, with a 5-minute countdown.
 4. As the creator: **accept** the job. You are told the client has to pay, and you get nothing about them yet.
 5. As the client: the booking page now shows **Pay ₹X** (and the request is emailed to you). Pay with [Razorpay's test details](https://razorpay.com/docs/payments/payments/test-card-details/). Both sides immediately get the other's phone number, and the creator gets the exact address.
@@ -96,17 +96,56 @@ between them is whether the DigiLocker partner keys are set** — `creatorVerifi
 
 | Mode | When | What happens |
 | --- | --- | --- |
-| `direct` | No `DIGILOCKER_CLIENT_ID` / `DIGILOCKER_CLIENT_SECRET`. **This is how Srijan runs today.** | A creator is verified as they sign up and can go online immediately. Anyone left waiting for a check is verified on the next request, so nobody is stuck. `kyc.aadhaar` and `kyc.pan` stay false: verified isn't the same as checked, and nothing is ticked off that nobody looked at. |
-| `digilocker` | Both keys set | A creator verifies their own Aadhaar, below. Creators already verified stay verified. |
+| `manual` | No `DIGILOCKER_CLIENT_ID` / `DIGILOCKER_CLIENT_SECRET`. **This is how Srijan runs today.** | The creator uploads a photo of each side of their Aadhaar at **/join**, and somebody on the Srijan team reads it and approves them under **Creators** on the ops page. Nobody is verified automatically — not by signing up, and not by time passing. |
+| `digilocker` | Both keys set | A creator verifies their own Aadhaar, below. Creators already verified by hand stay verified. |
+
+In both modes a new creator starts out `pending`, and `pending` means they **cannot go online and
+cannot accept a job**. `kyc.aadhaar` is ticked off only by DigiLocker's own reply or by a person on the
+team saying they read the documents; nothing a creator sends us can set it.
 
 **Adding the two keys is the whole switch.** No code change, no migration, and the screens follow: the
-Verify prompts appear, **/join** sends new creators to **/creator/kyc**, and `/api/kyc/digilocker` stops
-answering 503. Everything below describes that mode, which is built and tested but not on yet.
+Aadhaar upload on **/join** gives way to the Verify prompts, and `/api/kyc/digilocker` stops answering
+503.
 
 The FAQs, terms and privacy pages say which of the two is on, and they're prerendered — so they pick the
 new wording up on the **redeploy** that setting the keys needs anyway, not before.
 
-### Aadhaar through DigiLocker
+### Aadhaar read by the Srijan team
+
+This is the mode Srijan runs on today.
+
+1. At **/join**, along with the rest of their profile, the creator types the name and number on their
+   Aadhaar and picks a photo of each side. The browser shrinks the photos first (longest side 1600px,
+   re-encoded as JPEG), because a phone photo is several megabytes and Vercel refuses a request body
+   over 4.5 MB.
+2. The account is created, then `POST /api/kyc/aadhaar` sends the two files as multipart form data. If
+   the upload is the half that fails, the account already exists and **/creator/kyc** asks for the
+   documents again — nobody has to start over.
+3. The creator shows up under **Creators** on the ops page. Both sides are shown inline, because the
+   point of the screen is that a person looked at them. Two things are called out above the photos: a
+   name that doesn't match the profile (`namesMatch`, same rules as below) and the same Aadhaar already
+   sitting on another account.
+4. **Approve** takes a confirmation that the person pressing it actually read the documents, and is
+   what lets the creator go online. **Send back** takes a reason, which the creator reads on
+   **/creator/kyc** before uploading clearer photos — that puts them straight back in the queue, and
+   the photos they replaced are deleted.
+
+**What is kept:** the two photos, the name printed on the card, and the **last 4 digits** of the
+number. The full number is never stored — only an HMAC of it under `SESSION_SECRET`, used for nothing
+except noticing the same card on a second account. (A bare hash of a 12-digit number would be trivially
+reversible; a keyed one isn't.) A mistyped number is caught at the form by the Verhoeff check digit,
+the same one UIDAI's own forms use.
+
+**Where the photos live:** `src/lib/server/uploads.ts`, deliberately apart from everything else. Every
+request loads the whole marketplace object (see `src/lib/server/store.ts`), so megabytes of JPEG on a
+creator's record would be read and written on every page view by everyone; the record keeps only an id,
+a type and a size. On Postgres they go in `srijan.documents`; locally, in `.data/uploads`.
+
+**Who can see them:** only `/api/kyc/document/<id>` serves one, and only to the Srijan team or to the
+creator who uploaded it. Everyone else gets a 404 — not a 403, which would at least confirm it exists.
+There is no public path and no signed link, and the replies are `no-store`.
+
+### Aadhaar through DigiLocker### Aadhaar through DigiLocker
 
 A creator verifies themselves. They press **Verify with DigiLocker** on **/creator/kyc**, sign in to
 [DigiLocker](https://www.digilocker.gov.in) — the government's own document wallet — and agree to share
@@ -134,8 +173,8 @@ the ops page instead:
   ops sees both names side by side.
 - **The Aadhaar is already verified on another Srijan account.** One person, one creator account.
 
-Ops can still approve or reject by hand, exactly as before, which is also the route for a creator who
-can't or won't use DigiLocker.
+Ops can still approve or reject by hand, exactly as in `manual` mode, which is also the route for a
+creator who can't or won't use DigiLocker.
 
 ```
 DIGILOCKER_CLIENT_ID=...            # from DigiLocker partner onboarding
@@ -196,7 +235,7 @@ src/lib/domain/      Business logic — plain TypeScript, no framework, fully te
   wallet.ts          The creator's earnings statement, built from the ledger
   notifications.ts   Demo notifications; add real phone push here
   creators.ts        Sign-up, availability, verification
-  kyc.ts             DigiLocker KYC rules: auto-verify, name matching, one Aadhaar per account
+  kyc.ts             Creator KYC rules: uploaded Aadhaar, DigiLocker, name matching, one Aadhaar per account
   views.ts           What each role is allowed to see
 src/lib/server/      Storage (Postgres or JSON file) and the API wrapper
 src/app/api/         REST API used by the screens (and later the mobile app)
@@ -262,7 +301,7 @@ Set these on your host (Vercel → Settings → Environment Variables, or the se
 | `POSTGRES_URL`, `DATABASE_URL` or `STORAGE_POSTGRES_URL` | Postgres connection. Set automatically when you connect Supabase to the Vercel project. The app creates its tables in the `srijan` schema on first use (see below). |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | **Required to take bookings.** See Payments above. |
 | `SRIJAN_SITE_URL` | Where the site lives, e.g. `https://srijan.example`, used for the link in the "please pay" email. On Vercel the production URL is picked up automatically; set this to override it. |
-| `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET` | Creator KYC, from DigiLocker partner onboarding. **Not set today**, so creators are verified as they sign up. Setting both turns Aadhaar verification on, and that is the only change needed. |
+| `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET` | Creator KYC, from DigiLocker partner onboarding. **Not set today**, so creators upload their Aadhaar and the Srijan team approves them by hand. Setting both moves verification to DigiLocker, and that is the only change needed. |
 | `DIGILOCKER_REDIRECT_URI` | Where DigiLocker sends the creator back to. Must match what you registered with DigiLocker, character for character. Defaults to `<site>/api/kyc/digilocker/callback`. |
 | `DIGILOCKER_AUTH_BASE`, `DIGILOCKER_API_BASE`, `DIGILOCKER_SCOPE`, `DIGILOCKER_FLOW` | Only if DigiLocker gave you different ones. Defaults: `https://digilocker.meripehchaan.gov.in`, `https://api.digitallocker.gov.in`, no scope, `signin`. |
 | `SRIJAN_PROOF_DRIVE_URL` | The Drive folder creators upload proof of work to. Only shown to a creator with a job in progress. |
@@ -276,4 +315,5 @@ Notes:
 - **Postgres tables** (schema `srijan`, not exposed by Supabase's public API, row level security on): `users`, `creators`, `bookings`, `offers`, `ledger`, `campaigns`, `sign_in_codes`, `notifications` and `meta`. Each row keeps the full record in `data` (jsonb), which is what the app reads and writes; the other columns (name, email, status, totals, dates…) are generated from it by Postgres for browsing and SQL, and can't drift. In Supabase: Table Editor → schema `srijan`. Defined in `src/lib/server/pg.ts`.
 - Data from the earlier single-row store (`srijan.state`) is copied into the tables automatically on first run. `srijan.state` is left untouched as a backup; drop it once you're happy (`drop table srijan.state;`).
 - Creators' bank details are stored in the database so ops can pay them. Only the ops page shows them in full. Limit who has access to Supabase accordingly.
-- Creators' KYC is stored with them: name, date of birth, gender, the **last 4 digits** of the Aadhaar and DigiLocker's id for that person. The full Aadhaar number never reaches Srijan, and no document is downloaded or stored.
+- Creators' KYC is stored with them: the name on the Aadhaar, the **last 4 digits** of its number, and — through DigiLocker — date of birth, gender and DigiLocker's id for that person. The full Aadhaar number is never stored, only a keyed hash used to spot one card on two accounts.
+- The Aadhaar photos creators upload are held apart from everything else, in `srijan.documents` (or `.data/uploads` locally), and are served only by `/api/kyc/document/<id>` to the Srijan team or the creator who sent them.

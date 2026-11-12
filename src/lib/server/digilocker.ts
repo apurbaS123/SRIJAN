@@ -34,13 +34,17 @@ export function digilockerConfigured() {
 /**
  * How creators get verified right now — **the one switch for creator KYC**.
  *
- * With no DigiLocker partner keys there is nothing to verify against, so creators are verified
- * directly as they sign up and go online straight away. Setting DIGILOCKER_CLIENT_ID and
- * DIGILOCKER_CLIENT_SECRET turns Aadhaar verification back on by itself, for creators who sign up
- * from then on; everyone already verified stays verified.
+ * With no DigiLocker partner keys there is nothing to verify against automatically, so a creator
+ * uploads both sides of their Aadhaar when they sign up and somebody on the Srijan team reads it
+ * and approves them from the ops dashboard. Setting DIGILOCKER_CLIENT_ID and
+ * DIGILOCKER_CLIENT_SECRET moves that to DigiLocker, which verifies a creator on the spot without
+ * anyone from Srijan in the loop; everyone already verified by hand stays verified.
+ *
+ * Either way nobody is verified by signing up, and an unverified creator cannot go online or
+ * accept a job.
  */
 export function creatorVerificationMode(): VerificationMode {
-  return digilockerConfigured() ? "digilocker" : "direct";
+  return digilockerConfigured() ? "digilocker" : "manual";
 }
 
 export function assertDigilockerConfigured() {

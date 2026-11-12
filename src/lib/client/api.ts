@@ -29,6 +29,18 @@ export async function call<T>(path: string, body?: unknown, method?: string): Pr
   return json.data as T;
 }
 
+/**
+ * Same as `call`, for routes that take files. The browser sets the multipart Content-Type itself,
+ * boundary and all, so nothing here may set it.
+ */
+export async function callForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(path, { method: "POST", body: form, cache: "no-store" });
+  const json = await res.json().catch(() => null);
+  if (json && typeof json.serverNow === "number") skew = json.serverNow - Date.now();
+  if (!res.ok || !json?.ok) throw new ApiError(json?.error ?? "Upload failed", res.status);
+  return json.data as T;
+}
+
 /** Load `path`, optionally re-loading every `pollMs`. Pass null to skip. */
 export function useData<T>(path: string | null, pollMs?: number) {
   const [data, setData] = useState<T | undefined>(undefined);

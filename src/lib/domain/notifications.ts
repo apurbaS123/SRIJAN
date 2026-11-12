@@ -2,7 +2,7 @@
 // has the site open. To send real phone notifications, add the push call in `notifyUser`: every
 // message in the app goes through it.
 import { CREATOR_SHARE, DAY, OPS_REMINDER_MS, findPackage, findZone } from "./config";
-import type { Booking, DB, Notification, Offer } from "./types";
+import type { Booking, Creator, DB, Notification, Offer } from "./types";
 import { newId, rupees } from "./util";
 
 const KEEP_MS = 7 * DAY;
@@ -13,6 +13,22 @@ export function notifyUser(db: DB, userId: string, at: number, message: Pick<Not
 
 function istDateTime(ms: number) {
   return new Date(ms).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+}
+
+/**
+ * The Srijan team has decided on a creator's Aadhaar. This is the only word a creator gets about it
+ * — nothing else tells them — so a rejection carries the team's reason, which is what they need to
+ * fix it rather than contact support.
+ */
+export function notifyCreatorVerification(db: DB, creator: Creator, decision: "verified" | "rejected", at: number, note?: string) {
+  notifyUser(db, creator.userId, at, {
+    title: decision === "verified" ? "You’re verified" : "Your Aadhaar came back",
+    lines:
+      decision === "verified"
+        ? ["The Srijan team has checked your Aadhaar.", "Go online and you’ll start getting job alerts."]
+        : [note || "The Srijan team couldn’t verify you from what you uploaded.", "Upload it again and you go straight back in the queue."],
+    href: decision === "verified" ? "/creator" : "/creator/kyc",
+  });
 }
 
 /** The job alert: what, where, when and the brief. */

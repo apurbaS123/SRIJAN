@@ -1,6 +1,7 @@
 import { DISPATCH, SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
 import type { VerificationMode } from "./kyc";
 import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from "./types";
+import { notifyCreatorVerification } from "./notifications";
 import { assert, cleanText, newId } from "./util";
 
 const DEFAULT_SERVICE: Record<ServiceKey, { title: string; description: string }> = {
@@ -116,12 +117,12 @@ function cleanList(v: unknown, maxItems: number, maxLen: number, label: string) 
  * `email` must already be verified by the caller (sign-in code) and lower-cased; `phone` is a
  * 10-digit contact number for shoot day.
  *
- * `mode` is how creators get verified right now (see `kyc.ts`). On "direct" the new creator is
- * verified as they sign up and can go online immediately; on "digilocker" they start out pending and
- * verify their own Aadhaar. It defaults to "digilocker", so a caller that forgets asks for a check
- * rather than skipping one.
+ * `mode` is how creators get verified right now (see `kyc.ts`), and it changes nothing about who
+ * starts out verified: in both modes a new creator is "pending" and cannot go online or accept a
+ * job until their Aadhaar has been checked — by the Srijan team on "manual", by DigiLocker itself
+ * on "digilocker". It is taken only so that a change to either mode has one obvious place to go.
  */
-export function signUpCreator(db: DB, input: SignupInput, contact: { email: string; phone: string }, now: number, mode: VerificationMode = "digilocker") {
+export function signUpCreator(db: DB, input: SignupInput, contact: { email: string; phone: string }, now: number, mode: VerificationMode = "manual") {
   const { email, phone } = contact;
   const name = cleanText(input.name, 80, "your name");
   assert(name.length >= 2, "Enter your name");
@@ -168,7 +169,9 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     available: false,
     // Not asked at sign-up: as far as the widest search reaches, so new creators aren't left out of it.
     maxTravelKm: [5, 10, 15, 20, 25].includes(Number(input.maxTravelKm)) ? Number(input.maxTravelKm) : DISPATCH.widenedRadiusKm,
-    verification: mode === "direct" ? "verified" : "pending",
+    // Nobody is verified by signing up. The Aadhaar comes next, either uploaded for the Srijan team
+    // or shared through DigiLocker, and verification waits on that.
+    verification: "pending",
     // Ticked off by DigiLocker's own reply, or by the Srijan team once they've seen the documents —
     // never by anything the creator sends us, and never by signing up.
     kyc: { aadhaar: false, pan: false },
@@ -235,16 +238,35 @@ export function updateOwnCreator(db: DB, creatorId: string, patch: CreatorPatch)
   return c;
 }
 
-/** Ops approves (after checking Aadhaar and PAN themselves) or rejects a new creator. */
-export function setVerification(db: DB, creatorId: string, decision: "verified" | "rejected", kycChecked = false) {
+/**
+ * The Srijan team's decision on a creator waiting to be verified, made from the ops dashboard after
+ * someone has opened the uploaded Aadhaar and read it.
+ *
+ * Approving is what lets the creator go online and accept jobs, so it takes `kycChecked` — the
+ * dashboard sets it only once the person pressing the button has said they looked at the documents.
+ * Rejecting takes a note, which the creator reads; they can then upload clearer photos, which puts
+ * them back in the queue (see `submitAadhaar`).
+ */
+export function setVerification(db: DB, creatorId: string, decision: "verified" | "rejected", kycChecked = false, note?: string, by?: string, now = Date.now()) {
   const c = db.creators.find((x) => x.id === creatorId);
   assert(c, "Creator not found", 404);
   assert(c.verification === "pending", "Already reviewed");
   assert(decision === "verified" || decision === "rejected", "Unknown decision");
+  const doc = c.kyc.aadhaarDoc;
   if (decision === "verified") {
-    assert(kycChecked, "Confirm you have checked their Aadhaar and PAN before approving");
-    c.kyc = { aadhaar: true, pan: true };
+    assert(kycChecked, "Confirm you have read their Aadhaar before approving");
+    // Only what somebody actually looked at is ticked off. PAN isn't collected here, so an approval
+    // can't claim it; DigiLocker is the only thing that sets it today.
+    c.kyc.aadhaar = true;
+  }
+  if (doc) {
+    doc.checkedAt = now;
+    doc.checkedBy = by;
+    doc.rejectedNote = decision === "rejected" ? cleanText(note, 300, "a reason", true) || undefined : undefined;
   }
   c.verification = decision;
+  // A rejected creator is off the job board at once, whatever they had switched on.
+  if (decision === "rejected") c.available = false;
+  notifyCreatorVerification(db, c, decision, now, doc?.rejectedNote);
   return c;
 }

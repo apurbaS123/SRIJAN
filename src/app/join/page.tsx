@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { call, useAction } from "@/lib/client/api";
+import { call, callForm, useAction } from "@/lib/client/api";
 import { ErrorNote, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 import { useSession } from "@/components/Session";
 import { PasswordField } from "@/components/PasswordField";
+import { AadhaarFields, EMPTY_AADHAAR, aadhaarForm, aadhaarReady, type AadhaarDraft } from "@/components/AadhaarFields";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
 
@@ -25,8 +26,10 @@ export default function JoinPage() {
   const meta = useMeta();
   const router = useRouter();
   const { session, refresh } = useSession();
-  // With no DigiLocker keys set, signing up verifies you: there is no KYC step to send anyone to.
-  const direct = session?.creatorVerification === "direct";
+  // With no DigiLocker partner keys set, the Srijan team reads the Aadhaar by hand, so it is
+  // collected here as part of signing up. With the keys set, the creator verifies themselves on
+  // DigiLocker afterwards and there is nothing to upload.
+  const digilocker = session?.creatorVerification === "digilocker";
   const { busy, error, run } = useAction();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -43,6 +46,7 @@ export default function JoinPage() {
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [password, setPassword] = useState("");
+  const [aadhaar, setAadhaar] = useState<AadhaarDraft>(EMPTY_AADHAAR);
 
   if (!meta) return <Loading />;
   const city = meta.cities.find((c) => c.id === cityId)!;
@@ -54,9 +58,15 @@ export default function JoinPage() {
     if (await run(() => call("/api/session/otp", { email }))) setCodeSent(true);
   }
 
+  /**
+   * The account is created first, then the Aadhaar is uploaded to it — one button, two requests,
+   * because the account has to exist before a document can belong to it. If the upload is the part
+   * that fails, the account is already made and signed in, so /creator/kyc picks it up from there
+   * and asks for the documents again rather than making them start over.
+   */
   async function submit() {
-    const r = await run(() =>
-      call("/api/creators", {
+    const r = await run(async () => {
+      const created = await call("/api/creators", {
         name,
         email,
         phone,
@@ -71,11 +81,13 @@ export default function JoinPage() {
         portfolio,
         social: { platform, url: socialUrl },
         followers: followers ? Number(followers) : undefined,
-      }),
-    );
+      });
+      if (!digilocker) await callForm("/api/kyc/aadhaar", aadhaarForm(aadhaar));
+      return created;
+    });
     if (r) {
       await refresh();
-      router.push(direct ? "/creator" : "/creator/kyc?welcome=1");
+      router.push("/creator/kyc?welcome=1");
     }
   }
 
@@ -208,14 +220,30 @@ export default function JoinPage() {
         </div>
       </section>
 
+      {!digilocker && (
+        <section className="card stack">
+          <h2>Your Aadhaar</h2>
+          <p className="small muted">
+            Srijan checks that every creator is who they say they are before they can take paid work. Send a photo of each side
+            of your Aadhaar card and someone from the Srijan team will look at it — usually within a day. You can finish your
+            profile now and you’ll get an alert the moment you’re approved.
+          </p>
+          <AadhaarFields value={aadhaar} onChange={setAadhaar} disabled={busy} />
+          <p className="tiny muted">
+            Your documents are stored privately and are only ever opened by the Srijan team to verify you. Nobody booking a job
+            can see them, and they never appear on your public profile.
+          </p>
+        </section>
+      )}
+
       <ErrorNote error={error} />
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password} onClick={submit}>
-        Create my creator account
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password || (!digilocker && !aadhaarReady(aadhaar))} onClick={submit}>
+        {busy && !digilocker ? "Creating your account…" : "Create my creator account"}
       </button>
       <p className="tiny muted">
-        {direct
-          ? "You’re verified as soon as you sign up, so you can go online and start taking jobs right away. Your bank account or UPI ID can wait until you want to be paid."
-          : "Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid."}
+        {digilocker
+          ? "Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid."
+          : "You can go online and start accepting jobs as soon as the Srijan team has approved your Aadhaar. Your bank account or UPI ID can wait until you want to be paid."}
       </p>
     </div>
   );

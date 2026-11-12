@@ -9,7 +9,7 @@ import type { Role } from "@/lib/domain/types";
 export interface SessionData {
   user: { id: string; role: Role; name: string; phone?: string; email?: string } | null;
   creator?: (CreatorPublic & { payout: ReturnType<typeof payoutSummary>; kyc: KycSummary }) | null;
-  /** "direct" = creators are verified as they sign up; "digilocker" = they verify their own Aadhaar. */
+  /** "manual" = the Srijan team reads an uploaded Aadhaar; "digilocker" = creators verify their own. */
   creatorVerification?: VerificationMode;
 }
 

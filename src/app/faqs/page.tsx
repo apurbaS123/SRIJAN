@@ -47,13 +47,13 @@ const faqs = () => [
   {
     q: "How does a creator get verified?",
     a:
-      creatorVerificationMode() === "direct"
-        ? "Right now, just by signing up at /join: you're verified straight away and can start accepting jobs. We're adding Aadhaar verification through DigiLocker, and we'll ask you to verify once when it arrives."
+      creatorVerificationMode() === "manual"
+        ? "When you sign up at /join you upload a photo of each side of your Aadhaar. Someone from the Srijan team reads it and approves your profile, usually within a day, and you get an alert the moment they do. Until then you can't go online or accept jobs. If the photos aren't readable the team sends them back with a reason, and you can upload clearer ones."
         : "In under a minute, by yourself: sign in to DigiLocker from your Srijan account and agree to share your Aadhaar details. You're verified on the spot and can start accepting jobs. If you'd rather not use DigiLocker, the Srijan team will verify your documents by hand.",
   },
   {
     q: "Does a creator need a bank account or UPI ID to start?",
-    a: `No. Verify yourself and you can go online and accept jobs straight away. Add your bank account or UPI ID whenever you like — Srijan needs it only to send your earnings, which wait in your wallet until it's there.`,
+    a: `No. Once you're verified you can go online and accept jobs straight away. Add your bank account or UPI ID whenever you like — Srijan needs it only to send your earnings, which wait in your wallet until it's there.`,
   },
   {
     q: "How do brands run a campaign?",

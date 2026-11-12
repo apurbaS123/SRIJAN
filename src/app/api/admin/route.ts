@@ -47,17 +47,22 @@ export async function GET() {
 }
 
 type Action =
-  | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean }
+  | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean; note?: string }
   | { action: "mark_paid"; payoutId: string; reference?: string }
   | { action: "mark_refund_sent"; bookingId: string; reference?: string };
 
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
   return api(
-    ({ db, now }) => {
+    ({ db, now, user }) => {
       switch (body.action) {
-        case "verify":
-          return setVerification(db, body.creatorId, body.decision, body.kycChecked === true);
+        case "verify": {
+          // `user.name` is recorded on the creator's Aadhaar, so there is a name against the decision.
+          const c = setVerification(db, body.creatorId, body.decision, body.kycChecked === true, body.note, user?.name, now);
+          // The dashboard only needs to see the outcome, and the raw record holds the creator's
+          // bank details and the hash of their Aadhaar number.
+          return { ...creatorPublic(c), kyc: kycSummary(c) };
+        }
         case "mark_paid":
           return markPayoutPaid(db, body.payoutId, body.reference, now);
         case "mark_refund_sent":

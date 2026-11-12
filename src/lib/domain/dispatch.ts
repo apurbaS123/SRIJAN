@@ -241,6 +241,10 @@ export function acceptOffer(db: DB, offerId: string, creatorId: string, now: num
   else assert(now < b.scheduledAt, "This job has already started", 409);
   assert(!isCreatorBusy(db, creatorId, b), "You already have a shoot around this time", 409);
   const creator = db.creators.find((c) => c.id === creatorId)!;
+  // Only verified creators are ever alerted, so this should be unreachable — but accepting a job is
+  // the moment that matters, and an alert sent before the Srijan team withdrew a creator's
+  // verification must not still be good afterwards.
+  assert(creator.verification === "verified", "Your profile has to be verified before you can accept a job", 403);
   o.status = "accepted";
   o.respondedAt = now;
   closeOfferNotifications(db, o.id, now);

@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedDb } from "./fixtures/seed";
 import { signUpCreator, updateOwnCreator } from "@/lib/domain/creators";
-import { cancelDigilocker, completeDigilocker, kycSummary, namesMatch, pendingDigilocker, startDigilocker } from "@/lib/domain/kyc";
-import { KYC_HANDSHAKE_MS, MIN } from "@/lib/domain/config";
+import { cancelDigilocker, completeDigilocker, isAadhaarNumber, kycSummary, namesMatch, pendingDigilocker, startDigilocker, submitAadhaar } from "@/lib/domain/kyc";
+import { setVerification } from "@/lib/domain/creators";
+import { DAY, HOUR, KYC_HANDSHAKE_MS, MIN } from "@/lib/domain/config";
 import { tickAll } from "@/lib/domain/views";
 import { assertDigilockerConfigured, authorizeUrl, digilockerConfigured } from "@/lib/server/digilocker";
 import type { DB } from "@/lib/domain/types";
@@ -35,57 +36,130 @@ const identity = (over: Partial<Parameters<typeof completeDigilocker>[2]> = {}) 
 
 const verify = (db: DB, creatorId: string, over = {}, now = T0 + MIN) => completeDigilocker(db, creatorId, identity(over), now);
 
-describe("direct verification (no DigiLocker keys set)", () => {
-  it("verifies a creator as they sign up, without claiming any KYC", () => {
-    const db = seedDb(T0);
-    const { creator } = signUpCreator(
-      db,
-      { name: "Biju Nath", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] },
-      { email: "biju@example.com", phone: "9876533333" },
-      T0,
-      "direct",
-    );
+/** Both sides of a card, as the upload route hands them to the rules. */
+const upload = (over: Partial<Parameters<typeof submitAadhaar>[2]> = {}) => ({
+  name: "Mitali Deka",
+  last4: "4321",
+  numberHash: "hash-of-mitali-aadhaar",
+  front: { id: "doc_front1", mime: "image/jpeg", size: 1200, uploadedAt: T0 },
+  back: { id: "doc_back1", mime: "image/jpeg", size: 1100, uploadedAt: T0 },
+  ...over,
+});
+
+describe("Aadhaar checked by the Srijan team (no DigiLocker keys set)", () => {
+  it("leaves a new creator unverified and off the job board until somebody approves them", () => {
+    const { db, creator } = joined();
+    expect(creator.verification).toBe("pending");
+    expect(() => updateOwnCreator(db, creator.id, { available: true })).toThrow(/verified/);
+
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    // Uploading proves nothing by itself: it only puts them in the queue.
+    expect(creator.verification).toBe("pending");
+    expect(creator.kyc.aadhaar).toBe(false);
+    expect(() => updateOwnCreator(db, creator.id, { available: true })).toThrow(/verified/);
+
+    // Time passing must never verify anyone.
+    tickAll(db, T0 + 30 * DAY);
+    expect(creator.verification).toBe("pending");
+
+    setVerification(db, creator.id, "verified", true, undefined, "Ops Anita", T0 + HOUR);
     expect(creator.verification).toBe("verified");
-    // Verified isn't the same as checked: nothing is ticked off that nobody looked at.
-    expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
+    expect(creator.kyc.aadhaar).toBe(true);
+    // PAN isn't collected here, so approving must not claim it was checked.
+    expect(creator.kyc.pan).toBe(false);
+    expect(creator.kyc.aadhaarDoc).toMatchObject({ checkedAt: T0 + HOUR, checkedBy: "Ops Anita" });
     updateOwnCreator(db, creator.id, { available: true });
     expect(creator.available).toBe(true);
   });
 
-  it("defaults to asking for a check, so a caller that forgets the mode can’t wave someone through", () => {
-    // `joined()` leaves the mode off.
-    expect(joined().creator.verification).toBe("pending");
+  it("won’t let the team approve without saying they read the documents", () => {
     const { db, creator } = joined();
-    tickAll(db, T0 + MIN);
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    expect(() => setVerification(db, creator.id, "verified", false)).toThrow(/read their Aadhaar/);
     expect(creator.verification).toBe("pending");
   });
 
-  it("verifies anyone still waiting, so nobody is stuck after the switch", () => {
+  it("sends a creator back with a reason, and takes them again once they re-upload", () => {
     const { db, creator } = joined();
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    creator.available = true;
+
+    setVerification(db, creator.id, "rejected", false, "The back is too blurry to read.", "Ops Anita", T0 + HOUR);
+    expect(creator.verification).toBe("rejected");
+    // Off the job board at once, whatever they had switched on.
+    expect(creator.available).toBe(false);
+    expect(kycSummary(creator).aadhaarDoc?.rejectedNote).toBe("The back is too blurry to read.");
+
+    const { replaced } = submitAadhaar(db, creator.id, upload({ front: { id: "doc_front2", mime: "image/jpeg", size: 900, uploadedAt: T0 } }), T0 + 2 * HOUR);
+    // Back in the queue, and the photos nothing points at any more are handed back to be deleted.
     expect(creator.verification).toBe("pending");
-    // The mode the server passes in is what decides: "digilocker" changes nothing.
-    tickAll(db, T0 + MIN, "digilocker");
-    expect(creator.verification).toBe("pending");
-    tickAll(db, T0 + MIN, "direct");
-    expect(creator.verification).toBe("verified");
-    expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
+    expect(replaced.map((r) => r.id)).toEqual(["doc_front1", "doc_back1"]);
+    expect(kycSummary(creator).aadhaarDoc).toMatchObject({ frontId: "doc_front2", rejectedNote: undefined });
   });
 
-  it("still leaves a DigiLocker flag and a rejection to the Srijan team", () => {
+  it("flags the same Aadhaar arriving on a second account instead of letting both through", () => {
     const { db, creator } = joined();
-    startDigilocker(db, creator.id, T0);
-    verify(db, creator.id, { name: "Someone Else" });
-    const { creator: turned } = signUpCreator(
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    setVerification(db, creator.id, "verified", true, undefined, "Ops Anita", T0 + HOUR);
+
+    const { creator: second } = signUpCreator(
       db,
-      { name: "Rejected Creator", phone: "9876544444", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] },
-      { email: "rejected@example.com", phone: "9876544444" },
+      { name: "Mitali Deka", phone: "9876522222", cityId: "guwahati", zoneId: "beltola", services: [{ key: "videography" }] },
+      { email: "mitali2@example.com", phone: "9876522222" },
       T0,
     );
-    turned.verification = "rejected";
+    const { duplicate } = submitAadhaar(db, second.id, upload(), T0 + 2 * HOUR);
+    expect(duplicate).toBe(true);
+    expect(second.verification).toBe("pending");
+    expect(kycSummary(second).aadhaarDoc?.duplicate).toBe(true);
+    // And they can't simply send it again until the team has sorted it out.
+    expect(() => submitAadhaar(db, second.id, upload(), T0 + 3 * HOUR)).toThrow(/already on another/);
+    // The first account is untouched.
+    expect(creator.verification).toBe("verified");
+  });
 
-    tickAll(db, T0 + MIN, "direct");
-    expect(creator.verification).toBe("pending");
-    expect(turned.verification).toBe("rejected");
+  it("tells the team when the card and the profile disagree, without deciding for them", () => {
+    const { db, creator } = joined();
+    submitAadhaar(db, creator.id, upload({ name: "Rituraj Das" }), T0 + MIN);
+    expect(kycSummary(creator).aadhaarDoc?.nameMismatch).toBe(true);
+    // A middle name on the card is not a mismatch.
+    submitAadhaar(db, creator.id, upload({ name: "Mitali Rani Deka" }), T0 + 2 * MIN);
+    expect(kycSummary(creator).aadhaarDoc?.nameMismatch).toBe(false);
+  });
+
+  it("keeps the Aadhaar number out of everything a browser is sent", () => {
+    const { db, creator } = joined();
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    const summary = JSON.stringify(kycSummary(creator));
+    expect(summary).toContain("4321");
+    expect(summary).not.toContain("hash-of-mitali-aadhaar");
+    expect(kycSummary(creator).aadhaarDoc).toMatchObject({ last4: "4321", frontId: "doc_front1", backId: "doc_back1" });
+  });
+
+  it("won’t take an Aadhaar from a creator who is already verified", () => {
+    const { db, creator } = joined();
+    submitAadhaar(db, creator.id, upload(), T0 + MIN);
+    setVerification(db, creator.id, "verified", true);
+    expect(() => submitAadhaar(db, creator.id, upload(), T0 + HOUR)).toThrow(/already verified/);
+  });
+});
+
+describe("Aadhaar numbers", () => {
+  it("accepts real numbers and catches a mistyped digit", () => {
+    // Valid Verhoeff check digits.
+    expect(isAadhaarNumber("234567890124")).toBe(true);
+    expect(isAadhaarNumber("999999990019")).toBe(true);
+    // One digit changed: the check digit no longer agrees.
+    expect(isAadhaarNumber("234567890123")).toBe(false);
+    expect(isAadhaarNumber("243567890124")).toBe(false);
+  });
+
+  it("refuses anything that isn’t 12 digits starting 2–9", () => {
+    expect(isAadhaarNumber("123456789012")).toBe(false);
+    expect(isAadhaarNumber("034567890124")).toBe(false);
+    expect(isAadhaarNumber("23456789012")).toBe(false);
+    expect(isAadhaarNumber("2345 6789 0124")).toBe(false);
+    expect(isAadhaarNumber("")).toBe(false);
   });
 });
 

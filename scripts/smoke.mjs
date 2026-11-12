@@ -359,6 +359,26 @@ class Agent {
     ok(r.ok, `${this.name} joins as a creator in ${zoneId}`);
     return r.data.creatorId;
   }
+  /** Sends both sides of an Aadhaar to /api/kyc/aadhaar, the way the join page does. */
+  async uploadAadhaar({ number, name, frontBytes = 2048, mime = "image/jpeg" } = {}) {
+    const form = new FormData();
+    form.set("number", number ?? "499118665246");
+    form.set("name", name ?? this.name);
+    form.set("front", new Blob([new Uint8Array(frontBytes)], { type: mime }), "front.jpg");
+    form.set("back", new Blob([new Uint8Array(2048)], { type: mime }), "back.jpg");
+    const res = await fetch(`${BASE}/api/kyc/aadhaar`, {
+      method: "POST",
+      headers: { Origin: BASE, "X-Forwarded-For": this.ip, ...(this.cookie ? { Cookie: this.cookie } : {}) },
+      body: form,
+    });
+    const json = await res.json().catch(() => ({}));
+    return { status: res.status, ...json };
+  }
+  /** Opens one uploaded document the way a browser would. Returns the status, not the bytes. */
+  async openDocument(id) {
+    const res = await fetch(`${BASE}/api/kyc/document/${id}`, { headers: { Origin: BASE, ...(this.cookie ? { Cookie: this.cookie } : {}) } });
+    return { status: res.status, type: res.headers.get("content-type"), cache: res.headers.get("cache-control") };
+  }
   /**
    * Verifies with DigiLocker, following the redirects a browser would: Srijan → DigiLocker →
    * Srijan's callback. `person` is who the fake DigiLocker will say signed in. Returns the
@@ -588,7 +608,7 @@ async function run() {
   const alertNote = r.data.find((n) => n.lines.join(" ").includes("Opening-week reel"));
   ok(alertNote && /Milestone Capture/.test(alertNote.lines[0]) && /Zoo Road/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, area, time and brief, not the address");
   r = await nilakshi.req("/api/notifications");
-  ok(r.data.length === 0, "a creator far away gets no notification");
+  ok(!r.data.some((n) => n.lines.join(" ").includes("Opening-week reel")), "a creator far away gets no alert for it");
 
   r = await rituraj.req("/api/offers");
   const ritOffer = r.data.find((o) => o.bookingId === b1.id);
@@ -899,7 +919,7 @@ async function run() {
   r = await ankita.req("/api/me/wallet");
   ok(r.data.lines.some((l) => l.kind === "campaign" && l.amount === 20000), "her campaign fee shows in the same wallet as her shoot earnings");
 
-  // --- With no DigiLocker keys: creators are verified directly ------------------
+  // --- With no DigiLocker keys: the Srijan team reads the Aadhaar --------------
   // This is how Srijan runs today. The whole switch is the two DigiLocker keys, so the same build is
   // checked both ways: everything above ran with them set, everything below runs without.
 
@@ -911,26 +931,93 @@ async function run() {
   await restartServer({ DIGILOCKER_CLIENT_ID: "", DIGILOCKER_CLIENT_SECRET: "" }, "with no DigiLocker keys");
 
   r = await biju.req("/api/session");
-  ok(r.data.creatorVerification === "direct", "the server now verifies creators directly");
-  ok(r.data.creator.verification === "verified", "the creator who was left waiting is verified without anyone checking");
+  ok(r.data.creatorVerification === "manual", "the Srijan team now verifies creators by hand");
+  ok(r.data.creator.verification === "pending", "the creator who was waiting is still waiting: nothing verifies anyone by itself");
   r = await biju.req("/api/me/creator", { available: true }, "PATCH");
-  ok(r.ok && r.data.available, "Biju goes online, with no KYC and no payment receive method");
+  ok(r.status === 400, "and he can’t go online until somebody has verified him");
   r = await biju.req("/api/kyc/digilocker", {}, "POST");
   ok(r.status === 503 && /by hand/.test(r.error), "the DigiLocker API says so plainly instead of half-working");
-  r = await ops.req("/api/admin");
-  ok(r.data.pendingCreators.length === 0, "ops has nobody left to approve by hand");
 
+  r = await biju.uploadAadhaar({ number: "499118665241" });
+  ok(r.status === 400 && /doesn’t look right/.test(r.error), "a mistyped Aadhaar number is caught before anything is uploaded");
+  r = await biju.uploadAadhaar({ number: "4991186652" });
+  ok(r.status === 400 && /12 digits/.test(r.error), "so is one that’s too short");
+  r = await biju.uploadAadhaar({ mime: "text/html" });
+  ok(r.status === 400 && /JPG, PNG, WEBP or PDF/.test(r.error), "and a file that isn’t a photo or a PDF is refused");
+  r = await biju.uploadAadhaar({ frontBytes: 3 * 1024 * 1024 });
+  ok(r.status === 400 && /too large/.test(r.error), "a photo over the per-file limit is refused");
+  r = await biju.uploadAadhaar({ frontBytes: 5 * 1024 * 1024 });
+  ok(r.status === 413, "and a whole request over the limit never reaches the route at all");
+
+  r = await biju.uploadAadhaar({ number: "499118665246", name: "Biju Nath" });
+  ok(r.ok, "Biju uploads both sides of his Aadhaar");
+  ok(r.data.kyc.aadhaarDoc.last4 === "5246" && !JSON.stringify(r.data).includes("499118665246"), "only the last 4 digits come back, never the number itself");
+  ok(r.data.verification === "pending" && !r.data.kyc.aadhaar, "uploading verifies nothing by itself — it only joins the queue");
+  const bijuDoc = r.data.kyc.aadhaarDoc;
+  r = await biju.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.status === 400, "he still can’t go online while the team hasn’t looked at it");
+
+  // The documents are identity papers: only the creator who sent them and the Srijan team see them.
+  r = await biju.openDocument(bijuDoc.frontId);
+  ok(r.status === 200 && r.type === "image/jpeg" && /no-store/.test(r.cache ?? ""), "Biju can see what he sent, and it is never cached");
+  r = await priya.openDocument(bijuDoc.frontId);
+  ok(r.status === 404, "a client holding the id can’t open somebody else’s Aadhaar");
+  r = await ankita.openDocument(bijuDoc.backId);
+  ok(r.status === 404, "nor can another creator");
+  const strangerDoc = await fetch(`${BASE}/api/kyc/document/${bijuDoc.frontId}`);
+  ok(strangerDoc.status === 404, "and signed out, it isn’t there at all");
+  r = await ops.openDocument(bijuDoc.frontId);
+  ok(r.status === 200, "the Srijan team can open it, which is the whole point");
+
+  r = await ops.req("/api/admin");
+  const waiting = r.data.pendingCreators.find((c) => c.id === cr.biju);
+  ok(waiting?.kyc.aadhaarDoc.name === "Biju Nath" && waiting.kyc.aadhaarDoc.frontId === bijuDoc.frontId, "ops sees his Aadhaar waiting, with both sides to open");
+  ok(!JSON.stringify(waiting).includes("numberHash"), "and never the hash of his Aadhaar number");
+  r = await ops.req("/api/admin", { action: "verify", creatorId: cr.biju, decision: "verified" });
+  ok(r.status === 400 && /read their Aadhaar/.test(r.error), "ops must say they read the documents before approving");
+
+  r = await ops.req("/api/admin", { action: "verify", creatorId: cr.biju, decision: "rejected", note: "The back is too blurry to read." });
+  ok(r.ok, "ops sends it back instead, with a reason");
+  r = await biju.req("/api/session");
+  ok(r.data.creator.verification === "rejected" && r.data.creator.kyc.aadhaarDoc.rejectedNote === "The back is too blurry to read.", "Biju is told exactly why");
+  r = await biju.uploadAadhaar({ number: "499118665246", name: "Biju Nath" });
+  ok(r.ok && r.data.verification === "pending", "he uploads clearer photos and goes back into the queue");
+  r = await biju.openDocument(bijuDoc.frontId);
+  ok(r.status === 404, "the photos he replaced are deleted, not just forgotten");
+
+  r = await biju.req("/api/notifications");
+  ok(r.data.some((n) => /came back/.test(n.title)), "and told so in his notifications, not just on the page");
+
+  r = await ops.req("/api/admin", { action: "verify", creatorId: cr.biju, decision: "verified", kycChecked: true });
+  ok(r.ok && r.data.verification === "verified" && r.data.kyc.aadhaar, "ops reads them and approves him");
+  r = await biju.req("/api/notifications");
+  ok(r.data.some((n) => n.title === "You’re verified"), "Biju is alerted the moment he’s approved");
+  r = await biju.req("/api/session");
+  ok(r.data.creator.kyc.pan === false, "approving ticks off only the Aadhaar somebody read, never a PAN nobody saw");
+  r = await biju.req("/api/me/creator", { available: true }, "PATCH");
+  ok(r.ok && r.data.available, "Biju goes online, with no payment receive method needed");
+
+  // One person, one creator account: the same card on a second account is flagged, not waved through.
   const hemanta = new Agent("Hemanta Saikia", "hemanta@creators.test", "9864066666");
   cr.hemanta = await hemanta.joinAsCreator("guwahati", "beltola");
   r = await hemanta.req("/api/session");
-  ok(r.data.creator.verification === "verified" && !r.data.creator.kyc.aadhaar, "a creator signing up now is verified on the spot, with no KYC claimed");
+  ok(r.data.creator.verification === "pending" && !r.data.creator.kyc.aadhaarDoc, "a creator signing up now starts unverified, with nothing claimed");
   r = await hemanta.req("/api/me/creator", { available: true }, "PATCH");
-  ok(r.ok && r.data.available, "and can go online immediately");
-  r = await priya.req("/api/session");
+  ok(r.status === 400, "and cannot go online");
+  r = await hemanta.uploadAadhaar({ number: "499118665246", name: "Hemanta Saikia" });
+  ok(r.ok && r.data.kyc.aadhaarDoc.duplicate, "Biju’s Aadhaar on Hemanta’s account is flagged for the team");
+  r = await hemanta.uploadAadhaar({ number: "234567890124", name: "Hemanta Saikia" });
+  ok(r.status === 400 && /already on another/.test(r.error), "and he can’t simply send a different one until the team has sorted it out");
+
   const freshJob = await priya.book({ packageIds: ["video_milestone"], cityId: "guwahati", zoneId: "beltola", address: "Beltola Tiniali", scheduledAt: slotFrom(Date.now()), brief: "A quick reel for the shop" });
   ok(freshJob.ok, "a client books a job in Beltola");
   r = await hemanta.req("/api/offers");
-  ok(r.data.some((o) => o.bookingId === freshJob.data.id), "and the creator who signed up a minute ago is alerted for it");
+  ok(r.ok && !r.data.some((o) => o.bookingId === freshJob.data.id), "the unverified creator isn’t alerted for it");
+  r = await biju.req("/api/offers");
+  const bijuOffer = r.data.find((o) => o.bookingId === freshJob.data.id);
+  ok(!!bijuOffer, "the verified one is");
+  r = await biju.req(`/api/offers/${bijuOffer.id}`, { action: "accept" });
+  ok(r.ok, "and can accept it");
 
   // --- Pages render ------------------------------------------------------------
   for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {

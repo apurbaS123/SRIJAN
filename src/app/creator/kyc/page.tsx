@@ -2,10 +2,12 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { call, useAction } from "@/lib/client/api";
+import { call, callForm, useAction } from "@/lib/client/api";
 import { ErrorNote, Guard, Loading } from "@/components/ui";
 import { useSession } from "@/components/Session";
 import { when } from "@/lib/client/format";
+import { AadhaarFields, EMPTY_AADHAAR, aadhaarForm, aadhaarReady, type AadhaarDraft } from "@/components/AadhaarFields";
+import type { KycSummary } from "@/lib/domain/kyc";
 
 /** What the callback redirected back with, in the creator's own words. */
 const RESULT: Record<string, { tone: "green" | "amber" | "orange"; title: string; body: string }> = {
@@ -50,8 +52,8 @@ function Kyc() {
   const act = useAction();
   const [leaving, setLeaving] = useState(false);
   const me = session?.creator;
-  // No DigiLocker partner keys on this server: creators are verified as they sign up instead.
-  const direct = session?.creatorVerification === "direct";
+  // No DigiLocker partner keys on this server: the Srijan team reads the uploaded Aadhaar instead.
+  const digilocker = session?.creatorVerification === "digilocker";
 
   // Coming back from DigiLocker: pick up the new verification state.
   useEffect(() => {
@@ -70,35 +72,8 @@ function Kyc() {
     window.location.href = r.url;
   }
 
-  if (direct) {
-    return (
-      <div className="container page narrow">
-        <h1>You’re verified</h1>
-        <p className="muted">
-          Every creator who signs up is verified right away, so there is nothing for you to do here. Go online and start
-          taking jobs.
-        </p>
-        <section className="card card-green stack" style={{ gap: 4 }}>
-          <b>Verified{me.verification === "verified" ? "" : " — just a moment"}</b>
-          <span className="small">
-            {me.verification === "verified"
-              ? "Your profile is live and clients can send you jobs."
-              : "Your profile is being set up. Refresh in a moment."}
-          </span>
-        </section>
-        <p className="small muted">
-          Aadhaar verification through DigiLocker is coming. When it arrives you’ll be asked to verify once; nothing you’ve
-          already earned or booked is affected.
-        </p>
-        <Link href="/creator" className="btn btn-accent btn-lg btn-block">
-          {welcome ? "Start taking jobs" : "Back to jobs"}
-        </Link>
-        <p className="tiny muted">
-          You don’t have to add a payment receive method to work. Add your bank account or UPI ID from{" "}
-          <Link href="/creator/payout">how you get paid</Link> whenever you like — Srijan needs it only to send your earnings.
-        </p>
-      </div>
-    );
+  if (!digilocker) {
+    return <ManualKyc kyc={kyc} verification={me.verification} welcome={welcome} />;
   }
 
   return (
@@ -207,6 +182,146 @@ function Kyc() {
           Back to jobs
         </Link>
       )}
+
+      <p className="tiny muted">
+        You don’t have to add a payment receive method to work. Add your bank account or UPI ID from{" "}
+        <Link href="/creator/payout">how you get paid</Link> whenever you like — Srijan needs it only to send your earnings.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Verification as it works today: the creator sends both sides of their Aadhaar and somebody on the
+ * Srijan team reads it. Four things can be true here — approved, waiting, sent back for clearer
+ * photos, or already on another account — and the only one that asks anything of the creator is the
+ * third, so each state says plainly whether there is something to do.
+ */
+function ManualKyc({ kyc, verification, welcome }: { kyc: KycSummary; verification: string; welcome: boolean }) {
+  const { refresh } = useSession();
+  const act = useAction();
+  const [draft, setDraft] = useState<AadhaarDraft>(EMPTY_AADHAAR);
+  const [again, setAgain] = useState(false);
+  const doc = kyc.aadhaarDoc;
+  const verified = verification === "verified";
+  const rejected = verification === "rejected";
+  // Nothing on file, sent back, or they chose to replace what they sent: show the form.
+  const uploading = !doc || rejected || again;
+
+  async function send() {
+    const r = await act.run(() => callForm("/api/kyc/aadhaar", aadhaarForm(draft)));
+    if (!r) return;
+    setDraft(EMPTY_AADHAAR);
+    setAgain(false);
+    await refresh();
+  }
+
+  return (
+    <div className="container page narrow">
+      <h1>{verified ? "You’re verified" : welcome && doc ? "Your Aadhaar is with the Srijan team" : "Verify yourself"}</h1>
+      <p className="muted">
+        Srijan checks every creator before they can take paid work, so a client always knows who is turning up. Someone from the
+        team reads your Aadhaar by hand — usually within a day.
+      </p>
+
+      {verified ? (
+        <section className="card card-green stack" style={{ gap: 4 }}>
+          <b>Aadhaar verified{doc?.checkedAt ? ` · ${when(doc.checkedAt)}` : ""}</b>
+          <span className="small">You can go online and start accepting jobs.</span>
+          {doc && (
+            <span className="tiny muted">
+              {doc.name} · Aadhaar •••• {doc.last4}
+            </span>
+          )}
+        </section>
+      ) : doc?.duplicate ? (
+        <section className="card card-amber stack" style={{ gap: 4 }}>
+          <b>This Aadhaar is already on another Srijan account</b>
+          <span className="small">One person, one creator account.</span>
+          <span className="tiny muted">
+            If that other account isn’t yours, <Link href="/support">tell Srijan support</Link> and we’ll sort it out.
+          </span>
+        </section>
+      ) : rejected ? (
+        <section className="card card-orange stack" style={{ gap: 4 }}>
+          <b>The Srijan team sent your Aadhaar back</b>
+          <span className="small">{doc?.rejectedNote || "They couldn’t verify you from what was uploaded. Please send it again."}</span>
+          <span className="tiny muted">Upload it again below and you go straight back into the queue.</span>
+        </section>
+      ) : doc ? (
+        <section className="card card-amber stack" style={{ gap: 4 }}>
+          <b>With the Srijan team</b>
+          <span className="small">
+            Sent {when(doc.submittedAt)}. There’s nothing more to do — you’ll get an alert as soon as you’re approved, and you
+            can finish your profile in the meantime.
+          </span>
+        </section>
+      ) : (
+        <section className="card card-orange stack" style={{ gap: 4 }}>
+          <b>We still need your Aadhaar</b>
+          <span className="small">You can’t go online or accept jobs until the Srijan team has verified you.</span>
+        </section>
+      )}
+
+      {doc && !doc.duplicate && (
+        <section className="card stack">
+          <div className="row between">
+            <h2>What you sent</h2>
+            {verified ? <span className="badge badge-green">Verified ✓</span> : <span className="badge badge-amber">Being checked</span>}
+          </div>
+          <div className="stack" style={{ gap: 6, fontSize: 14 }}>
+            <div className="row between">
+              <span className="muted">Name on Aadhaar</span>
+              <b>{doc.name}</b>
+            </div>
+            <div className="row between">
+              <span className="muted">Aadhaar</span>
+              <b>•••• •••• {doc.last4}</b>
+            </div>
+            <div className="row between">
+              <span className="muted">Sent</span>
+              <b>{when(doc.submittedAt)}</b>
+            </div>
+          </div>
+          <div className="row">
+            <a className="btn btn-sm" href={`/api/kyc/document/${doc.frontId}`} target="_blank" rel="noreferrer">
+              View front
+            </a>
+            <a className="btn btn-sm" href={`/api/kyc/document/${doc.backId}`} target="_blank" rel="noreferrer">
+              View back
+            </a>
+            {!verified && !uploading && (
+              <button className="btn btn-sm" onClick={() => setAgain(true)}>
+                Upload again
+              </button>
+            )}
+          </div>
+          <p className="tiny muted">
+            Srijan keeps your documents privately and only the Srijan team opens them. Only the last 4 digits of your Aadhaar
+            number are stored.
+          </p>
+        </section>
+      )}
+
+      {uploading && !doc?.duplicate && !verified && (
+        <section className="card stack">
+          <h2>{doc ? "Send it again" : "Upload your Aadhaar"}</h2>
+          <AadhaarFields value={draft} onChange={setDraft} disabled={act.busy} />
+          <ErrorNote error={act.error} />
+          <button className="btn btn-primary btn-lg btn-block" disabled={act.busy || !aadhaarReady(draft)} onClick={send}>
+            {act.busy ? "Uploading…" : doc ? "Send these instead" : "Send to the Srijan team"}
+          </button>
+          {again && (
+            <button className="btn btn-block" disabled={act.busy} onClick={() => setAgain(false)}>
+              Cancel
+            </button>
+          )}
+        </section>
+      )}
+
+      <Link href="/creator" className={`btn btn-lg btn-block${verified ? " btn-accent" : ""}`}>
+        {welcome && verified ? "Start taking jobs" : "Back to jobs"}
+      </Link>
 
       <p className="tiny muted">
         You don’t have to add a payment receive method to work. Add your bank account or UPI ID from{" "}

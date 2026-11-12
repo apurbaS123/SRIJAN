@@ -14,10 +14,13 @@ export default function PrivacyPage() {
         <li>Account details: your name, email address, mobile number and a protected form of your password.</li>
         <li>Booking details: the services you order, the time, the address for on-site jobs, your brief and the amount paid.</li>
         <li>Creator details: your profile, location, social media links, and the bank or UPI details we use to pay you.</li>
-        {creatorVerificationMode() === "direct" ? (
+        {creatorVerificationMode() === "manual" ? (
           <li>
-            Creator identity (KYC): nothing today — we don’t collect your Aadhaar, PAN or any identity document. When we add Aadhaar
-            verification through DigiLocker, this page will say exactly what it keeps before you are asked to use it.
+            Creator identity (KYC): to verify you, we keep the photos of both sides of the Aadhaar card you upload, the name printed
+            on it, and the <strong>last 4 digits</strong> of your Aadhaar number. We also keep a scrambled, one-way form of the full
+            number, used for nothing except noticing if the same Aadhaar is used to open a second account — the number itself is not
+            stored and cannot be worked back out from it. Your documents are stored privately, are opened only by the Srijan team to
+            verify you, and never appear on your public profile or anywhere a client can see.
           </li>
         ) : (
           <li>
@@ -31,7 +34,7 @@ export default function PrivacyPage() {
 
       <h2>How we use it</h2>
       <p>
-        To run your account, {creatorVerificationMode() === "digilocker" ? "confirm that creators are who they say they are, " : ""}match bookings with creators, take payments, pay creators,
+        To run your account, confirm that creators are who they say they are, match bookings with creators, take payments, pay creators,
         send refunds, send you sign-in codes and updates, and resolve any problems with a job.
       </p>
 

@@ -42,6 +42,17 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     expect(b.dispatch.roundEndsAt - T0).toBe(5 * MIN);
   });
 
+  it("won’t let a creator accept once the Srijan team has withdrawn their verification", () => {
+    const db = seedDb(T0);
+    const b = book(db);
+    const offer = db.offers.find((o) => o.bookingId === b.id && o.creatorId === "cr_ankita")!;
+    // The alert went out while she was verified; the team pulls it before she presses Accept.
+    db.creators.find((c) => c.id === "cr_ankita")!.verification = "pending";
+    expect(() => acceptOffer(db, offer.id, "cr_ankita", T0 + MIN)).toThrow(/verified/);
+    expect(b.status).toBe("searching");
+    expect(b.creatorId).toBeUndefined();
+  });
+
   it("goes to ops after 5 minutes if nobody accepts, leaving every alert open", () => {
     const db = seedDb(T0);
     const b = book(db);

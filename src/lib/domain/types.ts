@@ -89,6 +89,43 @@ export interface DigilockerKyc {
   review?: "name_mismatch" | "duplicate";
 }
 
+/** A document the creator uploaded. The bytes live outside the marketplace data (see `src/lib/server/uploads.ts`); only this record is stored here. */
+export interface UploadRef {
+  /** Id in the document store. Fetch it through /api/kyc/document/<id>, which checks who is asking. */
+  id: string;
+  mime: string;
+  /** Bytes. */
+  size: number;
+  uploadedAt: number;
+}
+
+/**
+ * Aadhaar the creator uploaded for the Srijan team to check by hand. This is how creators are
+ * verified today: they send photos of both sides of their Aadhaar card at sign-up, and nobody can
+ * accept a job until someone on the team has looked at them and approved the profile.
+ *
+ * The full Aadhaar number is never stored — only its last 4 digits and a one-way hash, which is
+ * there solely to catch the same Aadhaar being used on two accounts.
+ */
+export interface AadhaarDoc {
+  /** The name as printed on the Aadhaar, typed by the creator. Compared with the profile name. */
+  name: string;
+  /** Last 4 digits of the Aadhaar number. The rest is never stored. */
+  last4: string;
+  /** Keyed hash of the 12 digits, so one Aadhaar can't be used on two accounts. Never shown to anyone. */
+  numberHash: string;
+  front: UploadRef;
+  back: UploadRef;
+  submittedAt: number;
+  /** When someone on the Srijan team approved or rejected it, and which of them did. */
+  checkedAt?: number;
+  checkedBy?: string;
+  /** Why the team sent it back, in words the creator reads before uploading again. */
+  rejectedNote?: string;
+  /** Set when these documents are already approved on another Srijan account: one person, one account. */
+  review?: "duplicate";
+}
+
 export interface Creator {
   id: string;
   userId: string;
@@ -118,8 +155,12 @@ export interface Creator {
   /** Furthest the creator is willing to travel for a job. */
   maxTravelKm: number;
   verification: Verification;
-  /** `aadhaar` and `pan` are true once checked — by DigiLocker, or by the Srijan team by hand. */
-  kyc: { aadhaar: boolean; pan: boolean; digilocker?: DigilockerKyc };
+  /**
+   * `aadhaar` and `pan` are true once checked — by DigiLocker, or by the Srijan team by hand.
+   * `aadhaarDoc` is the Aadhaar the creator uploaded for the team to check; it is how verification
+   * works today, and it is kept even after approval so the team can look again.
+   */
+  kyc: { aadhaar: boolean; pan: boolean; digilocker?: DigilockerKyc; aadhaarDoc?: AadhaarDoc };
   /** How this creator gets paid. Older accounts have only upiId, which means UPI. */
   payoutMethod?: "upi" | "bank";
   upiId?: string;

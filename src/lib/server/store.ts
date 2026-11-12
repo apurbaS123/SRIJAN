@@ -13,7 +13,6 @@ import postgres from "postgres";
 import { ensureSchema as pgEnsureSchema, load as pgLoad, save as pgSave } from "./pg";
 import type { DB } from "@/lib/domain/types";
 import { tickAll } from "@/lib/domain/views";
-import { creatorVerificationMode } from "./digilocker";
 import { DomainError } from "@/lib/domain/util";
 import { sendOpsAlerts } from "./alerts";
 import { after } from "next/server";
@@ -37,7 +36,7 @@ type Outcome<T> = ({ ok: true; result: T; now: number } | { ok: false; error: un
 async function runAndSave<T>(db: DB, save: (db: DB) => Promise<void> | void, fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
   const now = Date.now();
   // Ops alerts that fell due while ticking. They're sent after the database is unlocked, never during.
-  const alerts = tickAll(db, now, creatorVerificationMode());
+  const alerts = tickAll(db, now);
   const ticked = JSON.stringify(db);
   try {
     const result = await fn(db, now);
@@ -84,6 +83,14 @@ function client() {
     });
   }
   return sql;
+}
+
+/**
+ * The Postgres connection, or null when this server is running on the JSON file instead. Only the
+ * document store (./uploads.ts) uses it: everything else goes through `withDb`, which also locks.
+ */
+export function storeSql() {
+  return DATABASE_URL ? client() : null;
 }
 
 function ensureSchema() {

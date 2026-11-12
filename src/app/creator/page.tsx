@@ -100,9 +100,9 @@ function Home() {
   const sent = useData<SentOfferView[]>("/api/offers/sent", 15000);
   const act = useAction();
   const seen = useRef<Set<string>>(new Set());
-  // No DigiLocker partner keys on this server: creators are verified as they sign up, so there is
-  // nothing to ask them to do. Setting the keys brings the Verify prompts back by itself.
-  const direct = session?.creatorVerification === "direct";
+  // No DigiLocker partner keys on this server: the creator uploads their Aadhaar and the Srijan
+  // team reads it. Setting the keys moves the prompts to DigiLocker by itself.
+  const digilocker = session?.creatorVerification === "digilocker";
 
   useEffect(() => {
     const fresh = offers.data?.filter((o) => !seen.current.has(o.id)) ?? [];
@@ -144,18 +144,33 @@ function Home() {
             <span className="small">
               {me.kyc.needsReview
                 ? "The name DigiLocker sent back doesn’t match your profile, so the Srijan team is checking it by hand."
-                : direct
-                  ? "Your profile is with the Srijan team. You can go online once it’s approved."
-                  : "Verify your Aadhaar with DigiLocker and you can go online straight away."}
+                : me.kyc.aadhaarDoc?.duplicate
+                  ? "Your Aadhaar is already on another Srijan account. Contact Srijan support and we’ll sort it out."
+                  : me.kyc.aadhaarDoc
+                    ? "Your Aadhaar is with the Srijan team. You can go online and accept jobs once they’ve approved you — usually within a day."
+                    : digilocker
+                      ? "Verify your Aadhaar with DigiLocker and you can go online straight away."
+                      : "Send the Srijan team your Aadhaar. You can’t go online or accept jobs until you’re verified."}
             </span>
-            {!me.kyc.needsReview && !direct && (
+            {!me.kyc.needsReview && !me.kyc.aadhaarDoc && (
               <Link href="/creator/kyc" className="btn btn-sm btn-accent">
-                Verify now
+                {digilocker ? "Verify now" : "Upload it"}
               </Link>
             )}
           </div>
         ) : (
-          <div className="card card-orange small">Your profile wasn’t approved. Contact Srijan support.</div>
+          <div className="card card-orange row between">
+            <span className="small">
+              {me.kyc.aadhaarDoc?.rejectedNote
+                ? `The Srijan team sent your Aadhaar back: ${me.kyc.aadhaarDoc.rejectedNote}`
+                : "Your profile wasn’t approved. Contact Srijan support."}
+            </span>
+            {!digilocker && (
+              <Link href="/creator/kyc" className="btn btn-sm btn-accent">
+                Upload again
+              </Link>
+            )}
+          </div>
         ))}
 
       {!me.payout && (
@@ -201,7 +216,7 @@ function Home() {
       <ErrorNote error={act.error} />
 
       <WalletCard />
-      {(!direct || me.kyc.digilocker || me.kyc.needsReview) && <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} />}
+      <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} digilocker={digilocker} />
 
       <PortfolioCard url={me.portfolio} />
       <SocialCard social={me.social} followers={me.followers} />
@@ -339,13 +354,22 @@ function WalletCard() {
 }
 
 /** Aadhaar KYC: the one thing a creator must do before they can go online. */
-function VerificationCard({ kyc, verified }: { kyc: KycSummary; verified: boolean }) {
+function VerificationCard({ kyc, verified, digilocker }: { kyc: KycSummary; verified: boolean; digilocker: boolean }) {
   const dl = kyc.digilocker;
+  const doc = kyc.aadhaarDoc;
   return (
     <section className="card stack">
       <div className="row between">
         <h2>Verification</h2>
-        {dl ? <span className="badge badge-green">Aadhaar ✓ DigiLocker</span> : kyc.aadhaar ? <span className="badge badge-green">Aadhaar ✓</span> : <span className="badge badge-amber">Not verified</span>}
+        {dl ? (
+          <span className="badge badge-green">Aadhaar ✓ DigiLocker</span>
+        ) : kyc.aadhaar ? (
+          <span className="badge badge-green">Aadhaar ✓</span>
+        ) : doc ? (
+          <span className="badge badge-amber">Being checked</span>
+        ) : (
+          <span className="badge badge-amber">Not verified</span>
+        )}
       </div>
       {dl ? (
         <span className="small muted">
@@ -355,11 +379,25 @@ function VerificationCard({ kyc, verified }: { kyc: KycSummary; verified: boolea
         </span>
       ) : kyc.needsReview ? (
         <span className="small muted">DigiLocker came back with “{kyc.needsReview.name}”. The Srijan team is checking it by hand.</span>
+      ) : doc ? (
+        <div className="row between">
+          <span className="small muted">
+            {doc.name} · Aadhaar •••• {doc.last4} ·{" "}
+            {verified ? `verified ${when(doc.checkedAt)}` : `sent ${when(doc.submittedAt)}, with the Srijan team`}
+          </span>
+          <Link href="/creator/kyc" className="btn btn-sm">
+            See it
+          </Link>
+        </div>
       ) : (
         <div className="row between">
-          <span className="small muted">Verify your Aadhaar through DigiLocker to go online. It takes under a minute.</span>
+          <span className="small muted">
+            {digilocker
+              ? "Verify your Aadhaar through DigiLocker to go online. It takes under a minute."
+              : "Send the Srijan team a photo of each side of your Aadhaar to go online."}
+          </span>
           <Link href="/creator/kyc" className="btn btn-sm btn-accent">
-            Verify now
+            {digilocker ? "Verify now" : "Upload it"}
           </Link>
         </div>
       )}

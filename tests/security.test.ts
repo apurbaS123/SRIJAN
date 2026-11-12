@@ -81,10 +81,11 @@ describe("creator KYC", () => {
     const input = { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
     const { creator } = signUpCreator(db, input, { email: "new.creator@example.com", phone: "9876511111" }, T0);
     expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
-    expect(() => setVerification(db, creator.id, "verified")).toThrow(/Aadhaar and PAN/);
+    expect(() => setVerification(db, creator.id, "verified")).toThrow(/read their Aadhaar/);
     setVerification(db, creator.id, "verified", true);
     expect(creator.verification).toBe("verified");
-    expect(creator.kyc).toEqual({ aadhaar: true, pan: true });
+    // Approving ticks off only the Aadhaar somebody actually read. PAN isn’t collected, so it stays false.
+    expect(creator.kyc).toEqual({ aadhaar: true, pan: false });
   });
 
   it("can’t be verified, or its KYC ticked off, from the creator’s own dashboard", () => {

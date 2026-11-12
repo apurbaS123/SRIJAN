@@ -42,8 +42,8 @@ export default function TermsPage() {
         added a payment receive method yet, your earnings wait there until you do. Only accept jobs you can deliver, and only upload work you have the right to share.
       </p>
       <p>
-        {creatorVerificationMode() === "direct"
-          ? "Your account is verified when you sign up, and we don’t check your identity documents yet. We are adding Aadhaar verification through DigiLocker and will ask you to verify once it is live."
+        {creatorVerificationMode() === "manual"
+          ? "Before you can go online or accept a job you must verify your identity by uploading your Aadhaar for the Srijan team to check. Until the team has approved your profile you cannot take paid work."
           : "Before you can go online you must verify your identity, either by sharing your Aadhaar details through DigiLocker or by sending your documents to the Srijan team."}{" "}
         Either way, one person may hold one creator account, you must use your own name, and an account opened or verified with someone else’s details will be closed.
       </p>
