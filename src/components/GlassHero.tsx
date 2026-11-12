@@ -175,6 +175,11 @@ export function GlassHero() {
       style.background = "var(--grad-primary)";
       style.borderRadius = it.w * 0.28;
     }
+    // The full stop after the wordmark: a filled circle, not a glyph.
+    if (!live && it.kind === "dot") {
+      style.background = typeof it.fill === "string" ? it.fill : `linear-gradient(90deg, ${it.fill.stops.join(", ")})`;
+      style.borderRadius = "50%";
+    }
     const events = {
       onPointerEnter: () => setHover(it.id),
       onPointerLeave: () => setHover((h) => (h === it.id ? null : h)),

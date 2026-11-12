@@ -14,7 +14,7 @@ export type Fill = string | { dir: "v" | "h"; stops: string[] };
 
 export interface Item {
   id: string;
-  kind: "text" | "pill" | "link" | "mark";
+  kind: "text" | "pill" | "link" | "mark" | "dot";
   group: "eyebrow" | "h1" | "sub" | "cta" | "foot" | "nav";
   text: string;
   /** Left edge (or right edge when align is "right"), block px. */
@@ -129,13 +129,17 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const brandX = navPad + markSize + px(12, 8);
   const brandSize = px(26, 20);
   const brandW = measure("srijan", 800, brandSize, DISPLAY, -0.03);
+  // The full stop after the wordmark, same as the header logo on every other page.
+  const dotSize = Math.max(brandSize * 0.27, 5);
+  const dotGap = Math.max(brandSize * 0.1, 2);
+  const brandEnd = brandX + brandW + dotGap + dotSize;
   const accountSize = px(15, 13);
   const accountW = measure(content.account.label, 700, accountSize, BODY);
   const linkSize = px(15, 13);
   const linkWs = content.navLinks.map((l) => measure(l.label, 600, linkSize, BODY));
   const linkGap = (n: number) => linkWs.reduce((a, b) => a + b, 0) + n * (linkWs.length - 1);
   const inlineGap = px(40, 20);
-  const inlineX = Math.max(brandX + brandW + px(64, 24), bw / 2 - linkGap(inlineGap) / 2);
+  const inlineX = Math.max(brandEnd + px(64, 24), bw / 2 - linkGap(inlineGap) / 2);
   const inline = inlineX + linkGap(inlineGap) < bw - navPad - accountW - px(32, 16);
   const navH = inline ? Math.max(bh * 0.108, 56) : Math.max(bh * 0.108, 56) + linkSize * 2.4;
   const navCy = inline ? navH / 2 : navH * 0.34;
@@ -159,6 +163,11 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   text({
     id: "brand", kind: "link", group: "nav", text: "srijan", x: brandX, cy: navCy,
     size: brandSize, weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/",
+  });
+  // Sits on the wordmark's baseline, not its middle, so it reads as a full stop.
+  items.push({
+    id: "brand-dot", kind: "dot", group: "nav", text: "", x: brandX + brandW + dotGap, cy: navCy + brandSize * 0.28,
+    w: dotSize, h: dotSize, size: dotSize, weight: 400, family: DISPLAY, tracking: 0, fill: WHITE(0.96), align: "left",
   });
   text({
     id: "account", kind: "link", group: "nav", text: content.account.label, x: bw - navPad, cy: navCy,
@@ -317,6 +326,13 @@ export function drawPage(canvas: HTMLCanvasElement, L: Layout, hover: string | n
       ["#7c3aed", "#c026d3", "#f0abfc"].forEach((s, i) => g.addColorStop([0, 0.6, 1][i], s));
       c.fillStyle = g;
       roundRect(c, x, it.cy - it.h / 2, it.w, it.h, it.w * 0.28);
+      c.fill();
+      continue;
+    }
+    if (it.kind === "dot") {
+      c.fillStyle = paint(c, it.fill, x, 0, x + it.w, 0);
+      c.beginPath();
+      c.arc(x + it.w / 2, it.cy, it.w / 2, 0, Math.PI * 2);
       c.fill();
       continue;
     }
