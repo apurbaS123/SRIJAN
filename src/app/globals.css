@@ -126,6 +126,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .narrow { max-width: 640px; }
 .page {
   padding: 24px 16px 64px;
+  max-width: 2016px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -145,6 +146,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
+.narrow.page { max-width: 1152px; }
+
+/* The panel spans wide, but its contents keep the measure they had before:
+   1088px on a full-width page, 608px on a narrow one. */
+.page > * { width: 100%; max-width: 1088px; margin-inline: auto; }
+.narrow.page > * { max-width: 608px; }
 
 /* Light surfaces inside a page keep the dark-on-light palette. Zero specificity
    so each surface's own colour (.card-dark, .btn-primary, .error…) still wins. */
@@ -912,4 +919,45 @@ a.gh-item, button.gh-item { cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) {
   .help-fab, .help-fab-label { transition: none; }
+}
+
+/* ============================================================
+   Launch sticker
+   ============================================================ */
+.sticker-row { display: flex; margin-top: -6px; }
+.sticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--grad-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+  transform: rotate(-1.5deg);
+}
+.sticker::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+  animation: sticker-pulse 2.2s ease-out infinite;
+}
+@keyframes sticker-pulse {
+  70%  { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+@media (max-width: 640px) {
+  .sticker { font-size: 11px; padding: 7px 13px; letter-spacing: 0.07em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticker::before { animation: none; }
 }
