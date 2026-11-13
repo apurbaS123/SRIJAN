@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useData } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
-import { CreatorCard, Loading } from "@/components/ui";
+import { CreatorCard, LaunchSticker, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 
 function Browse() {
@@ -30,6 +30,7 @@ function Browse() {
           Book a service
         </Link>
       </div>
+      <LaunchSticker />
       <div className="card stack">
         <div className="field">
           <label htmlFor="q">Search</label>

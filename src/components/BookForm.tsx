@@ -6,7 +6,7 @@ import type { ShootPackage } from "@/lib/domain/config";
 import type { ServiceKey } from "@/lib/domain/types";
 import type { BookingView, CreatorPublic } from "@/lib/domain/views";
 import { useSession } from "@/components/Session";
-import { ErrorNote } from "@/components/ui";
+import { ErrorNote, LaunchSticker } from "@/components/ui";
 import { TimeWheel } from "@/components/TimeWheel";
 import type { Meta } from "@/components/useMeta";
 import { inr } from "@/lib/client/format";
@@ -212,6 +212,7 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   return (
     <div className={chosen ? "stack" : "container page narrow"} id={chosen ? "offer" : undefined}>
       {chosen ? <h2>Send a job offer to {chosen.name.split(" ")[0]}</h2> : <h1>Book a service</h1>}
+      {!chosen && <LaunchSticker />}
       {chosen && (
         <div className="card card-violet">
           <span>

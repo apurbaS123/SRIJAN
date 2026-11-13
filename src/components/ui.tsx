@@ -8,6 +8,15 @@ import type { CreatorPublic } from "@/lib/domain/views";
 import { initials, inr } from "@/lib/client/format";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 
+/** Pre-launch badge. Sits under a page heading on the public funnel pages. */
+export function LaunchSticker() {
+  return (
+    <div className="sticker-row">
+      <span className="sticker">Launching in Dec 2026</span>
+    </div>
+  );
+}
+
 /** Shows children only to the given roles; otherwise a sign-in prompt. */
 export function Guard({ role, children }: { role: Role | Role[]; children: ReactNode }) {
   const { session, loading, error } = useSession();

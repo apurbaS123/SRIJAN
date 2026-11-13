@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { call, callForm, useAction } from "@/lib/client/api";
-import { ErrorNote, Loading } from "@/components/ui";
+import { ErrorNote, LaunchSticker, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 import { useSession } from "@/components/Session";
 import { PasswordField } from "@/components/PasswordField";
@@ -94,6 +94,7 @@ export default function JoinPage() {
   return (
     <div className="container page narrow">
       <h1>Join Srijan as a creator</h1>
+      <LaunchSticker />
       <p className="muted">List everything you do. Jobs through Srijan pay 80% of the package price.</p>
 
       <section className="card stack">
