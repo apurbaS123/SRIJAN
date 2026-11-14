@@ -7,6 +7,7 @@ import { DemoNotifications } from "@/components/DemoNotifications";
 import { ReviewGate } from "@/components/ReviewGate";
 import { HelpButton } from "@/components/HelpButton";
 import { siteUrl } from "@/lib/server/env";
+import { ThemeToggle, THEME_SCRIPT } from "@/components/ThemeToggle";
 
 const SITE = "Srijan";
 const TAGLINE = "Srijan — the creator economy of India";
@@ -39,6 +40,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        {/* Applies the saved theme before first paint, so there's no flash of the wrong one. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
         {/* Background image */}
@@ -46,6 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <img className="bg-video" src="/bg.webp" alt="" aria-hidden="true" />
         <SessionProvider>
           <Header />
+          <ThemeToggle floating />
           <DemoNotifications />
           <main>{children}</main>
           <SiteFooter />

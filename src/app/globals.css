@@ -49,6 +49,61 @@
   --body:          "Space Grotesk", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   --shadow-card:   0 2px 16px rgba(124, 58, 237, 0.10);
   --shadow-glow:   0 0 0 4px rgba(159, 30, 255, 0.18);
+
+  /* Surfaces that sit over the page image rather than on a card. */
+  --header-bg:     rgba(255, 255, 255, 0.85);
+  --backdrop-dim:  0.4;
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   Dark theme. Set on <html data-theme="dark"> by the toggle in the
+   header; the inline script in the document head applies it before
+   first paint so the page never flashes the wrong one.
+   ============================================================ */
+[data-theme="dark"] {
+  --bg:            #0d0018;
+  --surface:       #17062a;
+  --surface-2:     #1e0b36;
+  --ink:           #f5f0ff;
+  --ink-2:         #e4dcff;
+  --muted:         #b4a3d4;
+  --line:          #2e1a4d;
+
+  /* The violets lift a step, so they still read against a dark ground. */
+  --violet:        #a78bfa;
+  --violet-bright: #c084fc;
+  --violet-hot:    #e879f9;
+  --violet-ink:    #e9d5ff;
+  --violet-soft:   #241040;
+  --violet-glow:   rgba(167, 139, 250, 0.26);
+
+  --link:          #c4b5fd;
+  --link-hover:    #f0abfc;
+
+  /* The brand gradient opens too dark to read as heading text on a dark ground,
+     so headings use the lighter end of it. Buttons and chips keep the full one. */
+  --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 55%, #c4b5fd 100%);
+
+  /* Status colours invert: the tint becomes the ground, the ink becomes the text. */
+  --orange:        #e879f9;
+  --orange-ink:    #f5d0fe;
+  --orange-soft:   #2c1030;
+  --green:         #34d399;
+  --green-ink:     #a7f3d0;
+  --green-soft:    #0b2e22;
+  --red:           #f87171;
+  --red-soft:      #2a1114;
+  --amber-ink:     #fde68a;
+  --amber-soft:    #2b2007;
+
+  --shadow-card:   0 2px 18px rgba(0, 0, 0, 0.55);
+  --shadow-glow:   0 0 0 4px rgba(167, 139, 250, 0.26);
+  --header-bg:     rgba(20, 5, 38, 0.82);
+  --backdrop-dim:  0.26;
+
+  color-scheme: dark;
 }
 
 /* ============================================================
@@ -93,7 +148,7 @@ body > * {
   z-index: -1;
   pointer-events: none;
   opacity: 1;
-  filter: brightness(0.4);
+  filter: brightness(var(--backdrop-dim));
 }
 a { color: var(--link); }
 a:hover { color: var(--link-hover); }
@@ -168,6 +223,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--ink);
 }
 
+/* In dark mode those same surfaces stay dark — the panel is dark in both themes,
+   but a white card on it would be a hole. Beats the zero-specificity rule above. */
+[data-theme="dark"] :where(.page) :where(.card, .btn, .chip, .input, .select, .textarea, .option, .check, .service-tile, .kanban-col, .error, .success, .time-wheel, .menu-section, .map-sheet) {
+  --ink:           #f5f0ff;
+  --ink-2:         #e4dcff;
+  --muted:         #b4a3d4;
+  --line:          #35215c;
+  --link:          #c4b5fd;
+  --link-hover:    #f0abfc;
+  --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 100%);
+  color: var(--ink);
+}
+
 /* Remove the panel on the hero (home) page */
 .page-no-glass {
   background: transparent;
@@ -193,7 +261,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--header-bg);
   backdrop-filter: blur(16px) saturate(180%);
   border-bottom: 1px solid var(--line);
   box-shadow: 0 1px 0 0 var(--line), 0 4px 24px rgba(124, 58, 237, 0.06);
@@ -1073,6 +1141,22 @@ a.gh-item, button.gh-item { cursor: pointer; }
   color: var(--ink);
 }
 
+/* The form half goes dark too, so the card isn't a slab of cream at night. */
+[data-theme="dark"] .auth-card {
+  background: #140425;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  --ink:   #f5f0ff;
+  --ink-2: #e4dcff;
+  --muted: #b4a3d4;
+  --line:  #35215c;
+  --link:  #c4b5fd;
+  --link-hover: #f0abfc;
+  color: var(--ink);
+}
+[data-theme="dark"] .auth-field input { border-bottom-color: #3a2463; color: var(--ink); }
+[data-theme="dark"] .auth-field label { color: #9b8ab8; }
+[data-theme="dark"] .auth-title { -webkit-text-fill-color: var(--ink); color: var(--ink); }
+
 /* ── The blade: a skewed wedge of colour that slides side to side ── */
 .auth-blade,
 .auth-seam {
@@ -1338,4 +1422,61 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
 
   /* The glass panel's inner padding was tuned for desktop. */
   .page { padding-left: 12px; padding-right: 12px; }
+}
+
+/* ============================================================
+   Light / dark toggle
+   ============================================================ */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s, background 0.18s, transform 0.18s;
+}
+.theme-toggle:hover {
+  color: var(--violet);
+  border-color: var(--violet);
+  background: var(--violet-soft);
+}
+.theme-toggle:active { transform: scale(0.94); }
+.theme-toggle:focus-visible { outline: none; box-shadow: var(--shadow-glow); }
+
+/* The icon turns over as the theme changes rather than popping. */
+.theme-icon { display: block; line-height: 0; animation: theme-turn 0.32s ease; }
+@keyframes theme-turn {
+  from { opacity: 0; transform: rotate(-90deg) scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* On the home page the hero draws its own nav, so the toggle floats in the corner. */
+.theme-toggle-float {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 12;
+  width: 42px;
+  height: 42px;
+  background: var(--header-bg);
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* In the mobile drawer the toggle sits on the account row, so give it room. */
+@media (max-width: 860px) {
+  .who .theme-toggle { order: -1; margin-right: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-icon { animation: none; }
+  .theme-toggle { transition: none; }
 }

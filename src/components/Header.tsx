@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "./Session";
 import { call } from "@/lib/client/api";
+import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = {
   guest: [
@@ -100,6 +101,7 @@ export function Header() {
           </nav>
 
           <div className="who">
+            <ThemeToggle />
             {session?.user ? (
               <>
                 <span>
