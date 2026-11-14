@@ -126,7 +126,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .narrow { max-width: 640px; }
 .page {
   padding: 24px 16px 64px;
-  max-width: 2016px;
+  max-width: 3024px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -141,15 +141,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 100%);
   color: var(--ink);
 
-  background: #0b1c3d url("/bg3.jpg") center / cover no-repeat;
+  background: #16002c url("/bg3.png") center / cover no-repeat;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
-.narrow.page { max-width: 1152px; }
+.narrow.page { max-width: 1728px; }
 
 /* The panel spans wide, but its contents keep the measure they had before:
-   1088px on a full-width page, 608px on a narrow one. */
+   1088px on a full-width page, 608px on a narrow one. The panel's own edge
+   has since gone 50% further out again — 3024px and 1728px — and the
+   contents still don't move. */
 .page > * { width: 100%; max-width: 1088px; margin-inline: auto; }
 .narrow.page > * { max-width: 608px; }
 
