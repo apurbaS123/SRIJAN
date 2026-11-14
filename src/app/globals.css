@@ -141,7 +141,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 100%);
   color: var(--ink);
 
-  background: #16002c url("/bg4.webp") center / cover no-repeat;
+  background: #16002c url("/bg3.webp") center / cover no-repeat;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
