@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { creatorVerificationMode } from "@/lib/server/digilocker";
 
-export const metadata: Metadata = { title: "Privacy policy — Srijan" };
+export const metadata: Metadata = { title: "Privacy policy", description: "What Srijan collects, why we collect it, how long we keep it and who we share it with." };
 
 export default function PrivacyPage() {
   return (

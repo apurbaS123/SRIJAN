@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MIN, PAYMENT_WINDOW_MS, sellable } from "@/lib/domain/config";
 
-export const metadata: Metadata = { title: "How it works — Srijan" };
+export const metadata: Metadata = { title: "How it works", description: "From picking a service to paying your creator — every step of a Srijan booking, explained." };
 
 const LOWEST_PRICE = Math.min(...sellable().map((p) => p.price));
 

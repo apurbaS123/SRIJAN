@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { creatorVerificationMode } from "@/lib/server/digilocker";
-import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
+import { Phone } from "@/components/contact";
+import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS } from "@/lib/domain/config";
 
-export const metadata: Metadata = { title: "Terms & conditions — Srijan" };
+export const metadata: Metadata = { title: "Terms & conditions", description: "The terms you agree to when you book a creator or take a job on Srijan." };
 
 export default function TermsPage() {
   return (
@@ -25,7 +26,7 @@ export default function TermsPage() {
 
       <h2>Cancellations and refunds</h2>
       <p>
-        You can cancel for free any time before you pay, including while a creator is waiting for your payment. Once you have paid, call the Srijan team on {SUPPORT_PHONE}. Refunds are sent by the
+        You can cancel for free any time before you pay, including while a creator is waiting for your payment. Once you have paid, call the Srijan team on <Phone />. Refunds are sent by the
         Srijan team by hand, so they aren’t instant, and we may contact you for your bank or UPI details.
       </p>
 
@@ -58,7 +59,7 @@ export default function TermsPage() {
       <p>We may update these terms. The version on this page is the one that applies.</p>
 
       <h2>Contact us</h2>
-      <p>Call the Srijan team on {SUPPORT_PHONE}.</p>
+      <p>Call the Srijan team on <Phone />.</p>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSession } from "./Session";
 import type { Role } from "@/lib/domain/types";
 import type { CreatorPublic } from "@/lib/domain/views";
@@ -100,6 +100,33 @@ export function ErrorNote({ error }: { error?: string | null }) {
       {error}
     </div>
   );
+}
+
+/**
+ * Confirms that something saved. role="status" so a screen reader announces it without
+ * stealing focus, unlike the assertive ErrorNote.
+ */
+export function SuccessNote({ message }: { message?: string | null }) {
+  if (!message) return null;
+  return (
+    <div className="success" role="status">
+      {message}
+    </div>
+  );
+}
+
+/**
+ * A confirmation that clears itself after a while, for actions that leave you on the same page.
+ * Returns the note plus a `show` function to call when the action succeeds.
+ */
+export function useSuccess(ms = 6000) {
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(null), ms);
+    return () => clearTimeout(t);
+  }, [message, ms]);
+  return { message, show: setMessage, note: <SuccessNote message={message} /> };
 }
 
 const AVATAR_TINTS = [

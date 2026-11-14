@@ -1,6 +1,6 @@
 import { BrandRow } from "@/components/BrandRow";
 
-/** The logos in public/brands. Remove a line here to take that brand off the home page. */
+/** The logos in public/brands (WebP — 83% lighter than the PNG originals). Remove a line here to take that brand off the home page. */
 const BRANDS: [file: string, name: string][] = [
   ["01", "Ripuraj"], ["02", "Clocera"], ["03", "JW Prime Institute"], ["04", "NIA Skyline"], ["05", "Bhuli Devi Caterers"],
   ["06", "Globe Marketing Flagwale"], ["07", "Ather"], ["08", "Kohira"], ["09", "OPPO"], ["10", "Nothing"],
@@ -23,7 +23,7 @@ function Tiles({ brands, copy }: { brands: typeof BRANDS; copy?: boolean }) {
   return brands.map(([file, name]) => (
     <span key={file} className="brand-tile">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/brands/${file}.png`} alt={copy ? "" : name} width={150} height={84} loading="lazy" decoding="async" draggable={false} />
+      <img src={`/brands/${file}.webp`} alt={copy ? "" : name} width={150} height={84} loading="lazy" decoding="async" draggable={false} />
     </span>
   ));
 }

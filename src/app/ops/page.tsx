@@ -97,7 +97,7 @@ function Row({ b, onChange }: { b: Overview["dispatch"][number]; onChange: () =>
             {b.paid ? "Refund" : "Drop"}
           </button>
         )}
-        {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
+        {act.error && <div className="tiny" role="alert" style={{ color: "var(--red)" }}>{act.error}</div>}
       </td>
     </tr>
   );
@@ -145,7 +145,7 @@ function PayoutRow({ p, onChange }: { p: PayoutDue; onChange: () => void }) {
           Mark as paid
         </button>
       </div>
-      {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
+      {act.error && <div className="tiny" role="alert" style={{ color: "var(--red)" }}>{act.error}</div>}
     </article>
   );
 }
@@ -186,7 +186,7 @@ function RefundRow({ r, onChange }: { r: RefundDue; onChange: () => void }) {
           Mark as sent
         </button>
       </div>
-      {act.error && <div className="tiny" style={{ color: "var(--red)" }}>{act.error}</div>}
+      {act.error && <div className="tiny" role="alert" style={{ color: "var(--red)" }}>{act.error}</div>}
     </article>
   );
 }

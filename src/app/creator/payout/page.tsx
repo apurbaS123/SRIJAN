@@ -3,7 +3,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { call, useAction } from "@/lib/client/api";
-import { ErrorNote, Guard, Loading } from "@/components/ui";
+import { ErrorNote, Guard, Loading, useSuccess } from "@/components/ui";
 import { useSession } from "@/components/Session";
 import { PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, PAYOUT_WINDOW_TEXT } from "@/lib/domain/config";
 
@@ -12,6 +12,7 @@ function PayoutForm() {
   const welcome = useSearchParams().get("welcome") === "1";
   const current = session?.creator?.payout ?? null;
   const act = useAction();
+  const saved = useSuccess();
   const [editing, setEditing] = useState(false);
   const [method, setMethod] = useState<"upi" | "bank">("upi");
   const [upiId, setUpiId] = useState("");
@@ -31,6 +32,7 @@ function PayoutForm() {
     setEditing(false);
     setAccountNumber("");
     setAccountAgain("");
+    saved.show(method === "upi" ? "Saved. Your earnings will be sent to this UPI ID." : "Saved. Your earnings will be sent to this bank account.");
   }
 
   return (
@@ -44,6 +46,8 @@ function PayoutForm() {
         This isn’t a gate: you can go online and take jobs without it. Your earnings simply wait in your{" "}
         <Link href="/creator/wallet">wallet</Link> until you’ve added somewhere to send them.
       </p>
+
+      {saved.note}
 
       {current && !editing && (
         <section className="card stack">

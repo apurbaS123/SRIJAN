@@ -141,7 +141,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   --grad-heading:  linear-gradient(135deg, #e9d5ff 0%, #f0abfc 100%);
   color: var(--ink);
 
-  background: #16002c url("/bg3.png") center / cover no-repeat;
+  background: #16002c url("/bg4.webp") center / cover no-repeat;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
@@ -198,7 +198,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
   box-shadow: 0 1px 0 0 var(--line), 0 4px 24px rgba(124, 58, 237, 0.06);
 }
-.header-inner { display: flex; align-items: center; gap: 16px; min-height: 64px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+.header-inner { display: flex; align-items: center; gap: 16px; min-height: 64px; padding-top: 8px; padding-bottom: 8px; }
+.nav-group { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
+.nav-toggle { display: none; }
 .logo {
   font-family: var(--display);
   font-weight: 800;
@@ -233,7 +235,80 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: #fff;
   -webkit-text-fill-color: #fff;
 }
-.who { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.who { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Small screens: the nav folds into a drawer behind a burger ── */
+@media (max-width: 860px) {
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    padding: 0;
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    cursor: pointer;
+  }
+  .burger { display: block; width: 18px; height: 14px; position: relative; }
+  .burger span {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--violet);
+    transition: transform 0.22s ease, opacity 0.18s ease, top 0.22s ease;
+  }
+  .burger span:nth-child(1) { top: 0; }
+  .burger span:nth-child(2) { top: 6px; }
+  .burger span:nth-child(3) { top: 12px; }
+  .burger-open span:nth-child(1) { top: 6px; transform: rotate(45deg); }
+  .burger-open span:nth-child(2) { opacity: 0; }
+  .burger-open span:nth-child(3) { top: 6px; transform: rotate(-45deg); }
+
+  .nav-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 8;
+    border: 0;
+    padding: 0;
+    background: rgba(26, 0, 46, 0.42);
+    cursor: default;
+  }
+
+  .nav-group {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 9;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 16px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 16px 36px rgba(26, 0, 46, 0.18);
+
+    /* Closed: folded away but still focusable-safe, since it's removed from the flow. */
+    display: none;
+  }
+  .nav-group.nav-open { display: flex; animation: nav-drop 0.2s ease; }
+  @keyframes nav-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+  .nav { flex-direction: column; gap: 2px; }
+  .nav a { padding: 12px; font-size: 15px; }
+  .who { justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--line); }
+  .who .btn { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burger span { transition: none; }
+  .nav-group.nav-open { animation: none; }
+}
 
 /* ============================================================
    Surfaces
@@ -1235,3 +1310,32 @@ a.gh-item, button.gh-item { cursor: pointer; }
   .auth-fade { animation: none; }
 }
 .auth-submit-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* ============================================================
+   Mobile hardening — things that blow a narrow layout open
+   ============================================================ */
+
+/* No image, video or embed may ever push the page wider than the screen. */
+img, video, canvas, svg, iframe { max-width: 100%; }
+img, video { height: auto; }
+
+/* Long unbreakable strings — emails, UPI IDs, payment references, URLs — are the
+   usual cause of a sideways scroll on a phone. Let them break rather than overflow. */
+p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wrap: anywhere; }
+
+/* A table that can't fit scrolls on its own rather than stretching the page. */
+.table-wrap { overflow-x: auto; max-width: 100%; }
+
+@media (max-width: 640px) {
+  /* Headings set in vw-ish clamps can still run long words off the edge. */
+  h1, h2, h3 { overflow-wrap: anywhere; }
+
+  /* Side-by-side button rows become full-width stacks, so nothing is half-tappable. */
+  .row > .btn { flex: 1 1 auto; }
+
+  /* Comfortable tap targets on the smallest screens. */
+  .btn-sm { min-height: 40px; }
+
+  /* The glass panel's inner padding was tuned for desktop. */
+  .page { padding-left: 12px; padding-right: 12px; }
+}

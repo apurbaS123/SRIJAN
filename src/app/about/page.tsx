@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "About us — Srijan" };
+export const metadata: Metadata = { title: "About us", description: "Who Srijan is, why we built a fixed-price marketplace for Indian creators, and how we pay them." };
 
 export default function AboutPage() {
   return (
