@@ -7,11 +7,13 @@ export type Theme = "light" | "dark";
 export const THEME_KEY = "srijan-theme";
 
 /**
- * Runs before first paint, inlined in the document head. Reads the saved choice, falls back to
- * the operating system's, and sets it on <html> so the page never flashes the wrong theme.
+ * Runs before first paint, inlined in the document head. Dark is the site's default, so the
+ * markup already ships with data-theme="dark" and this only has to apply a saved choice of
+ * light. The operating system's preference is deliberately not consulted: the site is dark
+ * for everyone until they say otherwise.
  * Kept as a string because it has to execute ahead of React.
  */
-export const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(THEME_KEY)});if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t}catch(e){}})()`;
+export const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(THEME_KEY)});document.documentElement.dataset.theme=t==="light"?"light":"dark"}catch(e){}})()`;
 
 function apply(theme: Theme) {
   document.documentElement.dataset.theme = theme;
@@ -47,29 +49,11 @@ function Moon() {
  */
 export function ThemeToggle({ floating = false }: { floating?: boolean }) {
   const pathname = usePathname();
-  const [theme, setTheme] = useState<Theme | null>(null);
+  const [theme, setTheme] = useState<Theme>("dark");
 
-  // The server can't know the theme, so read it after mount from what the head script set.
+  // The server can't know a saved choice, so read it after mount from what the head script set.
   useEffect(() => {
-    const current = document.documentElement.dataset.theme;
-    setTheme(current === "dark" ? "dark" : "light");
-  }, []);
-
-  // Follow the system if the person hasn't chosen for themselves.
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = (e: MediaQueryListEvent) => {
-      try {
-        if (localStorage.getItem(THEME_KEY)) return;
-      } catch {
-        return;
-      }
-      const next: Theme = e.matches ? "dark" : "light";
-      document.documentElement.dataset.theme = next;
-      setTheme(next);
-    };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
   }, []);
 
   // The floating one belongs to the home page only; everywhere else the header carries it.
@@ -81,7 +65,7 @@ export function ThemeToggle({ floating = false }: { floating?: boolean }) {
     setTheme(next);
   }
 
-  // Until the effect has read <html>, assume light — the same thing the server rendered,
+  // Until the effect has read <html>, assume dark — the same thing the server rendered,
   // so the first paint matches and the label is never announced wrongly.
   const dark = theme === "dark";
   const label = dark ? "Switch to light mode" : "Switch to dark mode";

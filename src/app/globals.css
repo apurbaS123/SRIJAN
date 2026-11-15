@@ -58,9 +58,10 @@
 }
 
 /* ============================================================
-   Dark theme. Set on <html data-theme="dark"> by the toggle in the
-   header; the inline script in the document head applies it before
-   first paint so the page never flashes the wrong one.
+   Dark theme — the site's default. <html> ships with
+   data-theme="dark"; the :root values above apply only once the
+   toggle in the header has set data-theme="light", which the inline
+   script in the document head restores before first paint.
    ============================================================ */
 [data-theme="dark"] {
   --bg:            #0d0018;
@@ -1669,4 +1670,40 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
 
   .code-slots__wash { opacity: 0; transition: opacity 200ms ease; }
   .code-slots__row[data-status='success'] .code-slots__wash { opacity: 1; }
+}
+
+/* ============================================================
+   MicroSlats — the WebGL slat field. Markup in src/components/MicroSlats.tsx.
+   ============================================================ */
+.micro-slats {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+
+  /* The component tracks the cursor on window, so the water is still stirred
+     through whatever sits on top — and the form underneath stays clickable. */
+  pointer-events: none;
+}
+
+/* The sign-in backdrop: the slat field behind the auth card, over the site's
+   background photo. Negative z-index keeps it under the card and the header,
+   which are positioned in the same stacking context. */
+.auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.85;
+  /* The sea rolls in with the card rather than arriving before it. */
+  animation: auth-backdrop-in 1.1s ease forwards;
+}
+
+@keyframes auth-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 0.85; }
+}
+
+/* The field is decoration; without it the page keeps the background photo. */
+@media (prefers-reduced-motion: reduce) {
+  .auth-backdrop { animation: none; opacity: 0.6; }
 }

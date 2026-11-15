@@ -6,6 +6,7 @@ import { call, useAction } from "@/lib/client/api";
 import { useSession } from "@/components/Session";
 import { ErrorNote, Loading, SessionError } from "@/components/ui";
 import CodeSlots, { isCodeError } from "@/components/CodeSlots";
+import MicroSlats from "@/components/MicroSlats";
 import type { Role } from "@/lib/domain/types";
 
 const HOME: Record<Role, string> = { client: "/bookings", creator: "/creator", ops: "/ops" };
@@ -24,9 +25,27 @@ function destination(role: Role, next: string | null) {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<Loading />}>
-      <SignIn />
-    </Suspense>
+    <>
+      {/* Sits behind the card and outside the Suspense boundary, so the sea is already
+          rolling while the session loads rather than starting over once it lands. */}
+      <MicroSlats
+        className="auth-backdrop"
+        preset="tide"
+        color="#7c3aed"
+        glintColor="#f0abfc"
+        backgroundColor="transparent"
+        slatWidth={9}
+        slatHeight={22}
+        gap={4}
+        direction={268}
+        speed={0.32}
+        cursorSize={56}
+        trail={1.8}
+      />
+      <Suspense fallback={<Loading />}>
+        <SignIn />
+      </Suspense>
+    </>
   );
 }
 

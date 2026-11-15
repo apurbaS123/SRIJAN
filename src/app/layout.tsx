@@ -29,9 +29,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#7c3aed" };
 
+/** Dark is the site's default, so <html> ships with it; the head script below swaps in light for
+ *  someone who has chosen it, before first paint. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -46,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {/* Background image */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="bg-video" src="/bg.webp" alt="" aria-hidden="true" />
+        <img className="bg-video" src="/bg3.webp" alt="" aria-hidden="true" />
         <SessionProvider>
           <Header />
           <ThemeToggle floating />
