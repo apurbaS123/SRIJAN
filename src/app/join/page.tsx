@@ -6,6 +6,7 @@ import { ErrorNote, LaunchSticker, Loading } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 import { useSession } from "@/components/Session";
 import { PasswordField } from "@/components/PasswordField";
+import CodeSlots, { isCodeError } from "@/components/CodeSlots";
 import { AadhaarFields, EMPTY_AADHAAR, aadhaarForm, aadhaarReady, type AadhaarDraft } from "@/components/AadhaarFields";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
@@ -30,7 +31,7 @@ export default function JoinPage() {
   // collected here as part of signing up. With the keys set, the creator verifies themselves on
   // DigiLocker afterwards and there is nothing to upload.
   const digilocker = session?.creatorVerification === "digilocker";
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -112,9 +113,18 @@ export default function JoinPage() {
             </button>
           </div>
         </div>
-        <div className="field">
+        <div className="field code-field">
           <label htmlFor="code">Code sent to your email</label>
-          <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
+          <CodeSlots
+            id="code"
+            ariaLabel="6-digit code sent to your email"
+            value={code}
+            status={isCodeError(error) ? "error" : "idle"}
+            onChange={(c) => {
+              setCode(c);
+              if (c && error) setError(null);
+            }}
+          />
         </div>
         <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Next time, sign in with your email and this password." />
         <div className="field">

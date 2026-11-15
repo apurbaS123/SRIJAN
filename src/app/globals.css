@@ -1480,3 +1480,193 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
   .theme-icon { animation: none; }
   .theme-toggle { transition: none; }
 }
+
+/* ============================================================
+   CodeSlots — the 6-digit sign-in code, one slot per digit.
+   Markup in src/components/CodeSlots.tsx. The component sets only the
+   measurements as inline custom properties; the colours are mapped to the
+   theme tokens here so the row follows the light / dark switch.
+   ============================================================ */
+.code-slots {
+  --cs-accent: var(--violet);
+  --cs-ink: var(--violet);
+  --cs-slot: var(--violet-soft);
+  --cs-digit: #ffffff;
+  --cs-danger: var(--red);
+  --cs-size: 44px;
+  --cs-height: 52px;
+  --cs-gap: 8px;
+  --cs-radius: 12px;
+  --cs-font: 22px;
+
+  position: relative;
+  display: inline-block;
+}
+
+/* The fills lighten in the dark theme, so the digit on top has to darken. */
+[data-theme="dark"] .code-slots { --cs-digit: #1a002e; }
+
+.code-slots__row {
+  position: relative;
+  display: inline-flex;
+  gap: var(--cs-gap);
+  cursor: text;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 200ms ease;
+}
+
+.code-slots__row[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The real input: full-bleed over the row and invisible, so the keyboard,
+   autofill and the browser's own OTP suggestion all still work. */
+.code-slots__input {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;            /* 16px or iOS zooms the page on focus */
+  opacity: 0;
+  cursor: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.code-slots__wash {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border-radius: var(--cs-radius);
+  background: var(--cs-accent);
+  color: var(--cs-digit);
+  pointer-events: none;
+}
+
+.code-slots__check { display: grid; place-items: center; }
+
+.code-slots__slot {
+  position: relative;
+  width: var(--cs-size);
+  height: var(--cs-height);
+  border-radius: var(--cs-radius);
+  overflow: hidden;
+  background: var(--cs-slot);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.code-slots__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--cs-accent);
+  transform-origin: center;
+  transition: background-color 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .code-slots__row[data-status='idle']:not([data-disabled]):hover .code-slots__slot:not([data-active]) {
+    box-shadow: inset 0 0 0 1.5px var(--violet-glow);
+  }
+}
+
+.code-slots__slot[data-active] {
+  background: color-mix(in srgb, var(--cs-ink) 8%, var(--cs-slot));
+  box-shadow: inset 0 0 0 1.5px var(--cs-ink);
+}
+
+.code-slots__row[data-status='error'] .code-slots__slot {
+  background: color-mix(in srgb, var(--cs-danger) 14%, var(--cs-slot));
+  box-shadow: inset 0 0 0 1.5px var(--cs-danger);
+}
+
+.code-slots__row[data-status='error'] .code-slots__fill { background: var(--cs-danger); }
+.code-slots__row[data-status='error'] .code-slots__digit { color: #ffffff; }
+
+.code-slots__digit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: var(--cs-digit);
+  font-family: inherit;
+  font-size: var(--cs-font);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-slots__caret {
+  position: absolute;
+  z-index: 3;
+  top: 25%;
+  left: calc(var(--cs-size) / 2 - 0.75px);
+  width: 1.5px;
+  height: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.code-slots__caret[data-show] { opacity: 1; }
+
+.code-slots__caret-line {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--cs-ink);
+  animation: code-slots-blink 1s linear infinite;
+}
+
+@keyframes code-slots-blink {
+  0%, 49.9% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.code-slots__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The code field as it sits in a form: a label above the row. */
+.code-field { display: flex; flex-direction: column; gap: 8px; }
+.code-field > label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.code-field .auth-hint { margin-top: 0; }
+
+/* Six 44px slots plus gaps don't fit the narrowest phones; shrink the row there. */
+@media (max-width: 420px) {
+  .code-slots { --cs-size: 40px; --cs-height: 48px; --cs-gap: 6px; --cs-font: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-slots__digit,
+  .code-slots__check {
+    transform: none !important;
+    transition: opacity 150ms ease;
+  }
+
+  .code-slots__caret-line { animation: none; }
+
+  .code-slots__wash { opacity: 0; transition: opacity 200ms ease; }
+  .code-slots__row[data-status='success'] .code-slots__wash { opacity: 1; }
+}

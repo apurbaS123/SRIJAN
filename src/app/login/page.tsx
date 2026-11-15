@@ -5,6 +5,7 @@ import Link from "next/link";
 import { call, useAction } from "@/lib/client/api";
 import { useSession } from "@/components/Session";
 import { ErrorNote, Loading, SessionError } from "@/components/ui";
+import CodeSlots, { isCodeError } from "@/components/CodeSlots";
 import type { Role } from "@/lib/domain/types";
 
 const HOME: Record<Role, string> = { client: "/bookings", creator: "/creator", ops: "/ops" };
@@ -40,7 +41,6 @@ function Icon({ d }: { d: string }) {
 }
 const USER = "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z";
 const MAIL = "M4 6h16v12H4zM4 7l8 6 8-6";
-const KEY = "M15 7a4 4 0 1 1-3.6 5.7L9 15H7v2H4v-3l5.3-5.3A4 4 0 0 1 15 7Z";
 const PHONE = "M7 3h10v18H7zM11 18h2";
 const EYE = "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z";
 const EYE_OFF = "M3 3l18 18M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-1.2M6.5 6.9C3.9 8.5 2 12 2 12s3.6 6 10 6c1.8 0 3.4-.5 4.7-1.2M9.9 6.2A9.6 9.6 0 0 1 12 6c6.4 0 10 6 10 6a18 18 0 0 1-2.8 3.4";
@@ -219,7 +219,22 @@ function SignIn() {
             {step === "password" && <Password id="password" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />}
 
             {step !== "password" && (
-              <Field id="code" label="6-digit code" icon={<Icon d={KEY} />} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />
+              <div className="code-field">
+                <label htmlFor="code">6-digit code</label>
+                <CodeSlots
+                  id="code"
+                  ariaLabel="6-digit sign-in code"
+                  value={code}
+                  // A rejected code drains the slots red and clears itself; the next digit
+                  // typed drops the error, which puts the row back to idle.
+                  status={isCodeError(error) ? "error" : "idle"}
+                  onChange={(c) => {
+                    setCode(c);
+                    if (c && error) setError(null);
+                  }}
+                  autoFocus
+                />
+              </div>
             )}
 
             {step === "code" && <Password id="new-password" label="New password (optional)" value={password} onChange={setPassword} autoComplete="new-password" hint="Forgot your password? Set a new one here. Otherwise leave this blank." />}
