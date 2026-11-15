@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { call, serverNow, useAction } from "@/lib/client/api";
 import { BrandLogos } from "@/components/BrandLogos";
 import { ErrorNote, Loading } from "@/components/ui";
+import CodeSlots, { isCodeError } from "@/components/CodeSlots";
 import { when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
 import Link from "next/link";
@@ -174,9 +175,22 @@ export default function BrandsPage() {
           </div>
         </div>
         {!signedIn && (otpSent || remind) && (
-          <div className="field">
+          <div className="field code-field">
             <label htmlFor="otp">{otpSent ? "Code sent to your email" : "Email verification code"}</label>
-            <input id="otp" {...box("otp")} disabled={!otpSent} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)} />
+            <CodeSlots
+              id="otp"
+              ariaLabel="6-digit email verification code"
+              value={otp}
+              disabled={!otpSent}
+              // Red for an unanswered reminder as well as a rejected code; a rejected one
+              // also drains the slots and clears itself, and the next digit typed drops both.
+              status={reminder("otp") || isCodeError(error) ? "error" : "idle"}
+              describedBy={reminder("otp") ? "otp-reminder" : undefined}
+              onChange={(c) => {
+                setOtp(c);
+                if (c && error) setError(null);
+              }}
+            />
             <Reminder id="otp" text={reminder("otp")} />
           </div>
         )}

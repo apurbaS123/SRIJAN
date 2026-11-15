@@ -60,6 +60,9 @@ export type CodeSlotsProps = {
   autoFocus?: boolean;
   /** id of the hidden input, so a <label htmlFor> can point at it. */
   id?: string;
+  /** id of an element describing the field — a validation message, say. Named alongside the
+   *  component's own digit count rather than replacing it. */
+  describedBy?: string;
   accentColor?: string;
   inkColor?: string;
   slotColor?: string;
@@ -94,6 +97,7 @@ export default function CodeSlots({
   disabled = false,
   autoFocus = false,
   id,
+  describedBy,
   accentColor,
   inkColor,
   slotColor,
@@ -449,7 +453,7 @@ export default function CodeSlots({
           maxLength={length}
           aria-label={ariaLabel}
           aria-invalid={status === "error"}
-          aria-describedby={`${uid}-count`}
+          aria-describedby={describedBy ? `${describedBy} ${uid}-count` : `${uid}-count`}
           disabled={disabled}
           readOnly={status === "success"}
           onKeyDown={onKeyDown}

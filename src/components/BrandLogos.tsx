@@ -1,4 +1,5 @@
 import { BrandRow } from "@/components/BrandRow";
+import Shuffle from "@/components/Shuffle";
 
 /** The logos in public/brands (WebP — 83% lighter than the PNG originals). Remove a line here to take that brand off the home page. */
 const BRANDS: [file: string, name: string][] = [
@@ -36,9 +37,18 @@ export function BrandLogos({ heading = true }: { heading?: boolean }) {
         {heading && (
           <header className="brand-head">
             <p className="brand-eyebrow">FROM LOCAL NAMES TO NATIONAL ONES</p>
-            <h2 id="brands-heading" className="brand-title">
-              WHERE LEADING BRANDS COME
-            </h2>
+            <Shuffle
+              tag="h2"
+              id="brands-heading"
+              className="brand-title"
+              text="WHERE LEADING BRANDS COME"
+              ariaLabel="Where leading brands come"
+              textAlign="left"
+              scrambleCharset="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+              shuffleTimes={2}
+              duration={0.45}
+              stagger={0.025}
+            />
           </header>
         )}
         <div className="brand-rows">

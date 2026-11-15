@@ -902,16 +902,21 @@ a.gh-item, button.gh-item { cursor: pointer; }
   letter-spacing: 0.2em;
   color: rgba(245, 240, 255, 0.4);
 }
+/* Solid rather than the gradient it used to clip to the glyphs: Shuffle splits this heading into
+   one span per letter and transforms each, and a transformed descendant drops out of an
+   ancestor's background-clip, which left the letters unpainted mid-flight. */
 .brand-title {
   margin: 0;
   font: 800 clamp(30px, 4.6vw, 80px) / 1.05 "Syne", system-ui, sans-serif;
   letter-spacing: -0.035em;
-  background: linear-gradient(90deg, #a78bfa, #e879f9, #f5d0fe);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
   width: fit-content;
+
+  /* The site-wide h1-h3 rule clips a gradient to the glyphs and sets the fill transparent.
+     Both have to be undone here, not just the colour: -webkit-text-fill-color beats color,
+     so leaving it would paint nothing at all. */
+  background: none;
+  color: #f5d0fe;
+  -webkit-text-fill-color: #f5d0fe;
 }
 .brand-rows { display: flex; flex-direction: column; gap: 14px; }
 .brand-row {
@@ -1649,9 +1654,11 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
   white-space: nowrap;
 }
 
-/* The code field as it sits in a form: a label above the row. */
+/* The code field as it sits in a form: a label above the row. Zero specificity on the label, so
+   a page that styles its own labels (.field label) keeps them and only /login, whose fields are
+   the floating-label kind, falls back to this. */
 .code-field { display: flex; flex-direction: column; gap: 8px; }
-.code-field > label { font-size: 13px; font-weight: 600; color: var(--muted); }
+:where(.code-field) > label { font-size: 13px; font-weight: 600; color: var(--muted); }
 .code-field .auth-hint { margin-top: 0; }
 
 /* Six 44px slots plus gaps don't fit the narrowest phones; shrink the row there. */
@@ -1706,4 +1713,26 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
 /* The field is decoration; without it the page keeps the background photo. */
 @media (prefers-reduced-motion: reduce) {
   .auth-backdrop { animation: none; opacity: 0.6; }
+}
+
+/* ============================================================
+   Shuffle — per-letter text shuffle. Markup in src/components/Shuffle.tsx.
+   Only the structure lives here: the element keeps whatever type it was given
+   (the upstream component ships a font and size of its own, which would have
+   overridden every heading it touched).
+   ============================================================ */
+.shuffle-parent {
+  display: inline-block;
+  white-space: normal;
+  word-wrap: break-word;
+  /* Hidden until the first run starts, so there's no flash of unsplit text. */
+  visibility: hidden;
+}
+
+.shuffle-parent.is-ready { visibility: visible; }
+
+.shuffle-char {
+  display: inline-block;
+  text-align: center;
+  line-height: inherit;
 }
