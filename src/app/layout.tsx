@@ -46,9 +46,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
-        {/* Background image */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="bg-video" src="/bg3.webp" alt="" aria-hidden="true" />
         <SessionProvider>
           <Header />
           <ThemeToggle floating />
