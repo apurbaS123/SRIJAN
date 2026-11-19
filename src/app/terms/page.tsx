@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import { creatorVerificationMode } from "@/lib/server/digilocker";
 import { Phone } from "@/components/contact";
 import { AUTO_APPROVE_MS, CREATOR_SHARE, HOUR, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS } from "@/lib/domain/config";
 
-export const metadata: Metadata = { title: "Terms & conditions", description: "The terms you agree to when you book a creator or take a job on Srijan." };
+export const metadata: Metadata = pageMeta({
+  title: "Terms & conditions",
+  description: "The terms you agree to when you book a creator or take a job on Srijan.",
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

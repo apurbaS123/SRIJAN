@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "About us", description: "Who Srijan is, why we built a fixed-price marketplace for Indian creators, and how we pay them." };
+export const metadata: Metadata = pageMeta({
+  title: "About us",
+  description: "Who Srijan is, why we built a fixed-price marketplace for Indian creators, and how we pay them.",
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (

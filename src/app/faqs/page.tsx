@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import { Linkify } from "@/components/contact";
 import { creatorVerificationMode } from "@/lib/server/digilocker";
 import { AUTO_APPROVE_MS, CREATOR_SHARE, DISPATCH, HOUR, MAX_SERVICES_PER_ORDER, PAYMENT_WINDOW_MS, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SUPPORT_PHONE } from "@/lib/domain/config";
 
-export const metadata: Metadata = { title: "FAQs", description: "Answers on booking, cancellations, payment, creator payouts and how Srijan works." };
+export const metadata: Metadata = pageMeta({
+  title: "FAQs",
+  description: "Answers on booking, cancellations, payment, creator payouts and how Srijan works.",
+  path: "/faqs",
+});
 
 const AUTO_APPROVE_HOURS = AUTO_APPROVE_MS / HOUR;
 const NOTICE_HOURS = DISPATCH.onSiteNoticeMs / HOUR;
