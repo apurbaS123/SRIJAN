@@ -306,6 +306,47 @@ button, input, select, textarea { font: inherit; color: inherit; }
   -webkit-text-fill-color: #fff;
 }
 .who { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The toggle used to sit flush against the account button; at 44px square, touching, the two were
+   easy to confuse for one another. */
+.who .theme-toggle { margin-right: 8px; }
+
+/* ── Touch targets ──────────────────────────────────────────────────
+   A finger needs about 44px; several controls here are painted smaller than that on purpose and
+   look right that way. So the hit area is grown rather than the box: an absolutely positioned
+   ::after takes no space, moves nothing, and is what a tap actually lands on.
+
+   Links inside a paragraph are deliberately left alone — WCAG exempts them, and padding out a
+   word in the middle of a sentence would make a mess of the line it sits on. */
+.nav a, .brand { min-height: 44px; display: inline-flex; align-items: center; }
+
+.btn-sm { position: relative; }
+.btn-sm::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* The home hero's nav is printed to match the canvas, so its links are exactly as tall as their
+   own text — around 13px. Their boxes cannot move; their hit areas can. */
+a.gh-item::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+}
+/* The square mark is 19px across. It and the wordmark beside it both go to the home page, so
+   letting their hit areas meet costs nothing. */
+a.gh-mark::after {
+  left: -13px;
+  right: -13px;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
 
 /* ── Small screens: the nav folds into a drawer behind a burger ── */
 @media (max-width: 860px) {
@@ -491,7 +532,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
    ============================================================ */
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
@@ -1515,8 +1556,8 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   flex: none;
   padding: 0;
   border: 1.5px solid var(--line);
@@ -1541,14 +1582,17 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
   to   { opacity: 1; transform: none; }
 }
 
-/* On the home page the hero draws its own nav, so the toggle floats in the corner. */
+/* On the home page the hero draws its own nav, so the toggle floats free of it.
+   Bottom left, not top right: at the top it sat on top of the hero's own "Sign in" link on a
+   phone — measured at 390px wide, the two boxes overlapped by 21px — so whichever one you meant,
+   you had an even chance of getting the other. Bottom right is taken by the help button. */
 .theme-toggle-float {
   position: fixed;
-  top: 14px;
-  right: 14px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(16px, env(safe-area-inset-left));
   z-index: 12;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   background: var(--header-bg);
   backdrop-filter: blur(14px) saturate(180%);
   -webkit-backdrop-filter: blur(14px) saturate(180%);
