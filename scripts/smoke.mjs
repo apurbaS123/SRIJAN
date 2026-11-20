@@ -1142,6 +1142,15 @@ async function run() {
     ok(!/Loading…|Loading\.\.\./.test(html.replace(/<script[\s\S]*?<\/script>/gi, "")), `${path} is not a spinner`);
   }
 
+  // A link pasted into WhatsApp, LinkedIn or Slack gets a picture. The card type has claimed one
+  // for a while; until now there was nothing behind it.
+  for (const path of ["/", "/book", "/creators", "/brands"]) {
+    const html = await (await fetch(BASE + path)).text();
+    ok(/<meta property="og:image"/.test(html), `${path} declares an og:image`);
+  }
+  const card = await fetch(`${BASE}/opengraph-image`);
+  ok(card.status === 200 && card.headers.get("content-type") === "image/png", "and the image itself is a real PNG");
+
   // The directory's creators come from the server, not a round trip: Ankita is verified by now.
   const directory = await (await fetch(`${BASE}/creators`)).text();
   ok(directory.includes("Ankita"), "/creators names a real creator in its HTML");
