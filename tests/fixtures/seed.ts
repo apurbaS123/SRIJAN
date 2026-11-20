@@ -1,5 +1,5 @@
 // Test fixture: a small fictional marketplace for the unit tests. Not used by the app.
-import { CREATOR_SHARE, DAY, HOUR, findZone } from "@/lib/domain/config";
+import { CREATOR_SHARE, DAY, HOUR, STATES, findZone } from "@/lib/domain/config";
 import type { Campaign, Creator, CreatorService, DB, User } from "@/lib/domain/types";
 import { rupees } from "@/lib/domain/util";
 
@@ -49,6 +49,21 @@ const CREATORS: CreatorSeed[] = [
   { id: "cr_mridul", name: "Mridul Kalita", bio: "Drone and real-estate videographer. New to Srijan.", cityId: "guwahati", zoneId: "jalukbari", services: [svc.shoot()], gear: ["Mirrorless camera", "Drone"], verification: "pending", available: false, rating: [0, 0], jobsDone: 0, maxTravelKm: 20, phone: "+91 98640 10101" },
 ];
 
+/**
+ * An old city-and-area pair as a place a form would send today: the state, the city, and the
+ * coordinates that pair really has. The distance tests are about distance, so they keep using
+ * known points rather than a name the test would have to look up.
+ */
+export function at(cityId: string, zoneId: string) {
+  const p = findZone(cityId, zoneId)!;
+  return {
+    stateId: STATES.find((x) => x.name === p.city.state)!.id,
+    city: p.city.name,
+    lat: p.zone.lat,
+    lng: p.zone.lng,
+  };
+}
+
 export function seedDb(now: number): DB {
   const db: DB = { version: 1, seq: 2040, users: [], creators: [], bookings: [], offers: [], ledger: [], campaigns: [] };
 
@@ -60,7 +75,11 @@ export function seedDb(now: number): DB {
   db.users.push(...users);
 
   for (const s of CREATORS) {
+    // The seed still names a city and an area because they carry real coordinates, which the
+    // distance tests depend on. What goes on the record is the state and the city, as it would be
+    // for anyone signing up today.
     const place = findZone(s.cityId, s.zoneId)!;
+    const stateId = STATES.find((x) => x.name === place.city.state)!.id;
     const userId = `u_${s.id.slice(3)}`;
     db.users.push({ id: userId, role: "creator", name: s.name, phone: s.phone, creatorId: s.id, createdAt: now });
     db.creators.push({
@@ -68,8 +87,8 @@ export function seedDb(now: number): DB {
       userId,
       name: s.name,
       bio: s.bio,
-      cityId: s.cityId,
-      zoneId: s.zoneId,
+      stateId,
+      city: place.city.name,
       lat: place.zone.lat,
       lng: place.zone.lng,
       languages: s.languages ?? ["Assamese", "Hindi", "English"],
@@ -103,8 +122,8 @@ export function seedDb(now: number): DB {
     price,
     total: price,
     address: "Shop 4, GS Road, Ganeshguri, Guwahati",
-    cityId: "guwahati",
-    zoneId: "ganeshguri",
+    stateId: "assam",
+    city: "Guwahati",
     lat: z.lat,
     lng: z.lng,
     scheduledAt: done - 6 * HOUR,

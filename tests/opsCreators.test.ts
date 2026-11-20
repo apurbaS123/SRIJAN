@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { clearCreatorPhoto, deleteBlocker, deleteCreator, setCreatorPhoto, updateCreatorByOps } from "@/lib/domain/creators";
 import { createBooking } from "@/lib/domain/bookings";
 import { creatorPublic } from "@/lib/domain/views";
-import { findZone } from "@/lib/domain/config";
 import type { DB, UploadRef } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
@@ -27,19 +26,21 @@ describe("the Srijan team editing a creator's profile", () => {
     expect(find(db, "cr_ritika").bio).toBe("");
   });
 
-  it("moves where a creator is matched from, not just the label", () => {
+  it("moves a creator to another city, and stops trusting their old pin", () => {
     const db = seedDb(T0);
-    updateCreatorByOps(db, "cr_ritika", { cityId: "jorhat", zoneId: "garali" });
+    expect(find(db, "cr_ritika").coarse).toBeFalsy();
+    updateCreatorByOps(db, "cr_ritika", { stateId: "assam", city: "Jorhat" });
     const c = find(db, "cr_ritika");
-    const place = findZone("jorhat", "garali")!;
-    expect([c.cityId, c.zoneId]).toEqual(["jorhat", "garali"]);
-    expect([c.lat, c.lng]).toEqual([place.zone.lat, place.zone.lng]);
+    expect([c.stateId, c.city]).toEqual(["assam", "Jorhat"]);
+    // Ops typed a name, not a point on a map. The honest coordinate is the middle of the state,
+    // and `coarse` saying so is what makes dispatch widen instead of measuring from a stale pin.
+    expect(c.coarse).toBe(true);
   });
 
-  it("refuses an area that doesn't exist, and changes nothing", () => {
+  it("refuses a state that doesn't exist, and changes nothing", () => {
     const db = seedDb(T0);
-    expect(() => updateCreatorByOps(db, "cr_ritika", { cityId: "guwahati", zoneId: "atlantis" })).toThrow(/city and area/);
-    expect(find(db, "cr_ritika").zoneId).toBe("ganeshguri");
+    expect(() => updateCreatorByOps(db, "cr_ritika", { stateId: "atlantis", city: "Atlantis" })).toThrow(/state/);
+    expect(find(db, "cr_ritika").city).toBe("Guwahati");
   });
 
   it("can take a creator offline, and cannot put one online", () => {
@@ -122,7 +123,7 @@ describe("the Srijan team deleting a creator", () => {
     createBooking(
       db,
       "u_priya",
-      { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our cafe", requestedCreatorId: "cr_dhruba" },
+      { packageId: "video_milestone", ...at("guwahati", "zoo-road"), address: "Café Brahma", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our cafe", requestedCreatorId: "cr_dhruba" },
       T0,
     );
     expect(deleteBlocker(db, "cr_dhruba")).toMatch(/still going/);

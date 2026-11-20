@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { signUpCreator, updateOwnCreator } from "@/lib/domain/creators";
 import { cancelDigilocker, completeDigilocker, isAadhaarNumber, kycSummary, namesMatch, pendingDigilocker, startDigilocker, submitAadhaar } from "@/lib/domain/kyc";
 import { setVerification } from "@/lib/domain/creators";
@@ -16,7 +16,7 @@ function joined(name = "Mitali Deka") {
   const db = seedDb(T0);
   const { creator } = signUpCreator(
     db,
-    { name, phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] },
+    { name, phone: "9876511111", ...at("guwahati", "zoo-road"), services: [{ key: "videography" }] },
     { email: "mitali@example.com", phone: "9876511111" },
     T0,
   );
@@ -104,7 +104,7 @@ describe("Aadhaar checked by the Srijan team (no DigiLocker keys set)", () => {
 
     const { creator: second } = signUpCreator(
       db,
-      { name: "Mitali Deka", phone: "9876522222", cityId: "guwahati", zoneId: "beltola", services: [{ key: "videography" }] },
+      { name: "Mitali Deka", phone: "9876522222", ...at("guwahati", "beltola"), services: [{ key: "videography" }] },
       { email: "mitali2@example.com", phone: "9876522222" },
       T0,
     );
@@ -224,7 +224,7 @@ describe("DigiLocker verification", () => {
 
     const { creator: second } = signUpCreator(
       db,
-      { name: "Mitali Deka", phone: "9876522222", cityId: "guwahati", zoneId: "beltola", services: [{ key: "videography" }] },
+      { name: "Mitali Deka", phone: "9876522222", ...at("guwahati", "beltola"), services: [{ key: "videography" }] },
       { email: "mitali2@example.com", phone: "9876522222" },
       T0,
     );

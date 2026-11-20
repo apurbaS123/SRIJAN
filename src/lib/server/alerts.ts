@@ -1,11 +1,12 @@
 // Alerts to the Srijan team: what a new booking, a brand campaign request or a job about to start
 // looks like, and getting it to them. Email only — see sendOpsAlertEmail for the channel.
 import { after } from "next/server";
-import { CREATOR_SHARE, findPackage, findZone } from "@/lib/domain/config";
+import { CREATOR_SHARE, findPackage } from "@/lib/domain/config";
 import type { Booking, Campaign, DB } from "@/lib/domain/types";
 import { rupees } from "@/lib/domain/util";
 import { siteUrl } from "./env";
 import { sendClientAlertEmail, sendOpsAlertEmail } from "./email";
+import { placeName } from "@/lib/domain/views";
 
 function istDateTime(ms: number) {
   return new Date(ms).toLocaleString("en-IN", {
@@ -19,14 +20,14 @@ function istDateTime(ms: number) {
 export function bookingAlertLines(db: DB, b: Booking): string[] {
   const client = db.users.find((u) => u.id === b.clientId);
   const pkg = findPackage(b.packageId);
-  const place = findZone(b.cityId, b.zoneId);
+  const place = placeName(b);
   const requested = b.requestedCreatorId ? db.creators.find((c) => c.id === b.requestedCreatorId) : undefined;
   const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
   return [
     `New booking ${b.code}`,
     `Package: ${pkg?.name ?? b.packageId}`,
     `When: ${istDateTime(b.scheduledAt)} IST`,
-    b.online ? "Where: Online job" : `Where: ${b.address}, ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
+    b.online ? "Where: Online job" : `Where: ${b.address}, ${place}`,
     `Client: ${client?.name ?? "Unknown"}${client?.phone ? ` · ${client.phone}` : ""}${client?.email ? ` · ${client.email}` : ""}`,
     `Brief: ${b.brief}`,
     `Format: ${b.aspect}`,
@@ -40,7 +41,7 @@ export function bookingAlertLines(db: DB, b: Booking): string[] {
 export function paymentRequestLines(db: DB, b: Booking): string[] {
   const creator = db.creators.find((c) => c.id === b.creatorId);
   const pkg = findPackage(b.packageId);
-  const place = findZone(b.cityId, b.zoneId);
+  const place = placeName(b);
   const minutes = Math.max(1, Math.round(((b.paymentDueAt ?? 0) - (b.acceptedAt ?? 0)) / 60_000));
   const url = siteUrl();
   return [
@@ -49,7 +50,7 @@ export function paymentRequestLines(db: DB, b: Booking): string[] {
     `Service: ${pkg?.name ?? b.packageId}`,
     `Creator: ${creator?.name ?? "Assigned by the Srijan team"}`,
     `${b.online ? "Finish by" : "When"}: ${istDateTime(b.scheduledAt)} IST`,
-    b.online ? "Where: Online job" : `Where: ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
+    b.online ? "Where: Online job" : `Where: ${place}`,
     `To pay: ₹${b.total.toLocaleString("en-IN")}`,
     `Please pay within ${minutes} minute${minutes === 1 ? "" : "s"}. They are holding this slot for you, and the job is dropped if the payment doesn’t arrive.`,
     url ? `Pay here: ${url}/bookings/${b.id}` : "Open your booking on Srijan to pay.",

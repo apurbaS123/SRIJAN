@@ -10,6 +10,7 @@ import CodeSlots, { isCodeError } from "@/components/CodeSlots";
 import { AadhaarFields, EMPTY_AADHAAR, aadhaarForm, aadhaarReady, type AadhaarDraft } from "@/components/AadhaarFields";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
+import { CityField, EMPTY_PLACE, placeReady, type PlaceValue } from "@/components/CityField";
 
 /** What a creator might work with, by service. Optional: shown on their profile and to the Srijan team. */
 const GEAR: Record<ServiceKey, string[]> = {
@@ -35,8 +36,7 @@ export function JoinForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [cityId, setCityId] = useState("guwahati");
-  const [zoneId, setZoneId] = useState("zoo-road");
+  const [place, setPlace] = useState<PlaceValue>(EMPTY_PLACE);
   const [bio, setBio] = useState("");
   const [services, setServices] = useState<ServiceKey[]>(["videography"]);
   const [gear, setGear] = useState<string[]>([]);
@@ -50,7 +50,6 @@ export function JoinForm() {
   const [aadhaar, setAadhaar] = useState<AadhaarDraft>(EMPTY_AADHAAR);
 
   if (!meta) return <FormSkeleton rows={4} label="Loading the sign-up form" />;
-  const city = meta.cities.find((c) => c.id === cityId)!;
   const toggle = (k: ServiceKey) => setServices((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
   // Follows the menu's order, so groups don't jump around as services are ticked.
   const chosen = meta.services.filter((s) => services.includes(s.key));
@@ -73,8 +72,10 @@ export function JoinForm() {
         phone,
         code,
         password,
-        cityId,
-        zoneId,
+        stateId: place.stateId,
+        city: place.city,
+        lat: place.lat,
+        lng: place.lng,
         bio,
         services: services.map((key) => ({ key })),
         // Gear picked under a service they later unticked doesn't count.
@@ -128,36 +129,7 @@ export function JoinForm() {
           <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
           <span className="small muted">Clients and the Srijan team use it to reach you about jobs.</span>
         </div>
-        <div className="row">
-          <div className="field grow">
-            <label htmlFor="city">City</label>
-            <select
-              id="city"
-              className="select"
-              value={cityId}
-              onChange={(e) => {
-                setCityId(e.target.value);
-                setZoneId(meta.cities.find((c) => c.id === e.target.value)!.zones[0]!.id);
-              }}
-            >
-              {meta.cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field grow">
-            <label htmlFor="zone">Base area</label>
-            <select id="zone" className="select" value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-              {city.zones.map((z) => (
-                <option key={z.id} value={z.id}>
-                  {z.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <CityField value={place} onChange={setPlace} cityLabel="City or town you work in" />
         <div className="field">
           <label htmlFor="bio">Short bio</label>
           <textarea id="bio" className="textarea" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="What you’re great at, in one or two lines" />

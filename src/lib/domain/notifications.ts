@@ -1,9 +1,10 @@
 // DEMO notifications. Messages are stored here and shown by <DemoNotifications /> while the person
 // has the site open. To send real phone notifications, add the push call in `notifyUser`: every
 // message in the app goes through it.
-import { CREATOR_SHARE, DAY, OPS_REMINDER_MS, findPackage, findZone } from "./config";
+import { CREATOR_SHARE, DAY, OPS_REMINDER_MS, findPackage } from "./config";
 import type { Booking, Creator, DB, Notification, Offer } from "./types";
 import { newId, rupees } from "./util";
+import { placeName } from "./views";
 
 const KEEP_MS = 7 * DAY;
 
@@ -35,12 +36,12 @@ export function notifyCreatorVerification(db: DB, creator: Creator, decision: "v
 export function notifyCreatorOfOffer(db: DB, b: Booking, offer: Offer) {
   const creator = db.creators.find((c) => c.id === offer.creatorId);
   if (!creator) return;
-  const place = findZone(b.cityId, b.zoneId);
+  const place = placeName(b);
   notifyUser(db, creator.userId, offer.sentAt, {
     title: offer.kind === "direct" ? "A client sent you a job offer" : b.online ? "New online job" : "New job near you",
     lines: [
       `Job: ${findPackage(b.packageId)?.name ?? b.packageId}`,
-      `Where: ${b.online ? "Online" : place ? `${place.zone.name}, ${place.city.name}` : ""}`,
+      `Where: ${b.online ? "Online" : place}`,
       `${b.online ? "Finish by" : "When"}: ${istDateTime(b.scheduledAt)} IST`,
       `Brief: ${b.brief}`,
       `You earn: ₹${rupees(b.price * CREATOR_SHARE).toLocaleString("en-IN")}. ${offer.kind === "direct" ? `Only you have this job for ${Math.round((offer.expiresAt - offer.sentAt) / 60_000)} minutes.` : "First to accept gets it."}`,
@@ -72,7 +73,7 @@ export function notifyJobConfirmed(db: DB, b: Booking, at: number) {
   const creator = db.creators.find((c) => c.id === b.creatorId);
   const creatorPhone = creator ? db.users.find((u) => u.id === creator.userId)?.phone : undefined;
   const client = db.users.find((u) => u.id === b.clientId);
-  const place = findZone(b.cityId, b.zoneId);
+  const place = placeName(b);
   const when = `${b.online ? "Finish by" : "When"}: ${istDateTime(b.scheduledAt)} IST`;
   notifyUser(db, b.clientId, at, {
     title: `Payment received — ${creator?.name ?? "your creator"} is confirmed`,
@@ -91,7 +92,7 @@ export function notifyJobConfirmed(db: DB, b: Booking, at: number) {
       `Job: ${findPackage(b.packageId)?.name ?? b.packageId} · ${b.code}`,
       `Client: ${client?.name ?? "Client"}${client?.phone ? ` · ${client.phone}` : ""}`,
       when,
-      b.online ? "Where: Online · no visit needed" : `Where: ${b.address}${place ? `, ${place.zone.name}, ${place.city.name}` : ""}`,
+      b.online ? "Where: Online · no visit needed" : `Where: ${b.address}${place ? `, ${place}` : ""}`,
       `You earn: ₹${rupees(b.price * CREATOR_SHARE).toLocaleString("en-IN")}`,
     ],
     href: `/creator/jobs/${b.id}`,
@@ -114,7 +115,7 @@ export function notifyCreatorJobLost(db: DB, b: Booking, reason: string, at: num
  * lines so the server layer can also email them to the ops inbox.
  */
 export function opsStartingSoonLines(db: DB, b: Booking, now: number): string[] {
-  const place = findZone(b.cityId, b.zoneId);
+  const place = placeName(b);
   const creator = b.creatorId ? db.creators.find((c) => c.id === b.creatorId) : undefined;
   const creatorPhone = creator ? db.users.find((u) => u.id === creator.userId)?.phone : undefined;
   const client = db.users.find((u) => u.id === b.clientId);
@@ -128,7 +129,7 @@ export function opsStartingSoonLines(db: DB, b: Booking, now: number): string[] 
     headline,
     `Service: ${findPackage(b.packageId)?.name ?? b.packageId}`,
     `Starts: ${istDateTime(b.scheduledAt)} IST`,
-    b.online ? "Where: Online job" : `Where: ${b.address}, ${place ? `${place.zone.name}, ${place.city.name}` : `${b.zoneId}, ${b.cityId}`}`,
+    b.online ? "Where: Online job" : `Where: ${b.address}, ${place}`,
     creator ? `Creator: ${creator.name}${creatorPhone ? ` · ${creatorPhone}` : ""}` : `Status: ${b.status === "needs_ops" ? "waiting for the Srijan team to assign someone" : "still searching"}`,
     b.paidAt ? `Paid: ₹${b.total.toLocaleString("en-IN")}` : `Payment: ₹${b.total.toLocaleString("en-IN")} still to be paid by the client`,
     `Client: ${client?.name ?? "Unknown"}${client?.phone ? ` · ${client.phone}` : ""}`,

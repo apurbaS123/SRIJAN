@@ -170,6 +170,71 @@ export const SERVICES: { key: ServiceKey; label: string; one: string }[] = [
   { key: "social_media", label: "Social media managers", one: "social media manager" },
 ];
 
+/**
+ * A state or union territory of India, and roughly where its middle is.
+ *
+ * The coordinates are a **coarse fallback only**, good to tens of kilometres — a state is not a
+ * point, and Assam alone is some 350 km across. They are used when a typed city cannot be placed
+ * on the map, and in that case matching falls back to "somewhere in this state" rather than
+ * pretending to a distance it does not know. Never use them as if they were a real location.
+ */
+export interface IndianState {
+  id: string;
+  name: string;
+  /** Approximate centre. Coarse fallback only — see above. */
+  lat: number;
+  lng: number;
+}
+
+/** All 28 states and 8 union territories, alphabetically, states first. */
+export const STATES: IndianState[] = [
+  { id: "andhra-pradesh", name: "Andhra Pradesh", lat: 15.91, lng: 79.74 },
+  { id: "arunachal-pradesh", name: "Arunachal Pradesh", lat: 28.22, lng: 94.73 },
+  { id: "assam", name: "Assam", lat: 26.2, lng: 92.94 },
+  { id: "bihar", name: "Bihar", lat: 25.1, lng: 85.31 },
+  { id: "chhattisgarh", name: "Chhattisgarh", lat: 21.28, lng: 81.87 },
+  { id: "goa", name: "Goa", lat: 15.3, lng: 74.12 },
+  { id: "gujarat", name: "Gujarat", lat: 22.26, lng: 71.19 },
+  { id: "haryana", name: "Haryana", lat: 29.06, lng: 76.09 },
+  { id: "himachal-pradesh", name: "Himachal Pradesh", lat: 31.1, lng: 77.17 },
+  { id: "jharkhand", name: "Jharkhand", lat: 23.61, lng: 85.28 },
+  { id: "karnataka", name: "Karnataka", lat: 15.32, lng: 75.71 },
+  { id: "kerala", name: "Kerala", lat: 10.85, lng: 76.27 },
+  { id: "madhya-pradesh", name: "Madhya Pradesh", lat: 22.97, lng: 78.66 },
+  { id: "maharashtra", name: "Maharashtra", lat: 19.75, lng: 75.71 },
+  { id: "manipur", name: "Manipur", lat: 24.66, lng: 93.91 },
+  { id: "meghalaya", name: "Meghalaya", lat: 25.47, lng: 91.37 },
+  { id: "mizoram", name: "Mizoram", lat: 23.16, lng: 92.94 },
+  { id: "nagaland", name: "Nagaland", lat: 26.16, lng: 94.56 },
+  { id: "odisha", name: "Odisha", lat: 20.95, lng: 85.1 },
+  { id: "punjab", name: "Punjab", lat: 31.15, lng: 75.34 },
+  { id: "rajasthan", name: "Rajasthan", lat: 27.02, lng: 74.22 },
+  { id: "sikkim", name: "Sikkim", lat: 27.53, lng: 88.51 },
+  { id: "tamil-nadu", name: "Tamil Nadu", lat: 11.13, lng: 78.66 },
+  { id: "telangana", name: "Telangana", lat: 18.11, lng: 79.02 },
+  { id: "tripura", name: "Tripura", lat: 23.94, lng: 91.99 },
+  { id: "uttar-pradesh", name: "Uttar Pradesh", lat: 26.85, lng: 80.95 },
+  { id: "uttarakhand", name: "Uttarakhand", lat: 30.07, lng: 79.02 },
+  { id: "west-bengal", name: "West Bengal", lat: 22.99, lng: 87.85 },
+  { id: "andaman-and-nicobar-islands", name: "Andaman and Nicobar Islands", lat: 11.74, lng: 92.66 },
+  { id: "chandigarh", name: "Chandigarh", lat: 30.73, lng: 76.78 },
+  { id: "dadra-and-nagar-haveli-and-daman-and-diu", name: "Dadra and Nagar Haveli and Daman and Diu", lat: 20.4, lng: 72.83 },
+  { id: "delhi", name: "Delhi", lat: 28.7, lng: 77.1 },
+  { id: "jammu-and-kashmir", name: "Jammu and Kashmir", lat: 33.78, lng: 76.58 },
+  { id: "ladakh", name: "Ladakh", lat: 34.22, lng: 77.58 },
+  { id: "lakshadweep", name: "Lakshadweep", lat: 10.57, lng: 72.64 },
+  { id: "puducherry", name: "Puducherry", lat: 11.94, lng: 79.81 },
+];
+
+export function findState(id: unknown) {
+  return STATES.find((s) => s.id === String(id ?? ""));
+}
+
+/** A typed city name, tidied: "  new   DELHI " becomes "New DELHI" (the case the person chose). */
+export function cleanCityName(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
 export interface Zone {
   id: string;
   name: string;

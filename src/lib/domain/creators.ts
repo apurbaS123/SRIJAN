@@ -1,4 +1,5 @@
-import { DISPATCH, SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
+import { DISPATCH, SERVICES, SOCIAL_PLATFORMS } from "./config";
+import { resolvePlace } from "./place";
 import type { VerificationMode } from "./kyc";
 import { aadhaarUploadIds } from "./kyc";
 import type { BankDetails, Creator, CreatorService, DB, ServiceKey, UploadRef, User } from "./types";
@@ -20,8 +21,11 @@ export interface SignupInput {
   name: string;
   email?: string;
   phone: string;
-  cityId: string;
-  zoneId: string;
+  stateId: string;
+  city: string;
+  /** From the browser's lookup of the typed city, when it managed one. */
+  lat?: number;
+  lng?: number;
   bio?: string;
   services: { key: ServiceKey }[];
   gear?: string[];
@@ -128,8 +132,7 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
   const name = cleanText(input.name, 80, "your name");
   assert(name.length >= 2, "Enter your name");
   assert(!db.users.some((u) => u.email?.toLowerCase() === email), "This email is already registered — sign in instead");
-  const place = findZone(input.cityId, input.zoneId);
-  assert(place, "Pick your city and area");
+  const place = resolvePlace(input);
   const given = Array.isArray(input.services) ? input.services : [];
   const keys = Array.from(new Set(given.map((s) => s?.key))).filter((k): k is ServiceKey => SERVICES.some((s) => s.key === k));
   assert(keys.length > 0, "Pick at least one service you offer");
@@ -155,10 +158,11 @@ export function signUpCreator(db: DB, input: SignupInput, contact: { email: stri
     userId: user.id,
     name: user.name,
     bio,
-    cityId: place.city.id,
-    zoneId: place.zone.id,
-    lat: place.zone.lat,
-    lng: place.zone.lng,
+    stateId: place.stateId,
+    city: place.city,
+    lat: place.lat,
+    lng: place.lng,
+    coarse: place.coarse,
     languages: languages.length ? languages : ["Assamese", "Hindi", "English"],
     services,
     gear,
@@ -283,8 +287,8 @@ export function setVerification(db: DB, creatorId: string, decision: "verified" 
 export interface OpsCreatorPatch {
   name?: string;
   bio?: string;
-  cityId?: string;
-  zoneId?: string;
+  stateId?: string;
+  city?: string;
   languages?: string[];
   gear?: string[];
   maxTravelKm?: number;
@@ -320,14 +324,16 @@ export function updateCreatorByOps(db: DB, creatorId: string, patch: OpsCreatorP
     if (u) u.name = name;
   }
   if (patch.bio !== undefined) c.bio = cleanText(patch.bio, 1000, "their bio", true);
-  if (patch.cityId !== undefined || patch.zoneId !== undefined) {
-    const place = findZone(patch.cityId ?? c.cityId, patch.zoneId ?? c.zoneId);
-    assert(place, "Pick a city and area");
+  if (patch.stateId !== undefined || patch.city !== undefined) {
+    const place = resolvePlace({ stateId: patch.stateId ?? c.stateId, city: patch.city ?? c.city });
     // Moving someone moves where jobs are matched from, so the live position follows the new zone.
-    c.cityId = place.city.id;
-    c.zoneId = place.zone.id;
-    c.lat = place.zone.lat;
-    c.lng = place.zone.lng;
+    c.stateId = place.stateId;
+    c.city = place.city;
+    // Moving someone by hand loses whatever precise point they had: the middle of the state is
+    // all that is known now, and `coarse` says so rather than leaving a stale pin behind.
+    c.lat = place.lat;
+    c.lng = place.lng;
+    c.coarse = place.coarse;
   }
   if (patch.languages !== undefined) {
     const list = cleanList(patch.languages, 10, 30, "languages");

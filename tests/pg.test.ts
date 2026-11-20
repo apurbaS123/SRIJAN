@@ -3,7 +3,7 @@
 // It wipes the `srijan` schema there, so it only accepts localhost / 127.0.0.1.
 import postgres from "postgres";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { ensureSchema, load, save } from "@/lib/server/pg";
 import type { DB } from "@/lib/domain/types";
 

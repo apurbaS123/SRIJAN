@@ -10,12 +10,12 @@ import {
   PAYOUT_WINDOW_TEXT,
   PLATFORM_SHARE,
   findPackage,
-  findZone,
 } from "./config";
 import { cancelSearch, startDispatch, tickDispatch } from "./dispatch";
 import { notifyCreatorJobLost, notifyJobConfirmed, notifyUser, remindOpsIfStartingSoon } from "./notifications";
 import type { Booking, BookingStatus, DB } from "./types";
 import { assert, cleanText, cleanUrl, istHour, newId, nextCode, parseIstLocal, rupees } from "./util";
+import { resolvePlace } from "./place";
 
 const ASPECTS: Booking["aspect"][] = ["9:16", "16:9", "1:1"];
 
@@ -31,9 +31,12 @@ export function quote(packageId: string) {
 
 export interface NewBookingInput {
   packageId: string;
-  /** Not needed for online jobs, like zoneId and address. */
-  cityId?: string;
-  zoneId?: string;
+  /** Not needed for online jobs, like the city and address. */
+  stateId?: string;
+  city?: string;
+  /** From the browser's lookup of the typed city, when it managed one. */
+  lat?: number;
+  lng?: number;
   address?: string;
   /** "YYYY-MM-DDTHH:mm" in IST */
   scheduledAt: string;
@@ -51,8 +54,7 @@ export interface NewBookingInput {
 export function createBooking(db: DB, clientId: string, input: NewBookingInput, now: number) {
   const q = quote(input.packageId);
   const online = !!q.pkg.online;
-  const place = online ? undefined : findZone(String(input.cityId), String(input.zoneId));
-  assert(online || place, "Pick a city and area");
+  const place = online ? undefined : resolvePlace(input);
   const address = online ? "" : cleanText(input.address, 300, "the shoot address");
   assert(online || address.length >= 5, "Enter the full shoot address");
   const brief = cleanText(input.brief, 2000, "the brief");
@@ -83,10 +85,11 @@ export function createBooking(db: DB, clientId: string, input: NewBookingInput, 
     total: q.total,
     online: online || undefined,
     address,
-    cityId: place?.city.id ?? "",
-    zoneId: place?.zone.id ?? "",
-    lat: place?.zone.lat ?? 0,
-    lng: place?.zone.lng ?? 0,
+    stateId: place?.stateId ?? "",
+    city: place?.city ?? "",
+    lat: place?.lat ?? 0,
+    lng: place?.lng ?? 0,
+    coarse: place?.coarse,
     scheduledAt,
     brief,
     aspect,

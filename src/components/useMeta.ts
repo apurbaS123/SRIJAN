@@ -1,11 +1,12 @@
 "use client";
 import { useData } from "@/lib/client/api";
-import type { City, ShootPackage } from "@/lib/domain/config";
+import type { City, IndianState, ShootPackage } from "@/lib/domain/config";
 import type { CampaignStage, ServiceKey } from "@/lib/domain/types";
 
 export interface Meta {
   packages: ShootPackage[];
   cities: City[];
+  states: IndianState[];
   services: { key: ServiceKey; label: string }[];
   creatorShare: number;
   /** How long a client has to pay once a creator has accepted their job. */

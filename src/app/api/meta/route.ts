@@ -8,6 +8,7 @@ import {
   PACKAGES,
   PAYMENT_WINDOW_MS,
   SERVICES,
+  STATES,
 } from "@/lib/domain/config";
 
 /** Static settings the screens need (packages, cities, rules). */
@@ -17,6 +18,7 @@ export async function GET() {
     data: {
       packages: PACKAGES.filter((p) => !p.retired),
       cities: CITIES,
+      states: STATES,
       services: SERVICES,
       creatorShare: CREATOR_SHARE,
       paymentWindowMs: PAYMENT_WINDOW_MS,

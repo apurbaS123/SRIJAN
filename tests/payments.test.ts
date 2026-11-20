@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { updateOwnCreator, hasPayoutDetails, payoutSummary, signUpCreator } from "@/lib/domain/creators";
 import { checkoutSignatureValid, createOrder, webhookSignatureValid } from "@/lib/server/razorpay";
 import { bookingView, creatorPublic, tickAll } from "@/lib/domain/views";
@@ -47,7 +47,7 @@ describe("Razorpay signatures", () => {
 describe("creator bank and UPI details", () => {
   const fresh = () => {
     const db = seedDb(T0);
-    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] }, { email: "new@example.com", phone: "9876511111" }, T0);
+    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", ...at("guwahati", "zoo-road"), services: [{ key: "videography" }] }, { email: "new@example.com", phone: "9876511111" }, T0);
     return { db, creator };
   };
   const bank = { method: "bank" as const, accountName: "New Creator", accountNumber: "123456789012", ifsc: "sbin0001234" };
@@ -93,7 +93,7 @@ describe("creator bank and UPI details", () => {
     updateOwnCreator(db, creator.id, { payout: bank });
     expect(JSON.stringify(creatorPublic(creator))).not.toContain("123456789012");
 
-    const b = createBooking(db, "u_priya", { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" }, T0);
+    const b = createBooking(db, "u_priya", { packageId: "video_milestone", ...at("guwahati", "zoo-road"), address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" }, T0);
     recordPayment(db, b, "pay_1", T0);
     b.creatorId = creator.id;
     const seen = JSON.stringify(bookingView(db, b, { userId: "u_priya", role: "client" }));
@@ -135,7 +135,7 @@ describe("the videography service title", () => {
     db.creators[0]!.services = [{ key: "videography", title: "1-day shoot", description: "x", price: 2500 }];
     tickAll(db, T0);
     expect(db.creators[0]!.services[0]!.title).toBe("1-day service");
-    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }] }, { email: "title@example.com", phone: "9876511111" }, T0);
+    const { creator } = signUpCreator(db, { name: "New Creator", phone: "9876511111", ...at("guwahati", "zoo-road"), services: [{ key: "videography" }] }, { email: "title@example.com", phone: "9876511111" }, T0);
     expect(creator.services[0]!.title).toBe("1-day service");
   });
 
@@ -152,7 +152,7 @@ describe("fixed prices", () => {
     const db = seedDb(T0);
     const { creator } = signUpCreator(
       db,
-      { name: "New Creator", phone: "9876511112", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "video_editing", price: 50 }, { key: "videography" }] as never },
+      { name: "New Creator", phone: "9876511112", ...at("guwahati", "zoo-road"), services: [{ key: "video_editing", price: 50 }, { key: "videography" }] as never },
       { email: "fixed@example.com", phone: "9876511112" },
       T0,
     );
@@ -170,7 +170,7 @@ describe("fixed prices", () => {
 });
 
 describe("several services in one order", () => {
-  const ORDER = { cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Shoot our café and edit a separate reel" };
+  const ORDER = { ...at("guwahati", "zoo-road"), address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Shoot our café and edit a separate reel" };
 
   it("makes one job per service, each with its own price", () => {
     const db = seedDb(T0);

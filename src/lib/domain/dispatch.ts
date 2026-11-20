@@ -53,6 +53,23 @@ export function canTakeJob(c: Creator, service: ServiceKey) {
   return c.verification === "verified" && c.services.some((s) => s.key === service);
 }
 
+/**
+ * Is this creator close enough to be alerted about this job?
+ *
+ * Normally: inside the search radius, and inside the distance they said they would travel.
+ *
+ * But one of the two may only be placed to the middle of their state — a city the browser could
+ * not look up (see `place.ts`). A distance measured from a state centroid is not a distance; in
+ * Assam it can be 200 km out either way. So when either side is coarse the question becomes "are
+ * they in the same state", which is the most that is actually known. It alerts some people who
+ * are too far away, and that is the right failure: they can decline, whereas a client with nobody
+ * alerted at all simply gets no creator.
+ */
+function withinReach(creator: Creator, booking: Booking, distanceKm: number, radiusKm: number) {
+  if (creator.coarse || booking.coarse) return !!booking.stateId && creator.stateId === booking.stateId;
+  return distanceKm <= radiusKm && distanceKm <= creator.maxTravelKm;
+}
+
 /** Creators who should be alerted now, nearest first. Skips anyone already alerted or who declined. */
 export function eligibleCreators(db: DB, booking: Booking, radiusKm: number) {
   const skip = new Set(
@@ -64,7 +81,7 @@ export function eligibleCreators(db: DB, booking: Booking, radiusKm: number) {
   return db.creators
     .filter((c) => canTakeJob(c, service) && c.available && !skip.has(c.id))
     .map((creator) => ({ creator, distanceKm: booking.online ? 0 : haversineKm(creator, booking) }))
-    .filter((x) => booking.online || (x.distanceKm <= radiusKm && x.distanceKm <= x.creator.maxTravelKm))
+    .filter((x) => booking.online || withinReach(x.creator, booking, x.distanceKm, radiusKm))
     .filter((x) => !isCreatorBusy(db, x.creator.id, booking))
     .sort((a, b) => a.distanceKm - b.distanceKm);
 }

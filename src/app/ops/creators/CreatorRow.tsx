@@ -8,7 +8,7 @@ import { useState } from "react";
 import { call, useAction } from "@/lib/client/api";
 import type { CreatorPublic } from "@/lib/domain/views";
 import { Avatar, ErrorNote, Stars } from "@/components/ui";
-import { CITIES, SOCIAL_PLATFORMS } from "@/lib/domain/config";
+import { SOCIAL_PLATFORMS, STATES } from "@/lib/domain/config";
 import type { SocialPlatform } from "@/lib/domain/types";
 
 /**
@@ -109,8 +109,8 @@ export function CreatorRow({ c, onChanged }: { c: OpsCreatorRow; onChanged: () =
 function EditCreator({ c, onDone }: { c: OpsCreatorRow; onDone: (changed: boolean) => void }) {
   const [name, setName] = useState(c.name);
   const [bio, setBio] = useState(c.bio);
-  const [cityId, setCityId] = useState(c.cityId);
-  const [zoneId, setZoneId] = useState(c.zoneId);
+  const [stateId, setStateId] = useState(c.stateId ?? "");
+  const [city, setCity] = useState(c.city ?? "");
   const [travel, setTravel] = useState(String(c.maxTravelKm));
   const [followers, setFollowers] = useState(c.followers ? String(c.followers) : "");
   const [portfolio, setPortfolio] = useState(c.portfolio ?? "");
@@ -120,15 +120,14 @@ function EditCreator({ c, onDone }: { c: OpsCreatorRow; onDone: (changed: boolea
   const [takeOffline, setTakeOffline] = useState(false);
   const act = useAction();
 
-  const city = CITIES.find((x) => x.id === cityId) ?? CITIES[0]!;
 
   async function save() {
     const patch: Record<string, unknown> = {};
     if (name !== c.name) patch.name = name;
     if (bio !== c.bio) patch.bio = bio;
-    if (cityId !== c.cityId || zoneId !== c.zoneId) {
-      patch.cityId = cityId;
-      patch.zoneId = zoneId;
+    if (stateId !== (c.stateId ?? "") || city !== (c.city ?? "")) {
+      patch.stateId = stateId;
+      patch.city = city;
     }
     if (Number(travel) !== c.maxTravelKm) patch.maxTravelKm = Number(travel);
     if (followers.trim() !== (c.followers ? String(c.followers) : "")) patch.followers = followers.trim() ? Number(followers) : null;
@@ -154,18 +153,10 @@ function EditCreator({ c, onDone }: { c: OpsCreatorRow; onDone: (changed: boolea
       </div>
       <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
         <div className="field grow" style={{ minWidth: 160 }}>
-          <label htmlFor={`city-${c.id}`}>City</label>
-          <select
-            id={`city-${c.id}`}
-            className="input"
-            value={cityId}
-            onChange={(e) => {
-              setCityId(e.target.value);
-              const next = CITIES.find((x) => x.id === e.target.value);
-              if (next) setZoneId(next.zones[0]!.id);
-            }}
-          >
-            {CITIES.map((x) => (
+          <label htmlFor={`state-${c.id}`}>State</label>
+          <select id={`state-${c.id}`} className="input" value={stateId} onChange={(e) => setStateId(e.target.value)}>
+            <option value="">Select a state</option>
+            {STATES.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
               </option>
@@ -173,15 +164,11 @@ function EditCreator({ c, onDone }: { c: OpsCreatorRow; onDone: (changed: boolea
           </select>
         </div>
         <div className="field grow" style={{ minWidth: 160 }}>
-          <label htmlFor={`zone-${c.id}`}>Area</label>
-          <select id={`zone-${c.id}`} className="input" value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-            {city.zones.map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.name}
-              </option>
-            ))}
-          </select>
-          <span className="tiny muted">Moving them moves where jobs are matched from.</span>
+          <label htmlFor={`city-${c.id}`}>City or town</label>
+          <input id={`city-${c.id}`} className="input" value={city} onChange={(e) => setCity(e.target.value)} />
+          <span className="tiny muted">
+            Moving them loses their exact point: jobs are then matched across the state until they update their own location.
+          </span>
         </div>
         <div className="field" style={{ minWidth: 120 }}>
           <label htmlFor={`travel-${c.id}`}>Travel</label>

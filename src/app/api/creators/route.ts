@@ -10,18 +10,18 @@ import { limitByIp } from "@/lib/server/rateLimit";
 import { creatorVerificationMode } from "@/lib/server/digilocker";
 import type { ServiceKey } from "@/lib/domain/types";
 
-/** Public directory: ?service=videography&city=guwahati&available=1 */
+/** Public directory: ?service=videography&state=assam&available=1 */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const service = q.get("service") as ServiceKey | null;
-  const city = q.get("city");
+  const state = q.get("state");
   const availableOnly = q.get("available") === "1";
   const text = (q.get("q") ?? "").trim().toLowerCase().slice(0, 100);
   return api(({ db }) =>
     db.creators
       .filter((c) => c.verification === "verified")
       .filter((c) => !service || c.services.some((s) => s.key === service))
-      .filter((c) => !city || c.cityId === city)
+      .filter((c) => !state || c.stateId === state)
       .filter((c) => !availableOnly || c.available)
       .filter((c) => !text || `${c.name} ${c.bio} ${c.services.map((s) => s.title).join(" ")}`.toLowerCase().includes(text))
       .map(creatorPublic)

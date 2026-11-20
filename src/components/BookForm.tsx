@@ -11,6 +11,7 @@ import { TimeWheel } from "@/components/TimeWheel";
 import type { Meta } from "@/components/useMeta";
 import { inr } from "@/lib/client/format";
 import dynamic from "next/dynamic";
+import { CityField, EMPTY_PLACE, placeReady, type PlaceValue } from "@/components/CityField";
 
 const LocationPickerModal = dynamic(
   () => import("@/components/LocationPickerModal"),
@@ -56,8 +57,7 @@ const RESUME_BOOKING_MS = 30 * 60_000;
 interface Draft {
   /** The creator the job offer goes to first, if it was sent from their profile. */
   creatorId?: string;
-  cityId: string;
-  zoneId: string;
+  place: PlaceValue;
   address: string;
   packageIds: string[];
   date: string;
@@ -73,8 +73,9 @@ function readDraft(meta: Meta, creatorId: string | undefined): Draft | null {
   try {
     const draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as Draft | null;
     if (!draft || (draft.creatorId ?? "") !== (creatorId ?? "")) return null;
-    const city = meta.cities.find((c) => c.id === draft.cityId);
-    if (!city?.zones.some((z) => z.id === draft.zoneId)) return null;
+    // A draft from before states has no place on it, and there is nothing sensible to turn its
+    // old city and area ids into here: let it go rather than guess.
+    if (!draft.place?.stateId || !draft.place?.city) return null;
     return draft;
   } catch {
     return null;
@@ -142,9 +143,11 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
     if (draft) sessionStorage.removeItem(DRAFT_KEY);
   }, [draft]);
   const chosenServices = chosen?.services.map((s) => s.key);
-  const [cityId, setCityId] = useState(draft?.cityId ?? (chosen && meta.cities.some((c) => c.id === chosen.cityId) ? chosen.cityId : "guwahati"));
-  const city = meta.cities.find((c) => c.id === cityId)!;
-  const [zoneId, setZoneId] = useState(draft?.zoneId ?? (chosen && city.zones.some((z) => z.id === chosen.zoneId) ? chosen.zoneId : city.zones[0]!.id));
+  // Starts where the chosen creator is, when the job came from their profile — most people
+  // booking someone are booking them locally.
+  const [place, setPlace] = useState<PlaceValue>(
+    draft?.place ?? (chosen?.stateId ? { stateId: chosen.stateId, city: chosen.city ?? "" } : EMPTY_PLACE),
+  );
   const [address, setAddress] = useState(draft?.address ?? "");
   const [showMapPicker, setShowMapPicker] = useState(false);
   // Only the chosen creator's services can be sent to them.
@@ -176,7 +179,7 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   async function book() {
     // Not signed in with an account that can book: sign in first. The order is placed on the way back (see below).
     if (user?.role !== "client") {
-      const saved: Draft = { creatorId: chosen?.id, cityId, zoneId, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
+      const saved: Draft = { creatorId: chosen?.id, place, address, packageIds, date, slot, brief, referenceUrl, aspect, savedAt: Date.now() };
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(saved));
       // Back to the same form afterwards: the profile opens its offer form again.
       router.push(`/login?next=${encodeURIComponent(chosen ? `/creators/${chosen.id}?offer=1` : "/book")}`);
@@ -186,8 +189,10 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
     const next = await run(async () => {
       const { bookings } = await call<{ bookings: BookingView[] }>("/api/bookings", {
         packageIds,
-        cityId,
-        zoneId,
+        stateId: place.stateId,
+        city: place.city,
+        lat: place.lat,
+        lng: place.lng,
         address,
         scheduledAt: `${date}T${slot}`,
         brief,
@@ -240,36 +245,7 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
       {!online && (
       <section className="stack">
         <h2>2. Where</h2>
-        <div className="row">
-          <div className="field grow">
-            <label htmlFor="city">City</label>
-            <select
-              id="city"
-              className="select"
-              value={cityId}
-              onChange={(e) => {
-                setCityId(e.target.value);
-                setZoneId(meta.cities.find((c) => c.id === e.target.value)!.zones[0]!.id);
-              }}
-            >
-              {meta.cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}, {c.state}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field grow">
-            <label htmlFor="zone">Area</label>
-            <select id="zone" className="select" value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-              {city.zones.map((z) => (
-                <option key={z.id} value={z.id}>
-                  {z.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <CityField value={place} onChange={setPlace} cityLabel="City or town" />
         {/* Address field ------------------------------------------------ */}
         <div className="field">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>

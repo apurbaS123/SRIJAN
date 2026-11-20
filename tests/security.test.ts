@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { createBooking } from "@/lib/domain/bookings";
 import { setVerification, signUpCreator, updateOwnCreator } from "@/lib/domain/creators";
 import { createCampaign } from "@/lib/domain/campaigns";
@@ -9,7 +9,7 @@ import { isOpsEmail, normalizeEmail, normalizePhone } from "@/lib/server/env";
 import { MIN } from "@/lib/domain/config";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
-const base = { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
+const base = { packageId: "video_milestone", ...at("guwahati", "zoo-road"), address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
 describe("sign-in codes", () => {
   it("accepts the right code once and counts wrong guesses", () => {
@@ -78,7 +78,7 @@ describe("input hardening", () => {
 describe("creator KYC", () => {
   it("ignores self-declared KYC and needs ops to confirm documents", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
+    const input = { name: "New Creator", phone: "9876511111", ...at("guwahati", "zoo-road"), services: [{ key: "videography" as const }], aadhaarDone: true, panDone: true };
     const { creator } = signUpCreator(db, input, { email: "new.creator@example.com", phone: "9876511111" }, T0);
     expect(creator.kyc).toEqual({ aadhaar: false, pan: false });
     expect(() => setVerification(db, creator.id, "verified")).toThrow(/read their Aadhaar/);
@@ -92,7 +92,7 @@ describe("creator KYC", () => {
     const db = seedDb(T0);
     const { creator } = signUpCreator(
       db,
-      { name: "New Creator", phone: "9876511111", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] },
+      { name: "New Creator", phone: "9876511111", ...at("guwahati", "zoo-road"), services: [{ key: "videography" as const }] },
       { email: "new.creator@example.com", phone: "9876511111" },
       T0,
     );
@@ -106,7 +106,7 @@ describe("creator KYC", () => {
 
 describe("creator social media link", () => {
   const join = (social: { platform?: string; url?: string } | undefined, phone = "9876522222") =>
-    signUpCreator(seedDb(T0), { name: "New Creator", portfolio: "behance.net/newcreator", phone, cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], social }, { email: "creator@example.com", phone }, T0).creator;
+    signUpCreator(seedDb(T0), { name: "New Creator", portfolio: "behance.net/newcreator", phone, ...at("guwahati", "zoo-road"), services: [{ key: "videography" }], social }, { email: "creator@example.com", phone }, T0).creator;
 
   it("keeps a profile link on the chosen site, as https", () => {
     const c = join({ platform: "instagram", url: "www.instagram.com/new.creator" });
@@ -158,7 +158,7 @@ describe("creator social media link", () => {
 
 describe("creator portfolio link", () => {
   const join = (portfolio: string | undefined) =>
-    signUpCreator(seedDb(T0), { name: "New Creator", phone: "9876522223", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" }], portfolio }, { email: "folio@example.com", phone: "9876522223" }, T0).creator;
+    signUpCreator(seedDb(T0), { name: "New Creator", phone: "9876522223", ...at("guwahati", "zoo-road"), services: [{ key: "videography" }], portfolio }, { email: "folio@example.com", phone: "9876522223" }, T0).creator;
 
   it("keeps a link on any site, as https", () => {
     expect(join("newcreator.in").portfolio).toBe("https://newcreator.in/");
@@ -210,7 +210,7 @@ describe("email sign-in", () => {
 
   it("refuses a second creator account for the same email", () => {
     const db = seedDb(T0);
-    const input = { name: "New Creator", phone: "9876533333", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "videography" as const }] };
+    const input = { name: "New Creator", phone: "9876533333", ...at("guwahati", "zoo-road"), services: [{ key: "videography" as const }] };
     signUpCreator(db, input, { email: "same@example.com", phone: "9876533333" }, T0);
     expect(() => signUpCreator(db, input, { email: "same@example.com", phone: "9876544444" }, T0)).toThrow(/already registered/);
   });

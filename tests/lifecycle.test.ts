@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { approve, cancelByClient, clientRating, createBooking, markFinished, recordPayment, refund, releaseDisputed, reportProblem, reviewClient, reviewCreator } from "@/lib/domain/bookings";
 import { acceptOffer, isCreatorBusy } from "@/lib/domain/dispatch";
 import { bookingView, tickAll } from "@/lib/domain/views";
@@ -11,7 +11,7 @@ import type { DB } from "@/lib/domain/types";
 
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
-const JOB = { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
+const JOB = { packageId: "video_milestone", ...at("guwahati", "zoo-road"), address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
 /** Placed, with the alerts already out to creators. Nothing has been paid. */
 function placed(db: DB) {

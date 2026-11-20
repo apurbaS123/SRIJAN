@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { approve, createBooking, markFinished, recordPayment } from "@/lib/domain/bookings";
 import { acceptOffer } from "@/lib/domain/dispatch";
 import { markPayoutPaid } from "@/lib/domain/payouts";
@@ -12,7 +12,7 @@ import type { DB } from "@/lib/domain/types";
 const T0 = Date.UTC(2026, 9, 26, 4, 30); // 10:00 IST
 const SHOOT = Date.UTC(2026, 9, 26, 9, 30); // 15:00 IST
 const APPROVED = SHOOT + 6 * HOUR;
-const JOB = { packageId: "video_milestone", cityId: "guwahati", zoneId: "zoo-road", address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
+const JOB = { packageId: "video_milestone", ...at("guwahati", "zoo-road"), address: "Café Brahma, RG Baruah Road", scheduledAt: "2026-10-26T15:00", brief: "Opening-week reel for our café" };
 
 /** One job through to approved, taken by Ankita. */
 function approvedJob(db: DB) {

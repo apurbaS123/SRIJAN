@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedDb } from "./fixtures/seed";
+import { at, seedDb } from "./fixtures/seed";
 import { createBooking } from "@/lib/domain/bookings";
 import { signUpCreator } from "@/lib/domain/creators";
 import { acceptOffer, declineOffer, manualAssign } from "@/lib/domain/dispatch";
@@ -18,8 +18,7 @@ function book(db: DB, extra: Partial<Parameters<typeof createBooking>[2]> = {}, 
     "u_priya",
     {
       packageId: "video_milestone",
-      cityId: "guwahati",
-      zoneId: "zoo-road",
+      ...at("guwahati", "zoo-road"),
       address: "Café Brahma, RG Baruah Road",
       scheduledAt: "2026-10-26T15:00",
       brief: "Opening-week reel for our café",
@@ -100,7 +99,7 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
 
   it("widens to 25 km at minute 3 within the same window", () => {
     const db = seedDb(T0);
-    const b = book(db, { zoneId: "jalukbari" });
+    const b = book(db, at("guwahati", "jalukbari"));
     expect(pendingFor(db, b.id)).toEqual(["cr_dhruba"]);
     tickAll(db, T0 + 3 * MIN);
     expect(b.dispatch.widened).toBe(true);
@@ -137,7 +136,7 @@ describe("auto-assign: alert everyone nearby, 5 minutes", () => {
     const first = book(db);
     const o = db.offers.find((x) => x.bookingId === first.id && x.creatorId === "cr_ankita")!;
     acceptOffer(db, o.id, "cr_ankita", T0 + MIN);
-    const second = book(db, { zoneId: "chandmari", scheduledAt: "2026-10-26T16:00" }, T0 + 2 * MIN);
+    const second = book(db, { ...at("guwahati", "chandmari"), scheduledAt: "2026-10-26T16:00" }, T0 + 2 * MIN);
     expect(pendingFor(db, second.id)).not.toContain("cr_ankita");
   });
 });
@@ -258,7 +257,7 @@ describe("a creator the Srijan team assigns by hand", () => {
 describe("only the right field is alerted", () => {
   it("doesn't alert on-site jobs to creators in other fields", () => {
     const db = seedDb(T0);
-    const b = book(db, { zoneId: "chandmari" });
+    const b = book(db, at("guwahati", "chandmari"));
     // Bhaswati (designer) and Ritika (writer) are based nearby but don't shoot.
     expect(pendingFor(db, b.id)).not.toContain("cr_bhaswati");
     expect(pendingFor(db, b.id)).not.toContain("cr_ritika");
@@ -266,7 +265,7 @@ describe("only the right field is alerted", () => {
 
   it("alerts an online job to its field wherever they are, skipping everyone else", () => {
     const db = seedDb(T0);
-    const b = book(db, { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    const b = book(db, { packageId: "edit_reel", stateId: undefined, city: undefined, address: undefined, brief: "Edit my clips into one reel" });
     expect(b.online).toBe(true);
     expect(b.status).toBe("searching");
     // The editors, including Pallab in Dibrugarh and Wanphrang in Shillong. Nilakshi only shoots.
@@ -276,7 +275,7 @@ describe("only the right field is alerted", () => {
 
   it("doesn't let an online job block a creator's on-site shoot", () => {
     const db = seedDb(T0);
-    const online = book(db, { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" });
+    const online = book(db, { packageId: "edit_reel", stateId: undefined, city: undefined, address: undefined, brief: "Edit my clips into one reel" });
     acceptOffer(db, db.offers.find((o) => o.bookingId === online.id && o.creatorId === "cr_ankita")!.id, "cr_ankita", T0 + MIN);
     const shoot = book(db, {}, T0 + 2 * MIN);
     expect(pendingFor(db, shoot.id)).toContain("cr_ankita");
@@ -285,28 +284,28 @@ describe("only the right field is alerted", () => {
   it("alerts every field, including creators whose older profile had alerts off", () => {
     const db = seedDb(T0);
     // Seeded with alerts off: Bhaswati designs and Ritika writes.
-    const design = book(db, { packageId: "design_thumbnail", cityId: undefined, zoneId: undefined, address: undefined, brief: "A thumbnail for my channel" });
+    const design = book(db, { packageId: "design_thumbnail", stateId: undefined, city: undefined, address: undefined, brief: "A thumbnail for my channel" });
     expect(pendingFor(db, design.id)).toEqual(["cr_bhaswati"]);
-    const writing = book(db, { packageId: "write_social", cityId: undefined, zoneId: undefined, address: undefined, brief: "Ten captions for our shop" });
+    const writing = book(db, { packageId: "write_social", stateId: undefined, city: undefined, address: undefined, brief: "Ten captions for our shop" });
     expect(pendingFor(db, writing.id)).toEqual(["cr_ritika"]);
   });
 
   it("gives every new creator alerts, whatever they offer", () => {
     const db = seedDb(T0);
-    const { user, creator } = signUpCreator(db, { name: "New Writer", phone: "9876511113", cityId: "guwahati", zoneId: "zoo-road", services: [{ key: "content_writing" }] }, { email: "writer@example.com", phone: "9876511113" }, T0);
+    const { user, creator } = signUpCreator(db, { name: "New Writer", phone: "9876511113", ...at("guwahati", "zoo-road"), services: [{ key: "content_writing" }] }, { email: "writer@example.com", phone: "9876511113" }, T0);
     creator.verification = "verified";
     creator.available = true;
     creator.upiId = "writer@okaxis";
     creator.payoutMethod = "upi";
     expect(user.creatorId).toBe(creator.id);
-    const b = book(db, { packageId: "write_social", cityId: undefined, zoneId: undefined, address: undefined, brief: "Ten captions for our shop" });
+    const b = book(db, { packageId: "write_social", stateId: undefined, city: undefined, address: undefined, brief: "Ten captions for our shop" });
     expect(pendingFor(db, b.id)).toContain(creator.id);
   });
 
   it("still only alerts creators who are online", () => {
     const db = seedDb(T0);
     db.creators.find((c) => c.id === "cr_bhaswati")!.available = false;
-    const b = book(db, { packageId: "design_thumbnail", cityId: undefined, zoneId: undefined, address: undefined, brief: "A thumbnail for my channel" });
+    const b = book(db, { packageId: "design_thumbnail", stateId: undefined, city: undefined, address: undefined, brief: "A thumbnail for my channel" });
     expect(pendingFor(db, b.id)).not.toContain("cr_bhaswati");
   });
 
@@ -330,7 +329,7 @@ describe("demo notifications", () => {
     const db = seedDb(T0);
     book(db);
     const [n] = unread(db, "u_ankita");
-    expect(n!.lines.join(" ")).toMatch(/Milestone Capture.*Zoo Road, Guwahati.*26 Oct 2026.*Opening-week reel/);
+    expect(n!.lines.join(" ")).toMatch(/Milestone Capture.*Guwahati, Assam.*26 Oct 2026.*Opening-week reel/);
     expect(unread(db, "u_nilakshi")).toEqual([]);
     expect(unread(db, "u_bhaswati")).toEqual([]);
   });
@@ -353,7 +352,7 @@ describe("booking rules", () => {
     const db = seedDb(T0);
     expect(() => book(db, { scheduledAt: "2026-10-26T10:55" })).toThrow(/1 hour/);
     expect(book(db, { scheduledAt: "2026-10-26T11:00" }).status).toBe("searching");
-    const job = { packageId: "edit_reel", cityId: undefined, zoneId: undefined, address: undefined, brief: "Edit my clips into one reel" };
+    const job = { packageId: "edit_reel", stateId: undefined, city: undefined, address: undefined, brief: "Edit my clips into one reel" };
     expect(book(db, { ...job, scheduledAt: "2026-10-26T10:00" }).status).toBe("searching");
     expect(() => book(db, { ...job, scheduledAt: "2026-10-26T09:55" })).toThrow(/has passed/);
   });

@@ -1,5 +1,5 @@
 // What each kind of user is allowed to see. API responses are built from these.
-import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CREATOR_SHARE, findPackage, findZone, lowestPrice } from "./config";
+import { AUTO_APPROVE_MS, CAMPAIGN_STAGES, CITIES, CREATOR_SHARE, STATES, findPackage, findState, lowestPrice } from "./config";
 import { campaignMath } from "./campaigns";
 import { clientRating, tickBooking } from "./bookings";
 import { pruneNotifications } from "./notifications";
@@ -27,8 +27,32 @@ export function tickAll(db: DB, now: number) {
   }
   // Profiles saved before the rename keep their own copy of this title.
   for (const c of db.creators) for (const s of c.services) if (s.title === "1-day shoot") s.title = "1-day service";
+  // Records from before Srijan covered more than six cities carried a cityId and a zoneId from
+  // fixed lists. Their coordinates were real, so they are kept; only the labels are rebuilt.
+  for (const c of db.creators) migratePlace(c);
+  for (const b of db.bookings) if (!b.online) migratePlace(b);
   pruneNotifications(db, now);
   return alerts;
+}
+
+/**
+ * Fills in `stateId` and `city` on a record saved before states existed.
+ *
+ * The old city and area ids map onto a real place with real coordinates, so nothing is guessed:
+ * the pair is looked up in the list it came from, and the coordinates already on the record are
+ * left exactly as they are. `cityId` and `zoneId` stay too — they cost nothing and they are the
+ * evidence of where this came from.
+ */
+function migratePlace(x: { stateId?: string; city?: string; cityId?: string; zoneId?: string; coarse?: boolean }) {
+  if (x.stateId || !x.cityId) return;
+  const city = CITIES.find((c) => c.id === x.cityId);
+  if (!city) return;
+  const state = STATES.find((s) => s.name === city.state);
+  if (!state) return;
+  x.stateId = state.id;
+  x.city = city.name;
+  // The coordinates came from an area within the city, so they are a real point, not a centroid.
+  x.coarse = false;
 }
 
 export interface PendingReview {
@@ -70,9 +94,9 @@ export function creatorPublic(c: Creator) {
     id: c.id,
     name: c.name,
     bio: c.bio,
-    cityId: c.cityId,
-    zoneId: c.zoneId,
-    area: placeName(c.cityId, c.zoneId),
+    stateId: c.stateId,
+    city: c.city,
+    area: placeName(c),
     languages: c.languages,
     services: c.services.map((s) => ({ ...s, price: lowestPrice(s.key) })),
     gear: c.gear,
@@ -94,9 +118,16 @@ export function creatorPublic(c: Creator) {
 }
 export type CreatorPublic = ReturnType<typeof creatorPublic>;
 
-export function placeName(cityId: string, zoneId: string) {
-  const p = findZone(cityId, zoneId);
-  return p ? `${p.zone.name}, ${p.city.name}` : "";
+/**
+ * Somewhere in India, as a person would write it: "Guwahati, Assam".
+ *
+ * Takes the record rather than two strings, because a creator and a booking both carry the pair
+ * and passing them in the wrong order was easy to do and silent when it happened.
+ */
+export function placeName(at: { stateId?: string; city?: string }) {
+  const state = findState(at.stateId)?.name ?? "";
+  const city = (at.city ?? "").trim();
+  return [city, state].filter(Boolean).join(", ");
 }
 
 export const STATUS_LABEL: Record<Booking["status"], string> = {
@@ -139,7 +170,7 @@ export function bookingView(db: DB, b: Booking, viewer: Viewer) {
     online: !!b.online,
     /** The creator is given the exact address once the client has paid, never before. */
     address: isJobCreator && !paid ? "" : b.address,
-    area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
+    area: b.online ? "Online" : placeName(b),
     cityId: b.cityId,
     lat: b.lat,
     lng: b.lng,
@@ -209,7 +240,7 @@ export function offerView(db: DB, o: Offer) {
     price: b.price,
     payout: rupees(b.price * CREATOR_SHARE),
     online: !!b.online,
-    area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
+    area: b.online ? "Online" : placeName(b),
     scheduledAt: b.scheduledAt,
     brief: b.brief,
     aspect: b.aspect,
@@ -258,7 +289,7 @@ export function sentOffersFor(db: DB, creatorId: string, limit = 20) {
         packageName: pkg?.name ?? b.packageId,
         payout: rupees(b.price * CREATOR_SHARE),
         online: !!b.online,
-        area: b.online ? "Online" : placeName(b.cityId, b.zoneId),
+        area: b.online ? "Online" : placeName(b),
         scheduledAt: b.scheduledAt,
         outcome,
       };

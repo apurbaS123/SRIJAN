@@ -131,11 +131,22 @@ export interface Creator {
   userId: string;
   name: string;
   bio: string;
-  cityId: string;
-  zoneId: string;
-  /** Current location used for matching. Starts at the base zone. */
+  /** State or union territory, from the list in `config.ts`. */
+  stateId: string;
+  /** City or town, as the creator typed it. Free text: India has no closed list worth keeping. */
+  city: string;
+  /**
+   * Where they are, for matching. Taken from the city they typed when it could be placed on the
+   * map, otherwise the middle of their state — in which case `coarse` is set and distance is not
+   * trusted. "Update my location" replaces both with the phone's own reading.
+   */
   lat: number;
   lng: number;
+  /** True when lat/lng is only a state centroid, so a distance from it means little. */
+  coarse?: boolean;
+  /** Before states: the fixed city and area lists. Kept so old records can be read and migrated. */
+  cityId?: string;
+  zoneId?: string;
   languages: string[];
   services: CreatorService[];
   gear: string[];
@@ -215,12 +226,17 @@ export interface Booking {
   total: number;
   /** Done remotely (e.g. video editing): no visit, so no location or distance limit. */
   online?: boolean;
-  /** Empty for online jobs, like cityId and zoneId. */
+  /** Empty for online jobs, like the state and city. */
   address: string;
-  cityId: string;
-  zoneId: string;
+  stateId: string;
+  city: string;
   lat: number;
   lng: number;
+  /** True when lat/lng is only a state centroid: the typed city could not be placed. */
+  coarse?: boolean;
+  /** Before states. Kept so old bookings can still be read. */
+  cityId?: string;
+  zoneId?: string;
   scheduledAt: number;
   brief: string;
   aspect: "9:16" | "16:9" | "1:1";

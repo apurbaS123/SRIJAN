@@ -31,7 +31,7 @@ const getCreator = cache(async (id: string) => {
     return {
       name: x.name,
       bio: x.bio,
-      area: placeName(x.cityId, x.zoneId),
+      area: placeName(x),
       services: x.services.map((s) => serviceOne(s.key)),
       photo: x.photo?.id ?? null,
     };

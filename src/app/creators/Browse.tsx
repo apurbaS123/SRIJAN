@@ -19,17 +19,17 @@ export function Browse({ initial }: { initial: CreatorPublic[] }) {
   const meta = useMeta();
   const params = useSearchParams();
   const [service, setService] = useState(params.get("service") ?? "");
-  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [available, setAvailable] = useState(false);
   const [q, setQ] = useState("");
   const qs = new URLSearchParams();
   if (service) qs.set("service", service);
-  if (city) qs.set("city", city);
+  if (state) qs.set("state", state);
   if (available) qs.set("available", "1");
   if (q.trim()) qs.set("q", q.trim());
   const { data } = useData<CreatorPublic[]>(`/api/creators?${qs.toString()}`);
   const title = meta?.services.find((s) => s.key === service)?.label ?? "All creators";
-  const pristine = !service && !city && !available && !q.trim();
+  const pristine = !service && !state && !available && !q.trim();
   const list = data ?? (pristine ? initial : undefined);
 
   return (
@@ -60,12 +60,12 @@ export function Browse({ initial }: { initial: CreatorPublic[] }) {
         </div>
         <div className="row">
           <div className="field" style={{ minWidth: 200 }}>
-            <label htmlFor="city">City</label>
-            <select id="city" className="select" value={city} onChange={(e) => setCity(e.target.value)}>
+            <label htmlFor="state">State</label>
+            <select id="state" className="select" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">All India</option>
-              {meta?.cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {meta?.states.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </select>
