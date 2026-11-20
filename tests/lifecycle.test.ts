@@ -195,12 +195,14 @@ describe("the service menu", () => {
     expect(b.total).toBe(1999);
   });
 
-  it("keeps the ₹1 payment test bookable but out of the prices quoted to clients", () => {
+  it("refuses the ₹1 drone package, retired once the site went up for indexing", () => {
     const drone = PACKAGES.find((p) => p.id === "video_drone")!;
     expect(drone.price).toBe(1);
-    expect(drone.retired).toBeUndefined();
+    expect(drone.retired).toBe(true);
     expect(sellable()).not.toContain(drone);
     expect(lowestPrice("videography")).toBe(999);
+    const db = seedDb(T0);
+    expect(() => createBooking(db, "u_priya", { ...JOB, packageId: "video_drone" }, T0)).toThrow(/Unknown package/);
   });
 
   it("refuses a service that is no longer sold", () => {
