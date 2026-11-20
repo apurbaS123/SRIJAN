@@ -1138,8 +1138,14 @@ async function run() {
     const html = await (await fetch(BASE + path)).text();
     const h1s = (html.match(/<h1[\s>]/g) ?? []).length;
     ok(h1s === 1, `${path} serves exactly one <h1> in its HTML`);
-    ok(words(html) > 150, `${path} serves more than 150 words in its HTML`);
     ok(!/Loading…|Loading\.\.\./.test(html.replace(/<script[\s\S]*?<\/script>/gi, "")), `${path} is not a spinner`);
+    // The home page is the hero and the logos, by choice — its words are the hero's own, so the
+    // thing to check there is that the hero printed them rather than waiting for a layout.
+    if (path === "/") {
+      ok(/Create it today\./.test(html) && /Verified videographers/.test(html), "/ serves the hero's own words in its HTML");
+    } else {
+      ok(words(html) > 150, `${path} serves more than 150 words in its HTML`);
+    }
   }
 
   // A link pasted into WhatsApp, LinkedIn or Slack gets a picture. The card type has claimed one
