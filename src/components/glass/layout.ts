@@ -1,3 +1,4 @@
+import { body as bodyFont, display as displayFont } from "@/lib/fonts";
 /**
  * Layout + drawing for the glass hero.
  *
@@ -7,8 +8,11 @@
  * two always line up.
  */
 
-export const DISPLAY = '"Syne", system-ui, sans-serif';
-export const BODY = '"Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
+// The generated family names from `next/font` (see lib/fonts.ts). The hero prints its text into a
+// canvas, and `ctx.font` takes a family string — a CSS variable means nothing to it — so these
+// have to be the real names rather than `var(--display)`.
+export const DISPLAY = displayFont.style.fontFamily;
+export const BODY = bodyFont.style.fontFamily;
 
 export type Fill = string | { dir: "v" | "h"; stops: string[] };
 
