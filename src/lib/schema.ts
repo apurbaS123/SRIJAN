@@ -24,7 +24,7 @@ import { SITE, SITE_DESCRIPTION } from "@/lib/seo";
  * exist, is worse than an empty list: it attaches the wrong entity, and that is harder to undo
  * than never having claimed it.
  */
-export const SOCIAL_PROFILES: string[] = [];
+export const SOCIAL_PROFILES: string[] = ["https://www.instagram.com/srijan_ne_chapter/"];
 
 const ORG_ID = (base: string) => `${base}/#organization`;
 const SITE_ID = (base: string) => `${base}/#website`;

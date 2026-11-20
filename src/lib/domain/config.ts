@@ -85,8 +85,13 @@ export const PACKAGES: ShootPackage[] = [
 /** Shown in the footer, FAQs and terms. */
 export const SUPPORT_PHONE = "8638403800";
 
-/** Help tickets from /support are emailed here. */
-export const SUPPORT_EMAIL = "hadescorps123@gmail.com";
+/**
+ * Help tickets from /support are emailed here, and it is the address shown on the site.
+ *
+ * It has to be a mailbox somebody actually reads: a ticket is sent and then forgotten about, so a
+ * wrong address here loses customer messages silently rather than failing loudly.
+ */
+export const SUPPORT_EMAIL = "team@srijanclub.in";
 
 /** Topics people can pick when they raise a help ticket. */
 export const SUPPORT_TOPICS = ["General question", "Booking", "Payment or refund", "Creator account", "Brand campaign", "Problem with the website", "Other"] as const;

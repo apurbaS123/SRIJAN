@@ -1171,6 +1171,11 @@ async function run() {
   ok(!!org && org.name === "Srijan", "every page carries an Organization block");
   ok(!!home.find((b) => b["@type"] === "WebSite"), "and a WebSite block");
   ok(org.areaServed.length === 6 && org.contactPoint.telephone.endsWith("8638403800"), "with the real cities and support number");
+  // sameAs is what binds this site to the organisation behind it: "Srijan" is a name several
+  // other organisations use, and without this there is nothing to tell them apart.
+  ok(Array.isArray(org.sameAs) && org.sameAs.some((u) => /instagram\.com\//.test(u)), "and a sameAs that claims Srijan's Instagram");
+  const footer = await (await fetch(`${BASE}/about`)).text();
+  ok(org.sameAs.every((u) => footer.includes(u)), "every sameAs is also a link somebody can follow on the page");
 
   const bookLd = await ld("/book");
   const list = bookLd.find((b) => b["@type"] === "ItemList");

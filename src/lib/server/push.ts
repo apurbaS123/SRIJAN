@@ -7,6 +7,7 @@
 // web-push 4 is ESM with named exports only: there is no default export to import.
 import { WebPushError, sendNotification, setVapidDetails } from "web-push";
 import type { DB, PushSub } from "@/lib/domain/types";
+import { SUPPORT_EMAIL } from "@/lib/domain/config";
 
 /** One message, already matched to the devices it goes to. */
 export interface Push {
@@ -24,7 +25,7 @@ function configured() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   if (!publicKey || !privateKey) return false;
-  setVapidDetails(process.env.VAPID_SUBJECT || "mailto:hadescorps123@gmail.com", publicKey, privateKey);
+  setVapidDetails(process.env.VAPID_SUBJECT || `mailto:${SUPPORT_EMAIL}`, publicKey, privateKey);
   return true;
 }
 

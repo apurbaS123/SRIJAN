@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SUPPORT_PHONE } from "@/lib/domain/config";
+import { SUPPORT_EMAIL, SUPPORT_PHONE } from "@/lib/domain/config";
+import { SOCIAL_PROFILES } from "@/lib/schema";
 
 const COLUMNS = [
   {
@@ -26,7 +27,11 @@ const COLUMNS = [
     title: "Contact us",
     links: [
       { href: `tel:+91${SUPPORT_PHONE}`, label: SUPPORT_PHONE },
+      { href: `mailto:${SUPPORT_EMAIL}`, label: SUPPORT_EMAIL },
       { href: "/support", label: "Raise a ticket" },
+      // The one outbound link on the site that says who Srijan is elsewhere. It backs the `sameAs`
+      // in the Organization schema: a claim a search engine can follow and see confirmed.
+      ...SOCIAL_PROFILES.map((url) => ({ href: url, label: "Instagram" })),
     ],
   },
 ];
@@ -53,9 +58,13 @@ export function SiteFooter() {
               <h2>{col.title}</h2>
               {col.links.map((l) =>
                 // A phone number isn't a page, so it stays a plain link.
-                l.href.startsWith("tel:") ? (
+                l.href.startsWith("tel:") || l.href.startsWith("mailto:") ? (
                   <a key={l.href} href={l.href}>
                     {l.label}
+                  </a>
+                ) : l.href.startsWith("http") ? (
+                  <a key={l.href} href={l.href} target="_blank" rel="me noopener noreferrer">
+                    {l.label} ↗
                   </a>
                 ) : (
                   <Link key={l.href} href={l.href}>
