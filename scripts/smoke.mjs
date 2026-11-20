@@ -1144,7 +1144,9 @@ async function run() {
 
   // A link pasted into WhatsApp, LinkedIn or Slack gets a picture. The card type has claimed one
   // for a while; until now there was nothing behind it.
-  for (const path of ["/", "/book", "/creators", "/brands"]) {
+  // Every public route, not just the four with an image file of their own: a route that sets its
+  // own `openGraph` replaces the whole key and drops the root's image unless it names one.
+  for (const path of ["/", "/book", "/creators", "/brands", "/join", "/about", "/faqs", "/how-it-works", "/support", "/terms", "/privacy"]) {
     const html = await (await fetch(BASE + path)).text();
     ok(/<meta property="og:image"/.test(html), `${path} declares an og:image`);
   }

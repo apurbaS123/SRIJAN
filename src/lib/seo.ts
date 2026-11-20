@@ -49,6 +49,18 @@ type PageMeta = {
   path: string;
 };
 
+/**
+ * The picture shown when a link to one of these routes is shared.
+ *
+ * It has to be named here. `app/opengraph-image.tsx` attaches the image to the root layout's
+ * `openGraph`, and the same shallow merge described above then throws it away for any route that
+ * sets `openGraph` of its own — which is every route built by this helper. /book, /creators and
+ * /brands are unaffected because each has an image file of its own; everything else lost it
+ * silently, which is how seven pages ended up declaring `summary_large_image` with nothing behind
+ * it even after the images were added.
+ */
+const OG_IMAGE = { url: "/opengraph-image", width: 1200, height: 630, alt: SITE_TAGLINE };
+
 /** Builds a route's metadata with a self-referential canonical and a matching og:url. */
 export function pageMeta({ title, description, path }: PageMeta): Metadata {
   return {
@@ -62,11 +74,13 @@ export function pageMeta({ title, description, path }: PageMeta): Metadata {
       title: `${title} — ${SITE}`,
       description,
       url: path,
+      images: [OG_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title: `${title} — ${SITE}`,
       description,
+      images: [OG_IMAGE.url],
     },
   };
 }
