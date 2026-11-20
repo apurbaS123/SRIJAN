@@ -1122,6 +1122,31 @@ async function run() {
   const unverifiedProfile = await (await fetch(`${BASE}/creators/${cr.jonali}`)).text();
   ok(/noindex/.test(unverifiedProfile), "an unverified profile asks not to be indexed");
 
+  // --- Server-rendered content -------------------------------------------------
+  // What a reader gets before any JavaScript runs: a crawler that does not execute scripts, a
+  // browser with scripting off, a slow phone mid-load, a chat app building a preview. Each of
+  // these pages used to answer with the word "Loading..." and no heading at all.
+  const words = (html) => {
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ");
+    return text.split(/\s+/).filter(Boolean).length;
+  };
+
+  for (const path of ["/", "/creators", "/book", "/brands", "/join"]) {
+    const html = await (await fetch(BASE + path)).text();
+    const h1s = (html.match(/<h1[\s>]/g) ?? []).length;
+    ok(h1s === 1, `${path} serves exactly one <h1> in its HTML`);
+    ok(words(html) > 150, `${path} serves more than 150 words in its HTML`);
+    ok(!/Loading…|Loading\.\.\./.test(html.replace(/<script[\s\S]*?<\/script>/gi, "")), `${path} is not a spinner`);
+  }
+
+  // The directory's creators come from the server, not a round trip: Ankita is verified by now.
+  const directory = await (await fetch(`${BASE}/creators`)).text();
+  ok(directory.includes("Ankita"), "/creators names a real creator in its HTML");
+  ok(!directory.includes(cr.jonali), "and still leaves out one nobody has verified");
+
   // --- Pages render ------------------------------------------------------------
   for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {
     const res = await fetch(BASE + p);

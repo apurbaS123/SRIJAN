@@ -210,8 +210,10 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
   });
 
   return (
-    <div className={chosen ? "stack" : "container page narrow"} id={chosen ? "offer" : undefined}>
-      {chosen ? <h2>Send a job offer to {chosen.name.split(" ")[0]}</h2> : <h1>Book a service</h1>}
+    // The page above supplies the container and, on /book, the <h1>: this form is rendered in the
+    // browser (it needs the clock and the saved draft), and a heading is not worth waiting for.
+    <div className="stack" id={chosen ? "offer" : undefined}>
+      {chosen && <h2>Send a job offer to {chosen.name.split(" ")[0]}</h2>}
       {!chosen && <LaunchSticker />}
       {chosen && (
         <div className="card card-violet">

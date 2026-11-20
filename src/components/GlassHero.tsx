@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { computeLayout, DISPLAY, BODY, type Content, type Fill, type Item, type Layout } from "./glass/layout";
 import type { GlassScene } from "./glass/scene";
 import { useSession } from "./Session";
+import { HeroIntro } from "./HeroIntro";
 
 const NAV_LINKS = [
   { label: "Explore", href: "/creators" },
@@ -210,6 +211,11 @@ export function GlassHero() {
       onPointerLeave={(e) => pointer(e, false)}
     >
       <canvas ref={canvasRef} className="gh-canvas" aria-hidden="true" />
+
+      {/* Before there is a layout — which is what the server renders, and what a reader without
+          JavaScript keeps — the same words in plain DOM. Replaced, not duplicated: the moment
+          `mode` leaves "pending" this goes and the mapped layer below takes over. */}
+      {mode === "pending" && <HeroIntro navLinks={NAV_LINKS} account={content.account} />}
 
       {L && mode === "static" && (
         <div className="gh-static-block" aria-hidden="true" style={{ left: L.bx, top: L.by, width: L.bw, height: L.bh }}>

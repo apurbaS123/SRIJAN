@@ -1,0 +1,257 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { call, callForm, useAction } from "@/lib/client/api";
+import { ErrorNote, FormSkeleton } from "@/components/ui";
+import { useMeta } from "@/components/useMeta";
+import { useSession } from "@/components/Session";
+import { PasswordField } from "@/components/PasswordField";
+import CodeSlots, { isCodeError } from "@/components/CodeSlots";
+import { AadhaarFields, EMPTY_AADHAAR, aadhaarForm, aadhaarReady, type AadhaarDraft } from "@/components/AadhaarFields";
+import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
+import type { ServiceKey, SocialPlatform } from "@/lib/domain/types";
+
+/** What a creator might work with, by service. Optional: shown on their profile and to the Srijan team. */
+const GEAR: Record<ServiceKey, string[]> = {
+  videography: ["Mirrorless / DSLR", "Cinema camera", "4K phone", "Gimbal", "Tripod", "Wireless mic", "Lights", "Drone"],
+  photography: ["Mirrorless / DSLR", "Prime lens", "Zoom lens", "Tripod", "Flash", "Softbox", "Reflector", "Drone"],
+  video_editing: ["Editing PC / laptop", "Premiere Pro", "DaVinci Resolve", "Final Cut Pro", "After Effects", "CapCut"],
+  graphic_design: ["Photoshop", "Illustrator", "Figma", "Canva", "Drawing tablet"],
+  content_writing: ["Laptop", "Grammarly", "SEO tool"],
+  voice_over: ["Studio microphone", "Audio interface", "Pop filter", "Home booth", "Audio editing software"],
+  social_media: ["Scheduling tool", "Meta Business Suite", "Canva", "Analytics tool"],
+  influencer: ["4K phone", "Ring light", "Tripod", "Wireless mic"],
+};
+
+export function JoinForm() {
+  const meta = useMeta();
+  const router = useRouter();
+  const { session, refresh } = useSession();
+  // With no DigiLocker partner keys set, the Srijan team reads the Aadhaar by hand, so it is
+  // collected here as part of signing up. With the keys set, the creator verifies themselves on
+  // DigiLocker afterwards and there is nothing to upload.
+  const digilocker = session?.creatorVerification === "digilocker";
+  const { busy, error, setError, run } = useAction();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [cityId, setCityId] = useState("guwahati");
+  const [zoneId, setZoneId] = useState("zoo-road");
+  const [bio, setBio] = useState("");
+  const [services, setServices] = useState<ServiceKey[]>(["videography"]);
+  const [gear, setGear] = useState<string[]>([]);
+  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
+  const [portfolio, setPortfolio] = useState("");
+  const [socialUrl, setSocialUrl] = useState("");
+  const [followers, setFollowers] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [aadhaar, setAadhaar] = useState<AadhaarDraft>(EMPTY_AADHAAR);
+
+  if (!meta) return <FormSkeleton rows={4} label="Loading the sign-up form" />;
+  const city = meta.cities.find((c) => c.id === cityId)!;
+  const toggle = (k: ServiceKey) => setServices((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
+  // Follows the menu's order, so groups don't jump around as services are ticked.
+  const chosen = meta.services.filter((s) => services.includes(s.key));
+
+  async function sendCode() {
+    if (await run(() => call("/api/session/otp", { email }))) setCodeSent(true);
+  }
+
+  /**
+   * The account is created first, then the Aadhaar is uploaded to it — one button, two requests,
+   * because the account has to exist before a document can belong to it. If the upload is the part
+   * that fails, the account is already made and signed in, so /creator/kyc picks it up from there
+   * and asks for the documents again rather than making them start over.
+   */
+  async function submit() {
+    const r = await run(async () => {
+      const created = await call("/api/creators", {
+        name,
+        email,
+        phone,
+        code,
+        password,
+        cityId,
+        zoneId,
+        bio,
+        services: services.map((key) => ({ key })),
+        // Gear picked under a service they later unticked doesn't count.
+        gear: gear.filter((g) => services.some((k) => GEAR[k].includes(g))),
+        portfolio,
+        social: { platform, url: socialUrl },
+        followers: followers ? Number(followers) : undefined,
+      });
+      if (!digilocker) await callForm("/api/kyc/aadhaar", aadhaarForm(aadhaar));
+      return created;
+    });
+    if (r) {
+      await refresh();
+      router.push("/creator/kyc?welcome=1");
+    }
+  }
+
+  return (
+    <>
+      <section className="card stack">
+        <h2>You</h2>
+        <div className="field">
+          <label htmlFor="name">Full name</label>
+          <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <div className="row">
+            <input id="email" className="input grow" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setCodeSent(false); setCode(""); }} placeholder="you@example.com" />
+            <button className="btn btn-sm" disabled={busy || !email} onClick={sendCode}>
+              {codeSent ? "Resend code" : "Send code"}
+            </button>
+          </div>
+        </div>
+        <div className="field code-field">
+          <label htmlFor="code">Code sent to your email</label>
+          <CodeSlots
+            id="code"
+            ariaLabel="6-digit code sent to your email"
+            value={code}
+            status={isCodeError(error) ? "error" : "idle"}
+            onChange={(c) => {
+              setCode(c);
+              if (c && error) setError(null);
+            }}
+          />
+        </div>
+        <PasswordField id="new-password" label="Choose a password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Next time, sign in with your email and this password." />
+        <div className="field">
+          <label htmlFor="phone">Mobile number</label>
+          <input id="phone" className="input" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91" />
+          <span className="small muted">Clients and the Srijan team use it to reach you about jobs.</span>
+        </div>
+        <div className="row">
+          <div className="field grow">
+            <label htmlFor="city">City</label>
+            <select
+              id="city"
+              className="select"
+              value={cityId}
+              onChange={(e) => {
+                setCityId(e.target.value);
+                setZoneId(meta.cities.find((c) => c.id === e.target.value)!.zones[0]!.id);
+              }}
+            >
+              {meta.cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field grow">
+            <label htmlFor="zone">Base area</label>
+            <select id="zone" className="select" value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
+              {city.zones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="bio">Short bio</label>
+          <textarea id="bio" className="textarea" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="What you’re great at, in one or two lines" />
+        </div>
+      </section>
+
+      <section className="card stack">
+        <h2>What do you offer?</h2>
+        <div className="grid">
+          {meta.services.map((s) => (
+            <label key={s.key} className="check">
+              <input type="checkbox" checked={services.includes(s.key)} onChange={() => toggle(s.key)} />
+              {s.label.replace(/s$/, "")}
+            </label>
+          ))}
+        </div>
+        <p className="small muted">You’ll get job alerts for the services you offer. Fixed Srijan prices — you keep 80%. You have 5 minutes to accept each alert, and the first to accept gets the job.</p>
+        {chosen.length > 0 && (
+          <div className="stack">
+            <span className="label">Your gear (optional)</span>
+            {chosen.map((s) => (
+              <div key={s.key} className="stack" style={{ gap: 6 }}>
+                <span className="small muted">{s.label.replace(/s$/, "")}</span>
+                <div className="chips">
+                  {GEAR[s.key].map((g) => {
+                    const on = gear.includes(g);
+                    return (
+                      <button key={g} type="button" aria-pressed={on} className={`chip${on ? " on" : ""}`} onClick={() => setGear(on ? gear.filter((x) => x !== g) : [...gear, g])}>
+                        {g}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card stack">
+        <h2>Your portfolio</h2>
+        <div className="field">
+          <label htmlFor="portfolio">Portfolio link</label>
+          <input id="portfolio" className="input" type="url" inputMode="url" value={portfolio} onChange={(e) => setPortfolio(e.target.value)} />
+        </div>
+      </section>
+
+      <section className="card stack">
+        <h2>Your main social media account</h2>
+        <p className="small muted">Link the account that best shows your work. It appears on your public profile, and the Srijan team checks it when reviewing your profile.</p>
+        <div className="chips" role="group" aria-label="Site">
+          {SOCIAL_PLATFORMS.map((p) => (
+            <button key={p.key} aria-pressed={platform === p.key} className={`chip${platform === p.key ? " on" : ""}`} onClick={() => setPlatform(p.key)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="row">
+          <div className="field grow">
+            <label htmlFor="social">{SOCIAL_PLATFORMS.find((p) => p.key === platform)?.label} profile link</label>
+            <input id="social" className="input" type="url" inputMode="url" value={socialUrl} onChange={(e) => setSocialUrl(e.target.value)} placeholder={SOCIAL_PLATFORMS.find((p) => p.key === platform)?.example} />
+          </div>
+          <div className="field" style={{ maxWidth: 160 }}>
+            <label htmlFor="followers">Followers</label>
+            <input id="followers" className="input" type="number" min={0} value={followers} onChange={(e) => setFollowers(e.target.value)} placeholder="Optional" />
+          </div>
+        </div>
+      </section>
+
+      {!digilocker && (
+        <section className="card stack">
+          <h2>Your Aadhaar</h2>
+          <p className="small muted">
+            Srijan checks that every creator is who they say they are before they can take paid work. Send a photo of each side
+            of your Aadhaar card and someone from the Srijan team will look at it — usually within a day. You can finish your
+            profile now and you’ll get an alert the moment you’re approved.
+          </p>
+          <AadhaarFields value={aadhaar} onChange={setAadhaar} disabled={busy} />
+          <p className="tiny muted">
+            Your documents are stored privately and are only ever opened by the Srijan team to verify you. Nobody booking a job
+            can see them, and they never appear on your public profile.
+          </p>
+        </section>
+      )}
+
+      <ErrorNote error={error} />
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy || !code || !password || (!digilocker && !aadhaarReady(aadhaar))} onClick={submit}>
+        {busy && !digilocker ? "Creating your account…" : "Create my creator account"}
+      </button>
+      <p className="tiny muted">
+        {digilocker
+          ? "Next, you’ll verify your Aadhaar with DigiLocker — that takes under a minute and you can go online as soon as it’s done. Your bank account or UPI ID can wait until you want to be paid."
+          : "You can go online and start accepting jobs as soon as the Srijan team has approved your Aadhaar. Your bank account or UPI ID can wait until you want to be paid."}
+      </p>
+    </>
+  );
+}

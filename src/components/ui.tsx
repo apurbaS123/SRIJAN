@@ -93,6 +93,28 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
   );
 }
 
+/**
+ * Space held for a form that can only be built in the browser.
+ *
+ * Used where the page around it is already real — heading, copy, prices — and only the interactive
+ * part is still coming. It reserves roughly the height the form will take, so its arrival does not
+ * shove the page down, and it announces itself to a screen reader instead of printing the word
+ * "Loading" into a page that is otherwise finished.
+ */
+export function FormSkeleton({ rows = 3, label = "Loading the form" }: { rows?: number; label?: string }) {
+  return (
+    <div className="form-skeleton" role="status" aria-busy="true" aria-label={label}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skeleton-card" aria-hidden="true">
+          <span className="skeleton-line" style={{ width: "38%" }} />
+          <span className="skeleton-line" style={{ width: "100%" }} />
+          <span className="skeleton-line" style={{ width: "72%" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ErrorNote({ error }: { error?: string | null }) {
   if (!error) return null;
   return (
