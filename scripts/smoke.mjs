@@ -1158,6 +1158,39 @@ async function run() {
   ok(directory.includes("Ankita"), "/creators names a real creator in its HTML");
   ok(!directory.includes(cr.jonali), "and still leaves out one nobody has verified");
 
+  // --- Structured data ---------------------------------------------------------
+  // What a search engine and an answer engine read. The prices here are published: whatever
+  // reaches this block is what gets quoted back to someone.
+  const ld = async (path) => {
+    const html = await (await fetch(BASE + path)).text();
+    return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
+  };
+
+  const home = await ld("/");
+  const org = home.find((b) => b["@type"] === "Organization");
+  ok(!!org && org.name === "Srijan", "every page carries an Organization block");
+  ok(!!home.find((b) => b["@type"] === "WebSite"), "and a WebSite block");
+  ok(org.areaServed.length === 6 && org.contactPoint.telephone.endsWith("8638403800"), "with the real cities and support number");
+
+  const bookLd = await ld("/book");
+  const list = bookLd.find((b) => b["@type"] === "ItemList");
+  const prices = list.itemListElement.map((x) => Number(x.item.offers.price));
+  ok(list.numberOfItems === prices.length && prices.length > 20, "/book publishes its service menu as Offers");
+  ok(prices.every((n) => n >= 799), "and never publishes the retired 1 rupee package");
+  ok(list.itemListElement.every((x) => x.item.offers.priceCurrency === "INR"), "every Offer is priced in INR");
+  ok(list.itemListElement.every((x) => x.item.provider["@id"] === org["@id"]), "and points back at the one Organization");
+
+  const crumbs = bookLd.find((b) => b["@type"] === "BreadcrumbList");
+  ok(!!crumbs && crumbs.itemListElement.at(-1).name === "Book a service", "/book says where it sits");
+
+  // A verified creator's profile gets a trail; the page is server-rendered, so the name is in it.
+  const profileLd = await ld(`/creators/${cr.ankita}`);
+  const trail = profileLd.find((b) => b["@type"] === "BreadcrumbList");
+  ok(!!trail && trail.itemListElement.map((x) => x.name).join(" > ").startsWith("Home > Creators >"), "a creator profile says where it sits");
+  // Nobody has verified Jonali, so her page must not be described as a real one.
+  const unverifiedLd = await ld(`/creators/${cr.jonali}`);
+  ok(!unverifiedLd.find((b) => b["@type"] === "BreadcrumbList"), "an unverified profile gets no trail");
+
   // --- Pages render ------------------------------------------------------------
   for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {
     const res = await fetch(BASE + p);

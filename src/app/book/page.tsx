@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { BookFormLoader } from "./BookFormLoader";
 import { CITIES, DISPATCH, SERVICES, lowestPrice, sellable } from "@/lib/domain/config";
+import { JsonLd } from "@/components/JsonLd";
+import { breadcrumbSchema, serviceListSchema } from "@/lib/schema";
+import { siteUrl } from "@/lib/server/env";
 
 /**
  * Book a service.
@@ -23,8 +26,14 @@ export default function BookPage() {
     .filter((s) => s.from !== null && s.count > 0)
     .sort((a, b) => a.from! - b.from!);
 
+  const base = siteUrl() || "https://srijanclub.in";
+
   return (
     <div className="container page narrow">
+      {/* Real prices, from the same list the page prints. `sellable()` keeps retired packages and
+          the ₹1 payment test out — a price published here is a price an assistant will quote. */}
+      <JsonLd data={serviceListSchema(base)} />
+      <JsonLd data={breadcrumbSchema(base, [{ name: "Home", path: "/" }, { name: "Book a service", path: "/book" }])} />
       <h1>Book a service</h1>
       <p className="muted">
         {packages.length} services at fixed prices{from ? `, from ₹${from.toLocaleString("en-IN")}` : ""}. Pick what you need, say

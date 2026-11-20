@@ -1,8 +1,12 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import { SITE, creatorPath } from "@/lib/seo";
 import { placeName } from "@/lib/domain/views";
 import { serviceOne } from "@/lib/domain/config";
 import { withDb } from "@/lib/server/store";
+import { JsonLd } from "@/components/JsonLd";
+import { breadcrumbSchema } from "@/lib/schema";
+import { siteUrl } from "@/lib/server/env";
 
 /**
  * One profile's own metadata.
@@ -16,10 +20,12 @@ import { withDb } from "@/lib/server/store";
  * A profile that isn't there, or isn't verified, is marked `noindex`: the public directory leaves
  * it out and /api/creators/<id> answers 404 for it, so there is nothing for Google to keep.
  */
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
-  const { id } = await params;
-
-  const { result: c } = await withDb((db) => {
+/**
+ * The profile, read once per request. `generateMetadata` and the layout below both want it, and
+ * `cache` means that is one read of the marketplace data rather than two.
+ */
+const getCreator = cache(async (id: string) => {
+  const { result } = await withDb((db) => {
     const x = db.creators.find((y) => y.id === id && y.verification === "verified");
     if (!x) return null;
     return {
@@ -30,6 +36,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       photo: x.photo?.id ?? null,
     };
   }).catch(() => ({ result: null }));
+  return result;
+});
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const c = await getCreator(id);
 
   if (!c) {
     return {
@@ -80,6 +92,24 @@ function clamp(text: string, max: number) {
   return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+export default async function Layout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const c = await getCreator(id);
+  const base = siteUrl() || "https://srijanclub.in";
+  return (
+    <>
+      {/* Only for a profile that exists and is verified — the same test the page itself applies.
+          A trail pointing at a profile nobody can open helps no one. */}
+      {c && (
+        <JsonLd
+          data={breadcrumbSchema(base, [
+            { name: "Home", path: "/" },
+            { name: "Creators", path: "/creators" },
+            { name: c.name, path: creatorPath(id) },
+          ])}
+        />
+      )}
+      {children}
+    </>
+  );
 }

@@ -3,6 +3,9 @@ import Link from "next/link";
 import { Browse } from "./Browse";
 import { publicCreators } from "@/lib/server/public";
 import { CITIES, SERVICES } from "@/lib/domain/config";
+import { JsonLd } from "@/components/JsonLd";
+import { breadcrumbSchema } from "@/lib/schema";
+import { siteUrl } from "@/lib/server/env";
 
 /**
  * Read on each request, so a creator verified an hour ago is in the HTML.
@@ -30,8 +33,11 @@ export default async function CreatorsPage() {
   const creators = await publicCreators();
   const services = SERVICES.map((s) => s.label).join(", ").toLowerCase();
 
+  const base = siteUrl() || "https://srijanclub.in";
+
   return (
     <div className="container page">
+      <JsonLd data={breadcrumbSchema(base, [{ name: "Home", path: "/" }, { name: "Creators", path: "/creators" }])} />
       <div className="row between">
         <h1>Creators on Srijan</h1>
         <Link href="/book" className="btn btn-accent">

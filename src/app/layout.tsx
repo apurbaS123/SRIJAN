@@ -9,6 +9,8 @@ import { HelpButton } from "@/components/HelpButton";
 import { siteUrl } from "@/lib/server/env";
 import { ThemeToggle, THEME_SCRIPT } from "@/components/ThemeToggle";
 import { body, display } from "@/lib/fonts";
+import { JsonLd } from "@/components/JsonLd";
+import { organizationSchema, websiteSchema } from "@/lib/schema";
 
 const SITE = "Srijan";
 const TAGLINE = "Srijan — the creator economy of India";
@@ -38,6 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Applies the saved theme before first paint, so there's no flash of the wrong one. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* Who Srijan is, on every page. "Srijan" is a name several other organisations use, so
+            this is what tells a search engine which one a page belongs to. */}
+        <JsonLd data={organizationSchema(baseUrl)} />
+        <JsonLd data={websiteSchema(baseUrl)} />
       </head>
       <body>
         <SessionProvider>
