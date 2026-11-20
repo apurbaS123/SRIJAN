@@ -136,9 +136,29 @@ const AVATAR_TINTS = [
   ["#E0E7F5", "#1E3A6B"],
 ];
 
-export function Avatar({ name, large }: { name: string; large?: boolean }) {
+/**
+ * Somebody's face, or their initials on a tinted circle when they haven't added a photo.
+ *
+ * The initials are the normal case, not a failure: most creators never upload anything, and the
+ * tint is picked from the name so the same person is always the same colour.
+ */
+export function Avatar({ name, large, photoUrl }: { name: string; large?: boolean; photoUrl?: string | null }) {
   const i = [...name].reduce((s, ch) => s + ch.charCodeAt(0), 0) % AVATAR_TINTS.length;
   const [bg, fg] = AVATAR_TINTS[i]!;
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className={`avatar${large ? " avatar-lg" : ""}`}
+        src={photoUrl}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+        style={{ objectFit: "cover", background: bg }}
+      />
+    );
+  }
   return (
     <span className={`avatar${large ? " avatar-lg" : ""}`} style={{ background: bg, color: fg }} aria-hidden="true">
       {initials(name)}
@@ -160,7 +180,7 @@ export function CreatorCard({ c, km }: { c: CreatorPublic; km?: number }) {
   return (
     <article className="card stack">
       <div className="row">
-        <Avatar name={c.name} />
+        <Avatar name={c.name} photoUrl={c.photoUrl} />
         <div className="grow stack" style={{ gap: 2 }}>
           <span className="strong">
             {c.name} {c.verified && <span className="badge badge-violet">Verified</span>}

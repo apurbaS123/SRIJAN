@@ -6,7 +6,7 @@ const MAX_BODY_BYTES = 64 * 1024;
  * limit above. The cap here is Vercel's own ceiling on a request body (4.5 MB), minus room for the
  * multipart wrapping — the upload route checks each file against its own, smaller limit.
  */
-const UPLOAD_PATHS = ["/api/kyc/aadhaar"];
+const UPLOAD_PATHS = ["/api/kyc/aadhaar", "/api/me/photo"];
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 /** The live site's one address. A login belongs to one address, so everyone should be on the same one. */

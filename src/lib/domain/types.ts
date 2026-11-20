@@ -161,6 +161,14 @@ export interface Creator {
    * works today, and it is kept even after approval so the team can look again.
    */
   kyc: { aadhaar: boolean; pan: boolean; digilocker?: DigilockerKyc; aadhaarDoc?: AadhaarDoc };
+  /**
+   * The creator's profile photo, shown on the public directory and their profile page.
+   *
+   * Unlike the Aadhaar, this one is meant to be seen: it is served to anybody by
+   * /avatar/<id>. The bytes still live in the document store rather than here, for the
+   * same reason as every other upload — every request loads this whole object.
+   */
+  photo?: UploadRef;
   /** How this creator gets paid. Older accounts have only upiId, which means UPI. */
   payoutMethod?: "upi" | "bank";
   upiId?: string;

@@ -1,6 +1,7 @@
 import { DISPATCH, SERVICES, SOCIAL_PLATFORMS, findZone } from "./config";
 import type { VerificationMode } from "./kyc";
-import type { BankDetails, Creator, CreatorService, DB, ServiceKey, User } from "./types";
+import { aadhaarUploadIds } from "./kyc";
+import type { BankDetails, Creator, CreatorService, DB, ServiceKey, UploadRef, User } from "./types";
 import { notifyCreatorVerification } from "./notifications";
 import { assert, cleanText, newId } from "./util";
 
@@ -269,4 +270,164 @@ export function setVerification(db: DB, creatorId: string, decision: "verified" 
   if (decision === "rejected") c.available = false;
   notifyCreatorVerification(db, c, decision, now, doc?.rejectedNote);
   return c;
+}
+
+/**
+ * Everything the Srijan team may change on somebody else's profile.
+ *
+ * This is deliberately smaller than what the creator can change about themselves. Nothing here
+ * touches money (bank account, UPI), identity (the Aadhaar and its hash) or verification: a
+ * payout must go where the creator said, and a profile must not become verified because somebody
+ * edited a text box. Those have their own routes, with their own checks.
+ */
+export interface OpsCreatorPatch {
+  name?: string;
+  bio?: string;
+  cityId?: string;
+  zoneId?: string;
+  languages?: string[];
+  gear?: string[];
+  maxTravelKm?: number;
+  /** Portfolio link; an empty string removes it. */
+  portfolio?: string;
+  /** Main social account; an empty url removes it. */
+  social?: { platform?: string; url?: string };
+  followers?: number | null;
+  /** Ops can take a creator offline, but never put one online on their behalf. */
+  available?: false;
+  /** Throw away the profile photo, e.g. one that shouldn't be on the public directory. */
+  removePhoto?: boolean;
+}
+
+/**
+ * The Srijan team editing a creator's profile — to fix a name typed in the wrong case, cut a
+ * placeholder bio, or move somebody to the right area.
+ *
+ * Returns the ids of any documents the edit orphaned, for the caller to delete from the document
+ * store once the database is unlocked.
+ */
+export function updateCreatorByOps(db: DB, creatorId: string, patch: OpsCreatorPatch) {
+  const c = db.creators.find((x) => x.id === creatorId);
+  assert(c, "Creator not found", 404);
+  const orphaned: string[] = [];
+
+  if (patch.name !== undefined) {
+    const name = cleanText(patch.name, 80, "their name");
+    assert(name.length >= 2, "Enter their name");
+    c.name = name;
+    // The account and the profile carry the same name, and the ops team reads both.
+    const u = db.users.find((x) => x.id === c.userId);
+    if (u) u.name = name;
+  }
+  if (patch.bio !== undefined) c.bio = cleanText(patch.bio, 1000, "their bio", true);
+  if (patch.cityId !== undefined || patch.zoneId !== undefined) {
+    const place = findZone(patch.cityId ?? c.cityId, patch.zoneId ?? c.zoneId);
+    assert(place, "Pick a city and area");
+    // Moving someone moves where jobs are matched from, so the live position follows the new zone.
+    c.cityId = place.city.id;
+    c.zoneId = place.zone.id;
+    c.lat = place.zone.lat;
+    c.lng = place.zone.lng;
+  }
+  if (patch.languages !== undefined) {
+    const list = cleanList(patch.languages, 10, 30, "languages");
+    assert(list.length > 0, "Leave at least one language");
+    c.languages = list;
+  }
+  if (patch.gear !== undefined) c.gear = cleanList(patch.gear, 50, 60, "gear items");
+  if (patch.maxTravelKm !== undefined) {
+    assert([5, 10, 15, 20, 25].includes(Number(patch.maxTravelKm)), "Travel distance must be 5, 10, 15, 20 or 25 km");
+    c.maxTravelKm = Number(patch.maxTravelKm);
+  }
+  if (patch.portfolio !== undefined) c.portfolio = cleanPortfolio(patch.portfolio);
+  if (patch.social !== undefined) {
+    c.social = cleanSocial(patch.social);
+    if (c.social?.platform === "instagram") {
+      const handle = new URL(c.social.url).pathname.split("/")[1] ?? "";
+      if (/^[\w.]{1,30}$/.test(handle)) c.instagram = `@${handle}`;
+    }
+  }
+  if (patch.followers !== undefined) {
+    const n = patch.followers === null ? 0 : Number(patch.followers);
+    assert(Number.isInteger(n) && n >= 0 && n <= 1_000_000_000, "Follower count looks wrong");
+    c.followers = n || undefined;
+  }
+  if (patch.available === false) c.available = false;
+  if (patch.removePhoto && c.photo) {
+    orphaned.push(c.photo.id);
+    c.photo = undefined;
+  }
+  return { creator: c, orphaned };
+}
+
+/** Jobs that are still going: a creator in the middle of one cannot be deleted. */
+const LIVE_BOOKING = ["searching", "needs_ops", "awaiting_payment", "assigned", "delivered", "disputed"];
+
+/**
+ * Why this creator can't be deleted yet, or null when they can.
+ *
+ * Deleting is for the profiles that should never have been here — duplicates and test accounts —
+ * so it refuses the moment there is real work or real money attached. A creator in the middle of a
+ * job would leave a client waiting on somebody who no longer exists, and an unpaid earning would
+ * erase the record of what Srijan owes before it is sent.
+ */
+export function deleteBlocker(db: DB, creatorId: string) {
+  const live = db.bookings.filter((b) => (b.creatorId === creatorId || b.requestedCreatorId === creatorId) && LIVE_BOOKING.includes(b.status)).length;
+  if (live) return `They are on ${live} job${live === 1 ? "" : "s"} that ${live === 1 ? "is" : "are"} still going. Finish, cancel or reassign ${live === 1 ? "it" : "them"} first.`;
+  const owed = db.ledger.filter((l) => l.type === "creator_earning" && l.creatorId === creatorId && l.status === "processing");
+  if (owed.length) {
+    const total = owed.reduce((n, l) => n + l.amount, 0);
+    return `Srijan still owes them ₹${total.toLocaleString("en-IN")}. Mark the payout sent first — deleting them would erase the record of it.`;
+  }
+  const campaign = db.campaigns.find((c) => c.creators.some((x) => x.creatorId === creatorId && (x.status === "invited" || x.status === "accepted")));
+  if (campaign) return `They are booked on the ${campaign.brandName} campaign. Take them off it first.`;
+  return null;
+}
+
+/**
+ * Removes a creator and the account that signs in to them, for good.
+ *
+ * Finished jobs, reviews and ledger entries are deliberately left alone: they are Srijan's record
+ * of what happened and of money that moved, and every screen that reads them already copes with a
+ * creator who is no longer there. What goes is the profile, the login, anything still addressed to
+ * them, and the files they uploaded.
+ *
+ * Returns the document ids to delete from the document store once the database is unlocked.
+ */
+export function deleteCreator(db: DB, creatorId: string) {
+  const c = db.creators.find((x) => x.id === creatorId);
+  assert(c, "Creator not found", 404);
+  const blocker = deleteBlocker(db, creatorId);
+  assert(!blocker, blocker ?? "", 409);
+
+  const documents = [...aadhaarUploadIds(c), ...(c.photo ? [c.photo.id] : [])];
+  const removed = { id: c.id, name: c.name, userId: c.userId };
+
+  db.creators = db.creators.filter((x) => x.id !== creatorId);
+  db.users = db.users.filter((u) => u.id !== c.userId);
+  // Offers are an open question put to this creator; there is nobody left to answer.
+  db.offers = db.offers.filter((o) => o.creatorId !== creatorId);
+  if (db.notifications) db.notifications = db.notifications.filter((n) => n.userId !== c.userId);
+
+  return { removed, documents };
+}
+
+/**
+ * The creator's own profile photo. Replacing one leaves the old file pointed at by nothing, so the
+ * id comes back for the caller to delete from the document store.
+ */
+export function setCreatorPhoto(db: DB, creatorId: string, photo: UploadRef) {
+  const c = db.creators.find((x) => x.id === creatorId);
+  assert(c, "Creator not found", 404);
+  const orphaned = c.photo ? [c.photo.id] : [];
+  c.photo = photo;
+  return { creator: c, orphaned };
+}
+
+export function clearCreatorPhoto(db: DB, creatorId: string) {
+  const c = db.creators.find((x) => x.id === creatorId);
+  assert(c, "Creator not found", 404);
+  const orphaned = c.photo ? [c.photo.id] : [];
+  c.photo = undefined;
+  return { creator: c, orphaned };
 }

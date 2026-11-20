@@ -374,6 +374,23 @@ class Agent {
     const json = await res.json().catch(() => ({}));
     return { status: res.status, ...json };
   }
+  /** Sends a profile photo to /api/me/photo, the way the creator dashboard does. */
+  async uploadPhoto({ bytes = 4096, mime = "image/jpeg" } = {}) {
+    const form = new FormData();
+    form.set("photo", new Blob([new Uint8Array(bytes)], { type: mime }), "face.jpg");
+    const res = await fetch(`${BASE}/api/me/photo`, {
+      method: "POST",
+      headers: { Origin: BASE, "X-Forwarded-For": this.ip, ...(this.cookie ? { Cookie: this.cookie } : {}) },
+      body: form,
+    });
+    const json = await res.json().catch(() => ({}));
+    return { status: res.status, ...json };
+  }
+  /** Opens a profile photo with no session at all, the way any visitor would. */
+  async openPhotoAsStranger(url) {
+    const res = await fetch(BASE + url);
+    return { status: res.status, type: res.headers.get("content-type"), cache: res.headers.get("cache-control") };
+  }
   /** Opens one uploaded document the way a browser would. Returns the status, not the bytes. */
   async openDocument(id) {
     const res = await fetch(`${BASE}/api/kyc/document/${id}`, { headers: { Origin: BASE, ...(this.cookie ? { Cookie: this.cookie } : {}) } });
@@ -1018,6 +1035,71 @@ async function run() {
   ok(!!bijuOffer, "the verified one is");
   r = await biju.req(`/api/offers/${bijuOffer.id}`, { action: "accept" });
   ok(r.ok, "and can accept it");
+
+  // --- Profile photos ----------------------------------------------------------
+  // The one upload on Srijan that is meant to be seen. It must be reachable by anybody, and it
+  // must not become a way to reach an Aadhaar.
+  r = await ankita.req("/api/session");
+  ok(r.data.creator.photoUrl === null, "a creator starts with no profile photo, and is not pestered about it");
+  r = await ankita.uploadPhoto();
+  ok(r.ok && /^\/avatar\/doc_/.test(r.data.photoUrl), "Ankita adds a profile photo");
+  const firstPhoto = r.data.photoUrl;
+  r = await ankita.openPhotoAsStranger(firstPhoto);
+  ok(r.status === 200 && r.type === "image/jpeg" && /public/.test(r.cache ?? ""), "anybody can load it, signed out, and it caches");
+  r = await priya.req(`/api/creators/${cr.ankita}`);
+  ok(r.data.photoUrl === firstPhoto, "and clients get it with the profile");
+
+  // The two document stores stay apart: an Aadhaar id offered to the photo route is simply absent.
+  const aadhaarAsPhoto = await fetch(`${BASE}/avatar/${bijuDoc.frontId}`);
+  ok(aadhaarAsPhoto.status === 404, "an Aadhaar id handed to the photo route is not found");
+  const madeUpPhoto = await fetch(`${BASE}/avatar/doc_nothinghere`);
+  ok(madeUpPhoto.status === 404, "nor is an id for nothing at all");
+
+  r = await ankita.uploadPhoto({ bytes: 5000 });
+  const secondPhoto = r.data.photoUrl;
+  ok(r.ok && secondPhoto !== firstPhoto, "she replaces it with a different one");
+  r = await ankita.openPhotoAsStranger(firstPhoto);
+  ok(r.status === 404, "the photo she replaced is deleted, not just forgotten");
+
+  r = await ankita.uploadPhoto({ mime: "application/pdf" });
+  ok(r.status === 400 && /JPG, PNG or WEBP/.test(r.error), "a PDF is not a profile photo");
+  r = await priya.uploadPhoto();
+  ok(r.status === 403, "a client has no profile to put a photo on");
+
+  r = await ankita.req("/api/me/photo", undefined, "DELETE");
+  ok(r.ok && r.data.photoUrl === null, "she removes it again");
+  r = await ankita.openPhotoAsStranger(secondPhoto);
+  ok(r.status === 404, "and that file goes too");
+
+  // --- Ops editing and deleting creators ---------------------------------------
+  r = await ops.req("/api/admin");
+  const listed = r.data.creators.find((c) => c.id === cr.ankita);
+  ok(!!listed, "ops sees every creator already dealt with, not only the queue");
+  ok(!JSON.stringify(r.data.creators).includes("accountNumber"), "and the list carries no bank details");
+
+  r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { name: "Ankita Baruah", bio: "" } });
+  ok(r.ok && r.data.bio === "", "ops clears a placeholder bio");
+  r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { cityId: "guwahati", zoneId: "beltola" } });
+  ok(r.ok && /Beltola/.test(r.data.area), "and moves a creator to the right area");
+  r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { verification: "verified", upiId: "attacker@ybl" } });
+  ok(r.ok, "an edit carrying money and verification fields is accepted");
+  r = await ops.req("/api/admin");
+  ok(!JSON.stringify(r.data).includes("attacker@ybl"), "but those fields are ignored, not applied");
+
+  r = await priya.req("/api/admin", { action: "delete_creator", creatorId: cr.ankita });
+  ok(r.status === 403, "a client cannot delete a creator");
+  r = await ops.req("/api/admin", { action: "delete_creator", creatorId: cr.biju });
+  ok(r.status === 409 && /still going/.test(r.error), "ops cannot delete a creator in the middle of a job");
+
+  // Hemanta never worked: nothing is owed and nothing is live, so he can go.
+  r = await ops.req("/api/admin", { action: "delete_creator", creatorId: cr.hemanta });
+  ok(r.ok, "but a duplicate account that never worked is deleted");
+  r = await ops.req("/api/admin");
+  ok(!r.data.pendingCreators.some((c) => c.id === cr.hemanta) && !r.data.creators.some((c) => c.id === cr.hemanta), "and he is gone from both lists");
+  r = await hemanta.req("/api/session");
+  ok(!r.data?.user, "his login stops working at once");
+  r = await ops.req("/api/admin", { action: "delete_creator", creatorId: cr.hemanta });
+  ok(r.status === 404, "deleting him twice is simply not found");
 
   // --- Pages render ------------------------------------------------------------
   for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {

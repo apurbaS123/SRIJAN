@@ -79,6 +79,8 @@ export function creatorPublic(c: Creator) {
     instagram: c.instagram,
     portfolio: c.portfolio,
     social: c.social,
+    /** Public, unlike every other upload: anybody may load it. Null when they haven't added one. */
+    photoUrl: c.photo ? `/avatar/${c.photo.id}` : null,
     followers: c.followers,
     engagementRate: c.engagementRate,
     available: c.available,

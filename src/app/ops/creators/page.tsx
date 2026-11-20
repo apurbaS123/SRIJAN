@@ -5,10 +5,11 @@ import type { CreatorPublic } from "@/lib/domain/views";
 import type { KycSummary } from "@/lib/domain/kyc";
 import { Avatar, ErrorNote, Guard, PortfolioLink, SocialLink, Stars } from "@/components/ui";
 import { when } from "@/lib/client/format";
+import { CreatorRow, type OpsCreatorRow } from "./CreatorRow";
 
 interface AdminData {
   pendingCreators: (CreatorPublic & { kyc: KycSummary; phone?: string; email?: string })[];
-  creators: CreatorPublic[];
+  creators: OpsCreatorRow[];
 }
 
 function Creators() {
@@ -44,7 +45,7 @@ function Creators() {
         {data.pendingCreators.map((c) => (
           <article key={c.id} className="card stack">
             <div className="row">
-              <Avatar name={c.name} />
+              <Avatar name={c.name} photoUrl={c.photoUrl} />
               <div className="grow stack" style={{ gap: 2 }}>
                 <b>{c.name}</b>
                 <span className="small muted">
@@ -115,33 +116,14 @@ function Creators() {
         ))}
       </section>
       <section className="stack">
-        <h2>Verified ({data.creators.length})</h2>
-        <div className="table-wrap card">
-          <table>
-            <thead>
-              <tr>
-                <th>Creator</th>
-                <th>Area</th>
-                <th>Services</th>
-                <th>Same-day</th>
-                <th>Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.creators.map((c) => (
-                <tr key={c.id}>
-                  <td className="strong">{c.name}</td>
-                  <td>{c.area}</td>
-                  <td className="small">{c.services.map((s) => s.title).join(", ")}</td>
-                  <td>{c.available ? <span className="badge badge-green">Online · {c.maxTravelKm} km</span> : <span className="badge">Offline</span>}</td>
-                  <td>
-                    <Stars rating={c.rating} count={c.ratingCount} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <h2>All creators ({data.creators.length})</h2>
+        <p className="small muted">
+          Everyone already verified or sent back. Edit a profile to fix a name or clear a placeholder bio; delete one that should never have been here.
+        </p>
+        {data.creators.length === 0 && <p className="muted small">Nobody yet.</p>}
+        {data.creators.map((c) => (
+          <CreatorRow key={c.id} c={c} onChanged={() => void reload()} />
+        ))}
       </section>
     </div>
   );

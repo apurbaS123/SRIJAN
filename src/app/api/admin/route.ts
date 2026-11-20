@@ -1,6 +1,7 @@
 import { api, readJson } from "@/lib/server/api";
 import { bookingView, creatorPublic, opsOverview } from "@/lib/domain/views";
-import { setVerification } from "@/lib/domain/creators";
+import { deleteBlocker, deleteCreator, setVerification, updateCreatorByOps, type OpsCreatorPatch } from "@/lib/domain/creators";
+import { deleteDocuments } from "@/lib/server/uploads";
 import { kycSummary } from "@/lib/domain/kyc";
 import { markPayoutPaid, payoutsDue } from "@/lib/domain/payouts";
 import { markRefundSent, refundsDue } from "@/lib/domain/bookings";
@@ -39,7 +40,14 @@ export async function GET() {
             const u = db.users.find((x) => x.id === c.userId);
             return { ...creatorPublic(c), kyc: kycSummary(c), phone: u?.phone, email: u?.email };
           }),
-        creators: db.creators.filter((c) => c.verification === "verified").map(creatorPublic),
+        // Everyone already dealt with, verified or sent back. The ones still waiting are above, and
+        // this list is also what Creators is edited and tidied from, so it carries contact details.
+        creators: db.creators
+          .filter((c) => c.verification !== "pending")
+          .map((c) => {
+            const u = db.users.find((x) => x.id === c.userId);
+            return { ...creatorPublic(c), phone: u?.phone, email: u?.email, jobs: db.bookings.filter((b) => b.creatorId === c.id).length, blocker: deleteBlocker(db, c.id) };
+          }),
       };
     },
     { role: "ops" },
@@ -49,11 +57,16 @@ export async function GET() {
 type Action =
   | { action: "verify"; creatorId: string; decision: "verified" | "rejected"; kycChecked?: boolean; note?: string }
   | { action: "mark_paid"; payoutId: string; reference?: string }
-  | { action: "mark_refund_sent"; bookingId: string; reference?: string };
+  | { action: "mark_refund_sent"; bookingId: string; reference?: string }
+  | { action: "edit_creator"; creatorId: string; patch: OpsCreatorPatch }
+  | { action: "delete_creator"; creatorId: string };
 
 export async function POST(req: Request) {
   const body = await readJson<Action>(req);
-  return api(
+  // Filled in while the database is locked, deleted after the reply: the document store is a
+  // separate thing to talk to and nothing slow belongs inside the lock.
+  let orphaned: string[] = [];
+  const res = await api(
     ({ db, now, user }) => {
       switch (body.action) {
         case "verify": {
@@ -68,10 +81,25 @@ export async function POST(req: Request) {
         case "mark_refund_sent":
           markRefundSent(db, body.bookingId, body.reference, now);
           return { ok: true };
+        case "edit_creator": {
+          // Narrower than what a creator may change about themselves: no bank details, no Aadhaar,
+          // and no way to make somebody verified. See `updateCreatorByOps`.
+          const out = updateCreatorByOps(db, body.creatorId, body.patch ?? {});
+          orphaned = out.orphaned;
+          return { ...creatorPublic(out.creator), kyc: kycSummary(out.creator) };
+        }
+        case "delete_creator": {
+          // Refuses outright while there is live work or unpaid money. See `deleteBlocker`.
+          const out = deleteCreator(db, body.creatorId);
+          orphaned = out.documents;
+          return out.removed;
+        }
         default:
           throw new DomainError("Unknown action");
       }
     },
     { role: "ops" },
   );
+  if (res.status === 200 && orphaned.length) void deleteDocuments(orphaned);
+  return res;
 }

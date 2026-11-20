@@ -32,7 +32,7 @@ export default function CreatorProfile() {
         ← All creators
       </Link>
       <div className="row">
-        <Avatar name={c.name} large />
+        <Avatar name={c.name} photoUrl={c.photoUrl} large />
         <div className="stack grow" style={{ gap: 4 }}>
           <h1>{c.name}</h1>
           <span className="muted">

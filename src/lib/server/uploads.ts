@@ -32,11 +32,23 @@ import { storeSql } from "./store";
 export const DOCUMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 
-export type DocumentKind = "aadhaar_front" | "aadhaar_back";
+export type DocumentKind = "aadhaar_front" | "aadhaar_back" | "avatar";
+
+/**
+ * A profile photo, which is the one kind of upload here that is meant to be seen by anybody.
+ *
+ * It is smaller than an identity document on purpose: it is shown at avatar size and nothing is
+ * gained by keeping more. The browser shrinks it first (see `components/PhotoPicker.tsx`), so this
+ * limit is a backstop rather than something a creator is expected to meet by hand.
+ */
+export const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+export const MAX_AVATAR_BYTES = 1024 * 1024;
 
 export interface StoredDocument {
   bytes: Buffer;
   mime: string;
+  /** What this file is. The public photo route serves "avatar" and refuses everything else. */
+  kind: string;
 }
 
 const DIR = process.env.SRIJAN_UPLOAD_DIR || path.join(process.cwd(), ".data", "uploads");
@@ -95,12 +107,13 @@ export async function getDocument(id: string): Promise<StoredDocument | null> {
   const sql = storeSql();
   if (sql) {
     await ensureSchema(sql);
-    const [row] = await sql`select mime, bytes from srijan.documents where id = ${id}`;
-    return row ? { bytes: Buffer.from(row.bytes as Buffer), mime: String(row.mime) } : null;
+    const [row] = await sql`select mime, kind, bytes from srijan.documents where id = ${id}`;
+    return row ? { bytes: Buffer.from(row.bytes as Buffer), mime: String(row.mime), kind: String(row.kind) } : null;
   }
   try {
     const [bytes, meta] = await Promise.all([fs.readFile(path.join(DIR, `${id}.bin`)), fs.readFile(path.join(DIR, `${id}.json`), "utf8")]);
-    return { bytes, mime: String((JSON.parse(meta) as UploadRef).mime || "application/octet-stream") };
+    const saved = JSON.parse(meta) as UploadRef & { kind?: string };
+    return { bytes, mime: String(saved.mime || "application/octet-stream"), kind: String(saved.kind || "") };
   } catch {
     return null;
   }

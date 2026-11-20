@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { call, useAction, useData, useTick } from "@/lib/client/api";
+import { call, callForm, useAction, useData, useTick } from "@/lib/client/api";
 import type { BookingView, CreatorPublic, OfferView, SentOfferView } from "@/lib/domain/views";
-import { ErrorNote, Guard, SocialLink, StatusBadge } from "@/components/ui";
+import { Avatar, ErrorNote, Guard, SocialLink, StatusBadge } from "@/components/ui";
 import { SOCIAL_PLATFORMS } from "@/lib/domain/config";
 import type { SocialPlatform } from "@/lib/domain/types";
 import { useSession } from "@/components/Session";
@@ -13,6 +13,7 @@ import { PAYOUT_WINDOW_TEXT } from "@/lib/domain/config";
 import type { Wallet } from "@/lib/domain/wallet";
 import type { KycSummary } from "@/lib/domain/kyc";
 import { PushToggle } from "@/components/PushToggle";
+import { PhotoPicker } from "@/components/PhotoPicker";
 
 /** Short beep so creators don't miss an alert (works after the first tap on the page). */
 function beep() {
@@ -218,6 +219,7 @@ function Home() {
       <WalletCard />
       <VerificationCard kyc={me.kyc} verified={me.verification === "verified"} digilocker={digilocker} />
 
+      <PhotoCard name={me.name} photoUrl={me.photoUrl} />
       <PortfolioCard url={me.portfolio} />
       <SocialCard social={me.social} followers={me.followers} />
 
@@ -402,6 +404,62 @@ function VerificationCard({ kyc, verified, digilocker }: { kyc: KycSummary; veri
         </div>
       )}
       {dl && !verified && <span className="tiny muted">Waiting on the Srijan team for the last check.</span>}
+    </section>
+  );
+}
+
+/**
+ * The creator's profile photo, which clients see on the directory and on their profile.
+ *
+ * Optional, and said to be: a creator without one gets their initials on a coloured circle, which
+ * is a perfectly good avatar and not a gap to be nagged about.
+ */
+function PhotoCard({ name, photoUrl }: { name: string; photoUrl: string | null }) {
+  const { refresh } = useSession();
+  const [file, setFile] = useState<File | null>(null);
+  const { busy, error, run } = useAction();
+
+  async function save() {
+    if (!file) return;
+    const form = new FormData();
+    form.set("photo", file);
+    if (await run(() => callForm("/api/me/photo", form))) {
+      setFile(null);
+      await refresh();
+    }
+  }
+
+  async function remove() {
+    if (!confirm("Remove your profile photo? Clients will see your initials instead.")) return;
+    if (await run(() => call("/api/me/photo", undefined, "DELETE"))) await refresh();
+  }
+
+  return (
+    <section className="card stack">
+      <h2>Profile photo</h2>
+      <div className="row" style={{ alignItems: "center", gap: 12 }}>
+        <Avatar name={name} photoUrl={photoUrl} large />
+        <span className="small muted grow">
+          {photoUrl ? "Clients see this on your profile and in search." : "Clients see your initials. A photo makes a profile easier to trust."}
+        </span>
+        {photoUrl && !file && (
+          <button className="btn btn-sm" disabled={busy} onClick={() => void remove()}>
+            Remove
+          </button>
+        )}
+      </div>
+      <PhotoPicker file={file} onPick={setFile} busy={busy} />
+      <ErrorNote error={error} />
+      {file && (
+        <div className="row">
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void save()}>
+            {busy ? "Uploading…" : photoUrl ? "Use this photo" : "Save photo"}
+          </button>
+          <button className="btn btn-sm" disabled={busy} onClick={() => setFile(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -191,7 +191,7 @@ function Tracking() {
         <section className="card stack">
           <h2>Contact</h2>
           <div className="row">
-            <Avatar name={b.creator.name} />
+            <Avatar name={b.creator.name} photoUrl={b.creator.photoUrl} />
             <div className="grow stack" style={{ gap: 2 }}>
               <b>{b.creator.name}</b>
               <Stars rating={b.creator.rating} count={b.creator.ratingCount} />
