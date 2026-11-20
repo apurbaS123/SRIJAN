@@ -148,15 +148,21 @@ export function paymentDeadline(acceptedAt: number, scheduledAt: number) {
 
 export const CAMPAIGN_COMMISSION = { min: 0.3, max: 0.35, default: 0.3 };
 
-export const SERVICES: { key: ServiceKey; label: string }[] = [
-  { key: "influencer", label: "Influencers" },
-  { key: "videography", label: "Videographers" },
-  { key: "video_editing", label: "Video editors" },
-  { key: "photography", label: "Photographers" },
-  { key: "graphic_design", label: "Graphic designers" },
-  { key: "content_writing", label: "Content writers" },
-  { key: "voice_over", label: "Voice-over artists" },
-  { key: "social_media", label: "Social media managers" },
+/**
+ * `label` names a category of people, so it is plural: it heads a filter and a list. `one` is the
+ * same trade said of a single person, for a sentence about one creator — a page title, or the
+ * description Google shows. Stripping the "s" happens to work for all eight today and would stop
+ * working the moment a trade doesn't pluralise that way, so both are written out.
+ */
+export const SERVICES: { key: ServiceKey; label: string; one: string }[] = [
+  { key: "influencer", label: "Influencers", one: "influencer" },
+  { key: "videography", label: "Videographers", one: "videographer" },
+  { key: "video_editing", label: "Video editors", one: "video editor" },
+  { key: "photography", label: "Photographers", one: "photographer" },
+  { key: "graphic_design", label: "Graphic designers", one: "graphic designer" },
+  { key: "content_writing", label: "Content writers", one: "content writer" },
+  { key: "voice_over", label: "Voice-over artists", one: "voice-over artist" },
+  { key: "social_media", label: "Social media managers", one: "social media manager" },
 ];
 
 export interface Zone {
@@ -275,4 +281,9 @@ export function findZone(cityId: string, zoneId: string) {
 
 export function serviceLabel(key: ServiceKey) {
   return SERVICES.find((s) => s.key === key)?.label ?? key;
+}
+
+/** The trade as said of one person, lower case: "videographer". For sentences about one creator. */
+export function serviceOne(key: ServiceKey) {
+  return SERVICES.find((s) => s.key === key)?.one ?? key;
 }

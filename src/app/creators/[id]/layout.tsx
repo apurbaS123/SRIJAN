@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { SITE, creatorPath } from "@/lib/seo";
 import { placeName } from "@/lib/domain/views";
-import { serviceLabel } from "@/lib/domain/config";
+import { serviceOne } from "@/lib/domain/config";
 import { withDb } from "@/lib/server/store";
 
 /**
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       name: x.name,
       bio: x.bio,
       area: placeName(x.cityId, x.zoneId),
-      services: x.services.map((s) => serviceLabel(s.key)),
+      services: x.services.map((s) => serviceOne(s.key)),
       photo: x.photo?.id ?? null,
     };
   }).catch(() => ({ result: null }));
@@ -39,12 +39,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     };
   }
 
-  const trade = c.services[0] ?? "Creator";
-  const title = c.area ? `${c.name} — ${trade} in ${c.area}` : `${c.name} — ${trade}`;
+  // Said of one person, so the trade is singular: "Videographer in Beltola", never
+  // "Videographers in Beltola", which reads as a category page.
+  const trade = c.services[0] ?? "creator";
+  const Trade = trade.charAt(0).toUpperCase() + trade.slice(1);
+  const title = c.area ? `${c.name} — ${Trade} in ${c.area}` : `${c.name} — ${Trade}`;
   // The creator's own words where there are any, since that is what a person searching wants to
   // read. Long bios are cut at a word rather than mid-syllable.
   const bio = c.bio.replace(/\s+/g, " ").trim();
-  const description = bio.length > 20 ? clamp(bio, 155) : `Book ${c.name}${c.area ? `, a verified Srijan ${trade.toLowerCase()} in ${c.area}` : ""}. Fixed prices, and the work transferred on the spot.`;
+  const description = bio.length > 20 ? clamp(bio, 155) : `Book ${c.name}, a verified Srijan ${trade}${c.area ? ` in ${c.area}` : ""}. Fixed prices, and the work transferred on the spot.`;
   const path = creatorPath(id);
 
   return {

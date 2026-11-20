@@ -1116,6 +1116,8 @@ async function run() {
   const profile = await (await fetch(`${BASE}/creators/${cr.ankita}`)).text();
   ok(new RegExp(`rel="canonical" href="[^"]*/creators/${cr.ankita}"`).test(profile), "a profile is its own canonical, not the homepage");
   ok(/<title>Ankita Baruah/.test(profile), "and carries the creator's own name in its title");
+  // Said of one person: "Videographer in Beltola", not the plural category name.
+  ok(/<title>Ankita Baruah — Videographer in /.test(profile), "with the trade in the singular, not the category name");
 
   const unverifiedProfile = await (await fetch(`${BASE}/creators/${cr.jonali}`)).text();
   ok(/noindex/.test(unverifiedProfile), "an unverified profile asks not to be indexed");
