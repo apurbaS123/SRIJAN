@@ -32,6 +32,15 @@ export const INDEXABLE_ROUTES = [
   { path: "/privacy", priority: 0.3, changeFrequency: "yearly" as const },
 ];
 
+/**
+ * Creator profiles, which are listed in the sitemap one per verified creator rather than written
+ * out here. Below the hub pages on purpose: a profile is worth less than /creators itself, and it
+ * changes when the creator goes online or finishes a job.
+ */
+export const CREATOR_PROFILE = { priority: 0.5, changeFrequency: "weekly" as const };
+
+export const creatorPath = (id: string) => `/creators/${id}`;
+
 type PageMeta = {
   /** Short title; the root layout's template wraps it as "<title> — Srijan". */
   title: string;

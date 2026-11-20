@@ -1101,6 +1101,25 @@ async function run() {
   r = await ops.req("/api/admin", { action: "delete_creator", creatorId: cr.hemanta });
   ok(r.status === 404, "deleting him twice is simply not found");
 
+  // --- Sitemap and canonicals --------------------------------------------------
+  // Asserted on the path, not the whole URL: the host comes from SRIJAN_SITE_URL, which differs
+  // between a local run and production, and is not what these checks are about.
+  const jonali = new Agent("Jonali Devi", "jonali@creators.test", "9864077777");
+  cr.jonali = await jonali.joinAsCreator("guwahati", "dispur");
+
+  const sitemap = await (await fetch(`${BASE}/sitemap.xml`)).text();
+  ok(sitemap.includes(`/creators/${cr.ankita}</loc>`), "the sitemap lists a verified creator's profile");
+  ok(!sitemap.includes(cr.jonali), "and leaves out one nobody has verified yet");
+  ok(!sitemap.includes(cr.hemanta), "and a deleted creator is gone from it");
+  ok(/<loc>[^<]*\/creators<\/loc>/.test(sitemap) && /<loc>[^<]*\/privacy<\/loc>/.test(sitemap), "the fixed pages are all still there");
+
+  const profile = await (await fetch(`${BASE}/creators/${cr.ankita}`)).text();
+  ok(new RegExp(`rel="canonical" href="[^"]*/creators/${cr.ankita}"`).test(profile), "a profile is its own canonical, not the homepage");
+  ok(/<title>Ankita Baruah/.test(profile), "and carries the creator's own name in its title");
+
+  const unverifiedProfile = await (await fetch(`${BASE}/creators/${cr.jonali}`)).text();
+  ok(/noindex/.test(unverifiedProfile), "an unverified profile asks not to be indexed");
+
   // --- Pages render ------------------------------------------------------------
   for (const p of ["/", "/login", "/creators", `/creators/${cr.ankita}`, "/book", "/bookings", `/bookings/${b1.id}`, "/campaigns", "/brands", "/join", "/creator", `/creator/jobs/${b1.id}`, "/creator/payout", "/creator/wallet", "/creator/kyc", "/creator/campaigns", "/ops", "/ops/campaigns", "/ops/creators", "/faqs", "/terms", "/privacy", "/how-it-works", "/about", "/support"]) {
     const res = await fetch(BASE + p);
