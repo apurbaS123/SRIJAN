@@ -32,6 +32,19 @@ export function Browse({ initial }: { initial: CreatorPublic[] }) {
   const pristine = !service && !state && !available && !q.trim();
   const list = data ?? (pristine ? initial : undefined);
 
+  /**
+   * The states the directory can actually answer for, in the order `meta.states` gives them.
+   *
+   * Srijan takes creators from any of the 36, so offering all 36 here would mean 30-odd choices
+   * that can only answer "no creators match these filters yet" — a filter that mostly wastes the
+   * tap. Only states somebody is actually listed in are offered.
+   *
+   * Built from `initial` and never from `list`: `list` is what the filters have already narrowed,
+   * so building the options out of it would remove the option the person had just chosen, along
+   * with every other state, the moment they chose one.
+   */
+  const states = (meta?.states ?? []).filter((s) => initial.some((c) => c.stateId === s.id));
+
   return (
     <>
       <div className="row between">
@@ -59,17 +72,20 @@ export function Browse({ initial }: { initial: CreatorPublic[] }) {
           ))}
         </div>
         <div className="row">
-          <div className="field" style={{ minWidth: 200 }}>
-            <label htmlFor="state">State</label>
-            <select id="state" className="select" value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">All India</option>
-              {meta?.states.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Nobody listed anywhere yet: a dropdown whose only entry is "All India" is not a filter. */}
+          {states.length > 0 && (
+            <div className="field" style={{ minWidth: 200 }}>
+              <label htmlFor="state">State</label>
+              <select id="state" className="select" value={state} onChange={(e) => setState(e.target.value)}>
+                <option value="">All India</option>
+                {states.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <label className="check" style={{ alignSelf: "flex-end" }}>
             <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} />
             Online now
