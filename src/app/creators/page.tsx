@@ -50,8 +50,8 @@ export default async function CreatorsPage() {
           : `Verified creators across India — ${services}.`}{" "}
         Every profile here has had its Aadhaar read and approved by someone on the Srijan team, which is what lets a creator accept
         paid work at all. Prices are fixed by <Link href="/book">the service menu</Link>, not set per creator, so the figure on a
-        profile is the figure you pay. Browse by craft, by state or by who is online right now, send the job to the one you want, and
-        pay only once they have accepted it.
+        profile is the figure you pay. Search by name or skill, narrow by craft or by who is online right now, send the job to the one
+        you want, and pay only once they have accepted it.
       </p>
 
       {/* `Browse` reads the query string, so this page is rendered per request (above) and

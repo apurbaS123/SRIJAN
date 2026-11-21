@@ -6,9 +6,21 @@ import CodeSlots, { isCodeError } from "@/components/CodeSlots";
 import { when } from "@/lib/client/format";
 import { useSession } from "@/components/Session";
 import Link from "next/link";
+import { STATES } from "@/lib/domain/config";
 
 const GOALS = ["Product launch", "Brand awareness", "Store footfall", "Online sales", "App installs", "Event promotion"];
-const REGIONS = ["Assam", "Meghalaya", "Arunachal Pradesh", "Nagaland", "Manipur", "Mizoram", "Tripura", "Sikkim", "All 8 NE states", "Pan-India"];
+/**
+ * Where a brand's customers are.
+ *
+ * This was the eight North East states and "Pan-India", from when Srijan was six cities in two of
+ * them. Creators now sign up from any state, so a brand that sells in Pune had to answer the
+ * question wrongly. The chips are the two answers most brands give; any state can be added to
+ * them, and `PAN` is exclusive because "everywhere" and "these three states" are different briefs.
+ */
+const PAN = "Pan-India";
+const NORTH_EAST = "All 8 NE states";
+/** `campaigns.ts` allows 10, and enforces it server-side. This is the same limit, said early. */
+const MAX_REGIONS = 10;
 const BUDGETS = ["₹1 – 3 lakh", "₹3 – 10 lakh", "₹10 lakh +", "Not sure yet"];
 const SLOTS = ["11:00", "14:30", "17:00"];
 const IST = 5.5 * 3600_000;
@@ -36,7 +48,7 @@ export function BrandCallForm() {
     email: session?.user?.email ?? "",
     phone: session?.user?.phone ?? "",
     goal: GOALS[0]!,
-    regions: ["Assam"],
+    regions: [NORTH_EAST],
     budgetRange: BUDGETS[1]!,
     day: days[0]!,
     slot: SLOTS[1]!,
@@ -203,14 +215,44 @@ export function BrandCallForm() {
         </div>
         <span className="label">Where are your customers?</span>
         <div className="chips" role="group" aria-label="Regions">
-          {REGIONS.map((r) => {
+          {[PAN, NORTH_EAST].map((r) => {
             const on = form.regions.includes(r);
+            // Either broad answer replaces whatever else was picked: they are not a longer list.
             return (
-              <button key={r} aria-pressed={on} className={`chip${on ? " on-violet" : ""}`} onClick={() => set("regions", on ? form.regions.filter((x) => x !== r) : [...form.regions, r])}>
+              <button key={r} aria-pressed={on} className={`chip${on ? " on-violet" : ""}`} onClick={() => set("regions", on ? [] : [r])}>
                 {r}
               </button>
             );
           })}
+          {form.regions
+            .filter((r) => r !== PAN && r !== NORTH_EAST)
+            .map((r) => (
+              <button key={r} aria-pressed className="chip on-violet" aria-label={`${r} — remove`} onClick={() => set("regions", form.regions.filter((x) => x !== r))}>
+                {r} ×
+              </button>
+            ))}
+        </div>
+        <div className="field" style={{ maxWidth: 260 }}>
+          <label htmlFor="region-add">Or name the states</label>
+          <select
+            id="region-add"
+            className="select"
+            value=""
+            disabled={form.regions.filter((r) => r !== PAN && r !== NORTH_EAST).length >= MAX_REGIONS}
+            onChange={(e) => {
+              const picked = e.target.value;
+              if (!picked) return;
+              // Naming a state is a narrower answer than either chip, so it clears them.
+              set("regions", [...form.regions.filter((r) => r !== PAN && r !== NORTH_EAST), picked]);
+            }}
+          >
+            <option value="">Add a state…</option>
+            {STATES.filter((st) => !form.regions.includes(st.name)).map((st) => (
+              <option key={st.id} value={st.name}>
+                {st.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="field">
           <label htmlFor="budget">Budget</label>

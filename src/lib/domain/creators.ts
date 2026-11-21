@@ -326,7 +326,7 @@ export function updateCreatorByOps(db: DB, creatorId: string, patch: OpsCreatorP
   if (patch.bio !== undefined) c.bio = cleanText(patch.bio, 1000, "their bio", true);
   if (patch.stateId !== undefined || patch.city !== undefined) {
     const place = resolvePlace({ stateId: patch.stateId ?? c.stateId, city: patch.city ?? c.city });
-    // Moving someone moves where jobs are matched from, so the live position follows the new zone.
+    // Moving someone moves where jobs are matched from, so the live position follows the new city.
     c.stateId = place.stateId;
     c.city = place.city;
     // Moving someone by hand loses whatever precise point they had: the middle of the state is

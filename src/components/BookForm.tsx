@@ -305,6 +305,8 @@ export function BookForm({ meta, creator: chosen }: { meta: Meta; creator?: Crea
           <LocationPickerModal
             onConfirm={(addr) => setAddress(addr)}
             onClose={() => setShowMapPicker(false)}
+            /* Open on the city they typed above, rather than on a city Srijan happened to launch in. */
+            center={{ lat: place.lat, lng: place.lng }}
           />
         )}
       </section>

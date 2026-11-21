@@ -5,5 +5,5 @@ export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
 
 export default function Image() {
-  return ogImage({ title: "Create it today.", subtitle: "Verified videographers, photographers, editors and influencers across the North East. Fixed prices, paid safely through Srijan." });
+  return ogImage({ title: "Create it today.", subtitle: "Verified videographers, photographers, editors and influencers across India. Fixed prices, paid safely through Srijan." });
 }

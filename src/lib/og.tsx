@@ -87,7 +87,9 @@ export function ogImage({ title, subtitle, tag }: { title: string; subtitle: str
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 24, color: "rgba(245,240,255,0.55)" }}>
           <div style={{ display: "flex" }}>srijanclub.in</div>
-          <div style={{ display: "flex" }}>Guwahati · Shillong · Jorhat · Dibrugarh · Silchar · Tezpur</div>
+          {/* Not a city list: there is no longer one to print, and a stale one here is on every
+              link anybody shares. */}
+          <div style={{ display: "flex" }}>Across India</div>
         </div>
       </div>
     ),

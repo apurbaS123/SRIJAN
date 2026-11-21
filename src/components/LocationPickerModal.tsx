@@ -19,13 +19,24 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface Props {
   onConfirm: (address: string) => void;
   onClose: () => void;
+  /**
+   * Where to open the map when the browser will not say where the person is.
+   *
+   * The form above this already knows roughly: it asked for a state and a city and looked the
+   * pair up. Passing that in matters more than it used to — the map used to open on Guwahati
+   * because Guwahati was one of six places a job could be, and now a job can be anywhere in
+   * India, so a fixed city would be the wrong one almost every time.
+   */
+  center?: { lat?: number; lng?: number };
 }
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
-const DEFAULT_LAT = 26.1445; // Guwahati centre
-const DEFAULT_LNG = 91.7362;
+/** The whole country, for when nothing better is known. Zoomed right out, because it is a guess. */
+const INDIA = { lat: 22.9734, lng: 78.6569, zoom: 5 };
+/** Close enough to drop a pin on a doorway. */
+const PIN_ZOOM = 17;
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
   const res = await fetch(
@@ -76,7 +87,13 @@ function loadLeaflet(): Promise<void> {
 /* ------------------------------------------------------------------ */
 /* Component                                                            */
 /* ------------------------------------------------------------------ */
-export default function LocationPickerModal({ onConfirm, onClose }: Props) {
+export default function LocationPickerModal({ onConfirm, onClose, center }: Props) {
+  /**
+   * Read once, at mount. The modal is mounted fresh every time it is opened, so there is nothing
+   * to miss — and the form above passes a new object on every keystroke, so watching this value
+   * would tear the map down and rebuild it while somebody was still typing their address.
+   */
+  const openAt = useRef(center);
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const leafletMapRef = useRef<any>(null);
@@ -113,24 +130,28 @@ export default function LocationPickerModal({ onConfirm, onClose }: Props) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const L = (window as unknown as Record<string, any>).L;
 
-        // Default to Guwahati; try GPS first
-        let lat = DEFAULT_LAT;
-        let lng = DEFAULT_LNG;
+        // GPS if they will give it, then the city they typed, then the country zoomed out.
+        const from = openAt.current;
+        const typed = Number.isFinite(from?.lat) && Number.isFinite(from?.lng) ? { lat: from!.lat!, lng: from!.lng! } : null;
+        let lat = typed?.lat ?? INDIA.lat;
+        let lng = typed?.lng ?? INDIA.lng;
+        let zoom = typed ? PIN_ZOOM : INDIA.zoom;
         try {
           const pos = await new Promise<GeolocationPosition>((res, rej) =>
             navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
           );
           lat = pos.coords.latitude;
           lng = pos.coords.longitude;
+          zoom = PIN_ZOOM;
         } catch {
-          /* use default */
+          /* keep whatever the form already knew */
         }
 
         if (cancelled || !mapRef.current) return;
 
         const map = L.map(mapRef.current, {
           center: [lat, lng],
-          zoom: 17,
+          zoom,
           zoomControl: false,
           attributionControl: false,
         });

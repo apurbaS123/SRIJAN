@@ -24,7 +24,7 @@ const faqs = () => [
   },
   {
     q: "Which cities do you cover?",
-    a: "The city list on the booking and creators pages shows where on-site jobs are available right now. Online jobs like video editing don’t depend on your location.",
+    a: "There is no fixed list. You pick your state and type your city or town when you book, anywhere in India, and the job goes to verified creators near you. Whether anyone is near you is the real question, so the creators page shows where the people actually listed today are working. Online jobs like video editing and design don’t depend on your location at all.",
   },
   {
     q: "When do I pay?",

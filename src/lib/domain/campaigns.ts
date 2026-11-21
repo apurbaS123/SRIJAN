@@ -41,7 +41,9 @@ export function createCampaign(db: DB, input: NewCampaignInput, userId: string |
     email,
     phone,
     goal: cleanText(input.goal, 100, "the goal", true) || "Brand awareness",
-    regions: regions.length ? regions : ["Assam"],
+    // Nobody answered. Saying "Assam" for them was a leftover from the six-city days: the ops
+    // team reading this needs to know it is an unanswered question, not a stated region.
+    regions: regions.length ? regions : ["Not specified"],
     budgetRange: cleanText(input.budgetRange, 60, "the budget", true) || "Not sure yet",
     callAt,
     callMode,
