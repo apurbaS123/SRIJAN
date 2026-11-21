@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BookFormLoader } from "./BookFormLoader";
-import { CITIES, DISPATCH, SERVICES, lowestPrice, sellable } from "@/lib/domain/config";
+import { DISPATCH, SERVICES, lowestPrice, sellable } from "@/lib/domain/config";
 import { JsonLd } from "@/components/JsonLd";
 import { breadcrumbSchema, serviceListSchema } from "@/lib/schema";
 import { siteUrl } from "@/lib/server/env";
@@ -61,7 +61,8 @@ export default function BookPage() {
           Booking is free and nothing is charged up front. Once a creator accepts, you are asked to pay — and paying is what hands
           the job over and swaps your contact details with theirs. If nobody accepts, you owe nothing. On-site jobs need at least{" "}
           {hours} {hours === 1 ? "hour" : "hours"} notice so the creator can reach you; online work can be booked for any time.
-          Srijan covers {CITIES.length} cities: {CITIES.map((c) => c.name).join(", ")}.
+          Srijan is not limited to a list of cities: pick your state and type the city or town the job is in, and it goes to
+          verified creators near you. Online work has no location at all and can be booked from anywhere in India.
         </p>
         <p className="small muted">
           Want one particular person? Open their profile in <Link href="/creators">the directory</Link> and send the job to them

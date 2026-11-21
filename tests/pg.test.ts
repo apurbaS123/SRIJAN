@@ -66,9 +66,35 @@ describe.skipIf(!local)("Postgres store", () => {
     const [u] = await sql`select name, email, role, created_at from srijan.users where id = 'u_priya'`;
     expect(u).toMatchObject({ name: "Priya Sharma", email: "priya@cafebrahma.in", role: "client" });
     expect((u!.created_at as Date).getTime()).toBe(T0);
-    const [c] = await sql`select verification, available from srijan.creators where id = 'cr_ankita'`;
-    expect(c).toMatchObject({ verification: "verified" });
+    const [c] = await sql`select verification, available, city, state from srijan.creators where id = 'cr_ankita'`;
+    expect(c).toMatchObject({ verification: "verified", city: "Guwahati", state: "assam" });
     expect(typeof c!.available).toBe("boolean");
+  });
+
+  it("re-points a readable column that used to read a field records no longer carry", async () => {
+    // A database set up before states existed: `city` read `cityId`, and there was an `area`
+    // column reading `zoneId`. Neither field is written any more, so both would return null for
+    // every record saved from now on unless setup notices and rebuilds them.
+    await sql`create schema srijan`;
+    await sql`create table srijan.creators (
+      id text primary key,
+      city text generated always as ((data->>'cityId')) stored,
+      area text generated always as ((data->>'zoneId')) stored,
+      data jsonb not null,
+      ord bigserial not null)`;
+    await ensureSchema(sql, () => seedDb(T0));
+
+    const [c] = await sql`select city, state from srijan.creators where id = 'cr_ankita'`;
+    expect(c).toMatchObject({ city: "Guwahati", state: "assam" });
+    const cols = await sql`select column_name from information_schema.columns where table_schema = 'srijan' and table_name = 'creators'`;
+    expect(cols.map((r) => r.column_name)).not.toContain("area");
+    // The records themselves are untouched by any of it.
+    expect((await read()).db).toEqual(JSON.parse(JSON.stringify(seedDb(T0))));
+
+    // And a second start-up leaves the columns exactly as they now are.
+    await ensureSchema(sql, empty);
+    const again = await sql`select city, state from srijan.creators where id = 'cr_ankita'`;
+    expect(again[0]).toMatchObject({ city: "Guwahati", state: "assam" });
   });
 
   it("runs requests one at a time, so concurrent changes are never lost", async () => {

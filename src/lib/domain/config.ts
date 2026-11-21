@@ -248,7 +248,18 @@ export interface City {
   zones: Zone[];
 }
 
-/** Launch cities. Coordinates are approximate — swap for a geocoding API later. */
+/**
+ * The six launch cities, and their areas — **history, not coverage.**
+ *
+ * Nothing on the site offers this list any more: a form asks for a state and a typed city (see
+ * `place.ts`), and `areaServed` in `schema.ts` is the country. It is kept only so a record saved
+ * when these ids were the only way to say where somebody was can still be read: `migratePlace` in
+ * `views.ts` turns an old `cityId` into a state and a city name, using the coordinates below,
+ * which are real points rather than guesses. The test fixtures use it for the same reason — a
+ * distance test needs a known point.
+ *
+ * Do not add to it, and do not show it to anyone.
+ */
 export const CITIES: City[] = [
   {
     id: "guwahati",

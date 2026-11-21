@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   CAMPAIGN_COMMISSION,
   CAMPAIGN_STAGES,
-  CITIES,
   CREATOR_SHARE,
   DISPATCH,
   PACKAGES,
@@ -11,13 +10,12 @@ import {
   STATES,
 } from "@/lib/domain/config";
 
-/** Static settings the screens need (packages, cities, rules). */
+/** Static settings the screens need (packages, states, rules). */
 export async function GET() {
   return NextResponse.json({
     ok: true,
     data: {
       packages: PACKAGES.filter((p) => !p.retired),
-      cities: CITIES,
       states: STATES,
       services: SERVICES,
       creatorShare: CREATOR_SHARE,

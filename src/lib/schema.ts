@@ -8,7 +8,7 @@
 //
 // Nothing is invented. A fact the site does not actually know — the registered company name, the
 // founding year, a postal address — is left out rather than filled with something plausible.
-import { CITIES, SERVICES, SUPPORT_EMAIL, SUPPORT_PHONE, sellable } from "@/lib/domain/config";
+import { SERVICES, SUPPORT_EMAIL, SUPPORT_PHONE, sellable } from "@/lib/domain/config";
 import type { ServiceKey } from "@/lib/domain/types";
 import { SITE, SITE_DESCRIPTION } from "@/lib/seo";
 
@@ -40,7 +40,15 @@ const craft = (key: ServiceKey) =>
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 
-const areaServed = CITIES.map((c) => ({ "@type": "City", name: c.name, address: { "@type": "PostalAddress", addressRegion: c.state, addressCountry: "IN" } }));
+/**
+ * Where Srijan will take a job. This was a list of six named cities, which is no longer what the
+ * site does: a client picks any state and types any city, and an online job has no place at all.
+ *
+ * So the honest answer is the country, and only the country. Naming cities here would be a claim
+ * about each one — that there is coverage in it — which a list copied from a dropdown cannot make.
+ * Where the creators actually are is a question the directory answers, truthfully, per creator.
+ */
+const areaServed = { "@type": "Country", name: "India" };
 
 /**
  * Who Srijan is. Lives on every page via the root layout, with an `@id` the other blocks point at

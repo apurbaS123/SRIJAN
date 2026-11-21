@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { JoinForm } from "./JoinForm";
 import { LaunchSticker } from "@/components/ui";
-import { CITIES, CREATOR_SHARE, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SERVICES, sellable } from "@/lib/domain/config";
+import { CREATOR_SHARE, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SERVICES, sellable } from "@/lib/domain/config";
 
 /**
  * Signing up as a creator.
@@ -55,8 +55,9 @@ export default function JoinPage() {
           clients trust the directory. Srijan keeps only the last four digits of the number.
         </p>
         <p className="small muted">
-          We list {SERVICES.length} kinds of work — {SERVICES.map((s) => s.label.toLowerCase()).join(", ")} — across{" "}
-          {CITIES.length} cities: {CITIES.map((c) => c.name).join(", ")}. See{" "}
+          We list {SERVICES.length} kinds of work — {SERVICES.map((s) => s.label.toLowerCase()).join(", ")} — and you can join
+          from anywhere in India: you pick your state and type the city or town you work out of, and jobs near you come to you.
+          See{" "}
           <Link href="/creators">creators already on Srijan</Link>, the <Link href="/book">services and prices</Link> clients book
           from, or <Link href="/how-it-works">how it works</Link> end to end.
         </p>

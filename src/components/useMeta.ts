@@ -1,11 +1,10 @@
 "use client";
 import { useData } from "@/lib/client/api";
-import type { City, IndianState, ShootPackage } from "@/lib/domain/config";
+import type { IndianState, ShootPackage } from "@/lib/domain/config";
 import type { CampaignStage, ServiceKey } from "@/lib/domain/types";
 
 export interface Meta {
   packages: ShootPackage[];
-  cities: City[];
   states: IndianState[];
   services: { key: ServiceKey; label: string }[];
   creatorShare: number;

@@ -32,6 +32,30 @@ const RZP_SECRET = "smoke-razorpay-key-secret";
 const RZP_WEBHOOK_SECRET = "smoke-razorpay-webhook-secret";
 const DRIVE_URL = "https://drive.google.com/drive/folders/smoke";
 
+/**
+ * A place as a form sends it today: the state, the typed city, and the coordinates the browser
+ * looked up for it. The old fixed city-and-area lists are gone from the forms, but the points
+ * themselves are still real points in real places, and the dispatch checks below are about
+ * distance — so they are kept here, by their old names, rather than replaced with a name this
+ * script would have to geocode.
+ */
+const POINTS = {
+  "guwahati/zoo-road": { state: "assam", city: "Guwahati", lat: 26.172, lng: 91.778 },
+  "guwahati/ganeshguri": { state: "assam", city: "Guwahati", lat: 26.15, lng: 91.786 },
+  "guwahati/dispur": { state: "assam", city: "Guwahati", lat: 26.143, lng: 91.79 },
+  "guwahati/beltola": { state: "assam", city: "Guwahati", lat: 26.122, lng: 91.799 },
+  "guwahati/chandmari": { state: "assam", city: "Guwahati", lat: 26.185, lng: 91.771 },
+  "guwahati/maligaon": { state: "assam", city: "Guwahati", lat: 26.16, lng: 91.69 },
+  "jorhat/jorhat-town": { state: "assam", city: "Jorhat", lat: 26.757, lng: 94.203 },
+  "silchar/silchar-town": { state: "assam", city: "Silchar", lat: 24.827, lng: 92.798 },
+};
+
+function at(cityId, zoneId) {
+  const p = POINTS[`${cityId}/${zoneId}`];
+  if (!p) throw new Error(`no known point for ${cityId}/${zoneId}`);
+  return { stateId: p.state, city: p.city, lat: p.lat, lng: p.lng };
+}
+
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "srijan-smoke-"));
 const DATA_FILE = path.join(tmpDir, "db.json");
 const SMOKE_DB = process.env.SMOKE_DATABASE_URL || "";
@@ -351,8 +375,7 @@ class Agent {
       email: this.email,
       name: this.name,
       phone: this.phone,
-      cityId,
-      zoneId,
+      ...at(cityId, zoneId),
       services,
       maxTravelKm: 10,
     });
@@ -606,8 +629,7 @@ async function run() {
   const scheduledAt = slotFrom(r.serverNow);
   const shootInput = {
     packageIds: ["video_milestone"],
-    cityId: "guwahati",
-    zoneId: "zoo-road",
+    ...at("guwahati", "zoo-road"),
     address: "Café Brahma, RG Baruah Road",
     scheduledAt,
     brief: "Opening-week reel for our café, warm look",
@@ -623,7 +645,7 @@ async function run() {
 
   r = await rituraj.req("/api/notifications");
   const alertNote = r.data.find((n) => n.lines.join(" ").includes("Opening-week reel"));
-  ok(alertNote && /Milestone Capture/.test(alertNote.lines[0]) && /Zoo Road/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, area, time and brief, not the address");
+  ok(alertNote && /Milestone Capture/.test(alertNote.lines[0]) && /Guwahati, Assam/.test(alertNote.lines[1]) && !alertNote.lines.join(" ").includes("RG Baruah"), "the demo notification gives the job, the city, the time and the brief, not the address");
   r = await nilakshi.req("/api/notifications");
   ok(!r.data.some((n) => n.lines.join(" ").includes("Opening-week reel")), "a creator far away gets no alert for it");
 
@@ -813,8 +835,7 @@ async function run() {
   r = await priya.req("/api/session");
   r = await priya.book({
     packageIds: ["video_tour"],
-    cityId: "silchar",
-    zoneId: "silchar-town",
+    ...at("silchar", "silchar-town"),
     address: "Hotel Kanishka, Silchar",
     scheduledAt: slotFrom(r.serverNow),
     brief: "Highlights of our store launch event",
@@ -838,8 +859,7 @@ async function run() {
   r = await priya.req("/api/session");
   r = await priya.book({
     packageIds: ["video_milestone"],
-    cityId: "jorhat",
-    zoneId: "jorhat-town",
+    ...at("jorhat", "jorhat-town"),
     address: "Gar-Ali, Jorhat",
     scheduledAt: slotFrom(r.serverNow),
     brief: "Reel for our new bakery in Jorhat",
@@ -861,8 +881,7 @@ async function run() {
   r = await priya.req("/api/session");
   r = await priya.req("/api/bookings", {
     packageIds: ["video_tour", "edit_reel"],
-    cityId: "guwahati",
-    zoneId: "zoo-road",
+    ...at("guwahati", "zoo-road"),
     address: "Café Brahma, RG Baruah Road",
     scheduledAt: slotFrom(r.serverNow),
     brief: "Shoot our café and edit a separate reel",
@@ -1026,7 +1045,7 @@ async function run() {
   r = await hemanta.uploadAadhaar({ number: "234567890124", name: "Hemanta Saikia" });
   ok(r.status === 400 && /already on another/.test(r.error), "and he can’t simply send a different one until the team has sorted it out");
 
-  const freshJob = await priya.book({ packageIds: ["video_milestone"], cityId: "guwahati", zoneId: "beltola", address: "Beltola Tiniali", scheduledAt: slotFrom(Date.now()), brief: "A quick reel for the shop" });
+  const freshJob = await priya.book({ packageIds: ["video_milestone"], ...at("guwahati", "beltola"), address: "Beltola Tiniali", scheduledAt: slotFrom(Date.now()), brief: "A quick reel for the shop" });
   ok(freshJob.ok, "a client books a job in Beltola");
   r = await hemanta.req("/api/offers");
   ok(r.ok && !r.data.some((o) => o.bookingId === freshJob.data.id), "the unverified creator isn’t alerted for it");
@@ -1079,8 +1098,8 @@ async function run() {
 
   r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { name: "Ankita Baruah", bio: "" } });
   ok(r.ok && r.data.bio === "", "ops clears a placeholder bio");
-  r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { cityId: "guwahati", zoneId: "beltola" } });
-  ok(r.ok && /Beltola/.test(r.data.area), "and moves a creator to the right area");
+  r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { stateId: "assam", city: "Nagaon" } });
+  ok(r.ok && r.data.area === "Nagaon, Assam", "and moves a creator to the city they have moved to");
   r = await ops.req("/api/admin", { action: "edit_creator", creatorId: cr.ankita, patch: { verification: "verified", upiId: "attacker@ybl" } });
   ok(r.ok, "an edit carrying money and verification fields is accepted");
   r = await ops.req("/api/admin");
@@ -1176,7 +1195,9 @@ async function run() {
   const org = home.find((b) => b["@type"] === "Organization");
   ok(!!org && org.name === "Srijan", "every page carries an Organization block");
   ok(!!home.find((b) => b["@type"] === "WebSite"), "and a WebSite block");
-  ok(org.areaServed.length === 6 && org.contactPoint.telephone.endsWith("8638403800"), "with the real cities and support number");
+  ok(org.areaServed["@type"] === "Country" && org.areaServed.name === "India", "saying it serves India, not a fixed list of cities");
+  ok(!JSON.stringify(home).includes("Tezpur"), "and never republishing the retired launch-city list");
+  ok(org.contactPoint.telephone.endsWith("8638403800"), "with the real support number");
   // sameAs is what binds this site to the organisation behind it: "Srijan" is a name several
   // other organisations use, and without this there is nothing to tell them apart.
   ok(Array.isArray(org.sameAs) && org.sameAs.some((u) => /instagram\.com\//.test(u)), "and a sameAs that claims Srijan's Instagram");

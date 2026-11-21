@@ -46,8 +46,8 @@ const TABLES: Record<Collection, Table> = {
     columns: [
       ["name", "text", text("name")],
       ["user_id", "text", text("userId")],
-      ["city", "text", text("cityId")],
-      ["area", "text", text("zoneId")],
+      ["city", "text", text("city")],
+      ["state", "text", text("stateId")],
       ["verification", "text", text("verification")],
       ["available", "boolean", bool("available")],
       ["same_day_shoots", "boolean", bool("onDemand")],
@@ -66,8 +66,8 @@ const TABLES: Record<Collection, Table> = {
       ["client_id", "text", text("clientId")],
       ["creator_id", "text", text("creatorId")],
       ["package", "text", text("packageId")],
-      ["city", "text", text("cityId")],
-      ["area", "text", text("zoneId")],
+      ["city", "text", text("city")],
+      ["state", "text", text("stateId")],
       ["total", "numeric", num("total")],
       ["scheduled_at", "timestamptz", time("scheduledAt")],
       ["created_at", "timestamptz", time("createdAt")],
@@ -149,6 +149,52 @@ const emptySnapshot = (): Snapshot => new Map(ENTRIES.map(([field]) => [field, n
  * run, data from the earlier single-row store (`srijan.state`) is copied over; that table is
  * left as it was, as a backup.
  */
+/**
+ * Brings an existing table's readable columns into line with `TABLES`.
+ *
+ * `create table if not exists` does nothing at all to a table that is already there, so a column
+ * whose expression has changed is left as it was — and `city` used to read `cityId`, a field no
+ * record carries any more. It would have gone on quietly returning null for every creator and
+ * every booking saved from now on, in the one place somebody looks when they want to browse the
+ * data by hand.
+ *
+ * These columns hold nothing of their own: Postgres computes each one from `data`. So dropping and
+ * re-adding one loses no data — the values come straight back from the same jsonb — and doing it
+ * on start-up means a deployed database needs no migration run by hand.
+ *
+ * A column is judged by the JSON key its expression reads, because that is what a rename changes.
+ * A column that kept its key and changed only its type would not be noticed; nothing has needed
+ * that yet, and it would be a new record shape rather than a new view of the same one.
+ */
+const readsKey = (expr: string) => /'([^']+)'/.exec(expr)?.[1] ?? "";
+
+async function reconcileColumns(tx: Tx, t: Table) {
+  const live = await tx`
+    select column_name, generation_expression
+    from information_schema.columns
+    where table_schema = 'srijan' and table_name = ${t.name} and is_generated = 'ALWAYS'`;
+  const want = new Map(t.columns.map(([c, type, expr]) => [c, { type, expr }]));
+  const kept = new Set<string>();
+  for (const row of live) {
+    const name = String(row.column_name);
+    const expected = want.get(name);
+    const key = expected ? readsKey(expected.expr) : "";
+    // `'city'` is not a substring of `'cityId'::text`, which is the whole point: the quotes make
+    // the comparison exact, so a renamed key is seen as a change and a prefix is not.
+    if (expected && key && String(row.generation_expression).includes(`'${key}'`)) {
+      kept.add(name);
+      continue;
+    }
+    // Either no longer wanted, or reading the wrong field. Both are dropped and, if still wanted,
+    // put back below.
+    await tx.unsafe(`alter table srijan.${t.name} drop column ${name}`);
+  }
+  for (const [name, { type, expr }] of want) {
+    if (kept.has(name)) continue;
+    await tx.unsafe(`alter table srijan.${t.name} add column ${name} ${type} generated always as (${expr}) stored`);
+  }
+}
+
 export async function ensureSchema(sql: postgres.Sql, initialDb: () => DB) {
   await sql.begin(async (tx) => {
     // Several server copies may start at once: let one set up while the others wait.
@@ -160,6 +206,8 @@ export async function ensureSchema(sql: postgres.Sql, initialDb: () => DB) {
       const cols = t.columns.map(([c, type, expr]) => `${c} ${type} generated always as (${expr}) stored`).join(", ");
       await tx.unsafe(`create table if not exists srijan.${t.name} (id text primary key, ${cols}, data jsonb not null, ord bigserial not null)`);
       await tx.unsafe(`alter table srijan.${t.name} enable row level security`);
+      // A table that already existed was not touched by the line above: catch it up.
+      await reconcileColumns(tx, t);
     }
     const [meta] = await tx`select 1 from srijan.meta where id = 1`;
     if (meta) return;
