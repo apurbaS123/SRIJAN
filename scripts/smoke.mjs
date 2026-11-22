@@ -1167,6 +1167,21 @@ async function run() {
     }
   }
 
+  // Copy folded into a <details> is still copy on the page — which is the whole reason it was
+  // folded rather than moved to a page of its own behind a button. A crawler reads the first
+  // response, so what matters is that the words are in it, closed or not. If someone ever swaps
+  // one of these folds for a link or a client-side "read more", the sentence leaves the HTML and
+  // this fails.
+  for (const [path, phrase] of [
+    ["/creators", "had its Aadhaar read and approved"],
+    ["/book", "paying is what hands"],
+    ["/join", "Srijan keeps only the last four digits"],
+  ]) {
+    const html = await (await fetch(BASE + path)).text();
+    ok(/<details/.test(html), `${path} folds its explanation away rather than dropping it`);
+    ok(html.includes(phrase), `and still serves it in the HTML, where a crawler reads it`);
+  }
+
   // A link pasted into WhatsApp, LinkedIn or Slack gets a picture. The card type has claimed one
   // for a while; until now there was nothing behind it.
   // Every public route, not just the four with an image file of their own: a route that sets its

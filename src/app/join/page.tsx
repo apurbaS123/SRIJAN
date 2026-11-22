@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { JoinForm } from "./JoinForm";
 import { LaunchSticker } from "@/components/ui";
+import { Collapsible } from "@/components/Collapsible";
 import { CREATOR_SHARE, PAYOUT_MAX_HOURS, PAYOUT_MIN_HOURS, SERVICES, sellable } from "@/lib/domain/config";
 
 /**
@@ -47,8 +48,7 @@ export default function JoinPage() {
         </ul>
       </section>
 
-      <section className="card stack">
-        <h2>What we need from you</h2>
+      <Collapsible className="card" label={<h2>What we need from you</h2>}>
         <p className="small">
           A photo of both sides of your Aadhaar, which someone on the Srijan team reads before approving you. Nobody can accept
           paid work until that is done — that is what the word &ldquo;verified&rdquo; means on a profile here, and it is why
@@ -61,7 +61,7 @@ export default function JoinPage() {
           <Link href="/creators">creators already on Srijan</Link>, the <Link href="/book">services and prices</Link> clients book
           from, or <Link href="/how-it-works">how it works</Link> end to end.
         </p>
-      </section>
+      </Collapsible>
 
       <JoinForm />
     </div>

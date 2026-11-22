@@ -1836,3 +1836,38 @@ p, li, td, th, dd, dt, .muted, .small, .tiny, .badge, .field label { overflow-wr
   text-align: center;
   line-height: inherit;
 }
+
+/* Folded prose: long copy kept in the HTML but out of the way. See components/Collapsible.tsx. */
+.prose-fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  /* Comfortably tappable without resizing the heading inside it. */
+  min-height: 44px;
+}
+.prose-fold > summary::-webkit-details-marker { display: none; }
+.prose-fold > summary > h2,
+.prose-fold > summary > h3 { margin: 0; }
+/* A chevron drawn from two borders, so it needs no font and no icon file. */
+.prose-fold > summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: solid var(--violet);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s;
+}
+.prose-fold[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.prose-fold > summary:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; border-radius: 8px; }
+.prose-fold-body { margin-top: 4px; }
+/* Not a card: a plain fold under a page heading needs a line to sit against. */
+.prose-fold-plain { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) {
+  .prose-fold > summary::after { transition: none; }
+}

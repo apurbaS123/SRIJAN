@@ -5,6 +5,7 @@ import { publicCreators } from "@/lib/server/public";
 import { SERVICES } from "@/lib/domain/config";
 import { JsonLd } from "@/components/JsonLd";
 import { breadcrumbSchema } from "@/lib/schema";
+import { Collapsible } from "@/components/Collapsible";
 import { siteUrl } from "@/lib/server/env";
 
 /**
@@ -48,11 +49,17 @@ export default async function CreatorsPage() {
         {creators.length
           ? `${creators.length} verified ${creators.length === 1 ? "creator" : "creators"} — ${services}.`
           : `Verified creators across India — ${services}.`}{" "}
-        Every profile here has had its Aadhaar read and approved by someone on the Srijan team, which is what lets a creator accept
-        paid work at all. Prices are fixed by <Link href="/book">the service menu</Link>, not set per creator, so the figure on a
-        profile is the figure you pay. Search by name or skill, narrow by craft or by who is online right now, send the job to the one
-        you want, and pay only once they have accepted it.
+        Search by name or skill, narrow by craft or by who is online right now, and pay only once your creator has accepted the job.
       </p>
+
+      {/* The rest of what somebody needs to know, within reach of the list rather than above it. */}
+      <Collapsible className="prose-fold-plain" label={<span className="small strong">What &ldquo;verified&rdquo; means here, and who sets the price</span>}>
+        <p className="muted">
+          Every profile here has had its Aadhaar read and approved by someone on the Srijan team, which is what lets a creator accept
+          paid work at all. Prices are fixed by <Link href="/book">the service menu</Link>, not set per creator, so the figure on a
+          profile is the figure you pay. Send the job to the one you want, and you are charged nothing until they have accepted it.
+        </p>
+      </Collapsible>
 
       {/* `Browse` reads the query string, so this page is rendered per request (above) and
           `Browse` renders on the server too — the Suspense boundary is belt and braces for a

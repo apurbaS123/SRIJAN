@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BookFormLoader } from "./BookFormLoader";
 import { DISPATCH, SERVICES, lowestPrice, sellable } from "@/lib/domain/config";
 import { JsonLd } from "@/components/JsonLd";
+import { Collapsible } from "@/components/Collapsible";
 import { breadcrumbSchema, serviceListSchema } from "@/lib/schema";
 import { siteUrl } from "@/lib/server/env";
 
@@ -55,8 +56,7 @@ export default function BookPage() {
         </ul>
       </section>
 
-      <section className="card stack">
-        <h2>How booking works</h2>
+      <Collapsible className="card" label={<h2>How booking works</h2>}>
         <p className="small">
           Booking is free and nothing is charged up front. Once a creator accepts, you are asked to pay — and paying is what hands
           the job over and swaps your contact details with theirs. If nobody accepts, you owe nothing. On-site jobs need at least{" "}
@@ -69,7 +69,7 @@ export default function BookPage() {
           first. Running something bigger across several creators is a <Link href="/brands">campaign</Link>, and{" "}
           <Link href="/how-it-works">how it works</Link> walks through every step.
         </p>
-      </section>
+      </Collapsible>
 
       <BookFormLoader />
     </div>
