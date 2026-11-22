@@ -222,9 +222,17 @@ export async function ensureSchema(sql: postgres.Sql, initialDb: () => DB) {
   });
 }
 
-/** Locks the store for this transaction and loads everything, in the order it was added. */
-export async function load(tx: Tx): Promise<{ db: DB; snapshot: Snapshot; meta: { version: number; seq: number } }> {
-  const [meta] = await tx`select version, seq from srijan.meta where id = 1 for update`;
+/**
+ * Loads everything, in the order it was added.
+ *
+ * `lock` takes the `srijan.meta` row for update, which is what makes one request wait for another:
+ * it is held until the transaction commits, so anything that writes must take it. A read passes
+ * `false` and takes no lock at all — see `readDb` in ./store.ts for why that matters.
+ */
+export async function load(tx: Tx, lock = true): Promise<{ db: DB; snapshot: Snapshot; meta: { version: number; seq: number } }> {
+  const [meta] = lock
+    ? await tx`select version, seq from srijan.meta where id = 1 for update`
+    : await tx`select version, seq from srijan.meta where id = 1`;
   if (!meta) throw new Error("srijan.meta is missing its row");
   const lists = await Promise.all(ENTRIES.map(([, t]) => tx.unsafe(`select data from srijan.${t.name} order by ord`)));
   const db = { version: meta.version, seq: Number(meta.seq) } as DB;

@@ -17,7 +17,7 @@ export async function GET() {
             : db.bookings.filter((b) => b.clientId === user!.id);
       return list.sort((a, b) => b.createdAt - a.createdAt).map((b) => bookingView(db, b, viewer));
     },
-    { role: ["client", "creator", "ops"] },
+    { role: ["client", "creator", "ops"], read: true },
   );
 }
 

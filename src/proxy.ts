@@ -47,6 +47,9 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's own files and Vercel's internal paths.
-  matcher: "/((?!_next/static|_next/image|_vercel).*)",
+  // Everything except Next's own files, Vercel's internal paths, and anything with a file
+  // extension. A file in /public has nothing here to gain — it is not an API route and a picture
+  // does not care which hostname served it — and running this for each one turned every image on
+  // a page into a function call instead of a hit on the CDN. /brands alone asks for 56 of them.
+  matcher: "/((?!_next/static|_next/image|_vercel|.*\\.[a-zA-Z0-9]+$).*)",
 };

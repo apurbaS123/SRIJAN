@@ -5,7 +5,7 @@ import type { DB, Role, User } from "@/lib/domain/types";
 import { DomainError } from "@/lib/domain/util";
 import type { Viewer } from "@/lib/domain/views";
 import { IS_PROD, isOpsEmail, normalizeEmail, sessionSecret } from "./env";
-import { withDb } from "./store";
+import { readDb, withDb } from "./store";
 
 export const SESSION_COOKIE = "srijan_session";
 const SESSION_MAX_AGE_S = 60 * 60 * 24 * 30;
@@ -49,11 +49,15 @@ export async function signedInUserId() {
 /**
  * Wraps a route: loads data, checks the signed-in role, runs `fn`, saves, and replies
  * `{ ok, data, serverNow }` or `{ ok: false, error }`.
+ *
+ * `read: true` for a handler that only looks at data — see `readDb`, which keeps it out of the
+ * queue every change waits in. It is safe on a handler that turns out to change something (the
+ * ops demotion below, for one): that run is simply redone under the lock.
  */
-export async function api<T>(fn: (ctx: Ctx) => T, opts: { role?: Role | Role[] } = {}) {
+export async function api<T>(fn: (ctx: Ctx) => T, opts: { role?: Role | Role[]; read?: boolean } = {}) {
   try {
     const uid = sessionUserId((await cookies()).get(SESSION_COOKIE)?.value);
-    const { result, now } = await withDb((db, now) => {
+    const { result, now } = await (opts.read ? readDb : withDb)((db, now) => {
       const user = uid ? db.users.find((u) => u.id === uid) : undefined;
       // Removed from SRIJAN_OPS_EMAILS: lose team access straight away, not at the next sign-in.
       if (user?.role === "ops" && !isOpsEmail(normalizeEmail(user.email))) user.role = "client";

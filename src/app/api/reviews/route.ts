@@ -6,5 +6,5 @@ import { pendingReviews } from "@/lib/domain/views";
  * so this is what decides whether it is in the way.
  */
 export async function GET() {
-  return api(({ db, viewer }) => pendingReviews(db, viewer));
+  return api(({ db, viewer }) => pendingReviews(db, viewer), { read: true });
 }

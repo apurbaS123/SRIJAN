@@ -3,7 +3,7 @@ import { markNotificationRead, unreadNotifications } from "@/lib/domain/notifica
 
 /** Unread messages for whoever is signed in (empty when signed out). */
 export async function GET() {
-  return api(({ db, user }) => (user ? unreadNotifications(db, user.id) : []));
+  return api(({ db, user }) => (user ? unreadNotifications(db, user.id) : []), { read: true });
 }
 
 /** { id } dismisses one message. */

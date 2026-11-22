@@ -21,7 +21,7 @@ export async function GET() {
             : db.campaigns.filter((c) => c.userId === u.id);
       return [...list].sort((a, b) => b.createdAt - a.createdAt).map((c) => campaignView(db, c, viewer));
     },
-    { role: ["client", "creator", "ops"] },
+    { role: ["client", "creator", "ops"], read: true },
   );
 }
 

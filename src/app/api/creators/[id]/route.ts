@@ -13,5 +13,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .slice(0, 5)
       .map((b) => ({ rating: b.rating!, review: b.review, at: b.approvedAt ?? b.createdAt }));
     return { ...creatorPublic(c), reviews };
-  });
+  }, { read: true });
 }

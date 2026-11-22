@@ -15,13 +15,15 @@
 // An Aadhaar fails both. Either alone would do; both are cheap.
 import { NextResponse } from "next/server";
 import { getDocument } from "@/lib/server/uploads";
-import { withDb } from "@/lib/server/store";
+import { readDb } from "@/lib/server/store";
 
 const notFound = () => new NextResponse("Not found", { status: 404 });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { result: isProfilePhoto } = await withDb((db) => db.creators.some((c) => c.photo?.id === id));
+  // A read: an image must never queue behind a booking, and there is one of these per creator
+  // on the directory page.
+  const { result: isProfilePhoto } = await readDb((db) => db.creators.some((c) => c.photo?.id === id));
   if (!isProfilePhoto) return notFound();
 
   const doc = await getDocument(id);

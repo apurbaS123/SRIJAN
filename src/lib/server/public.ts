@@ -5,7 +5,7 @@
 // what a crawler, a scripting-off browser or a slow phone gets on the first paint should not
 // depend on a round trip.
 import { creatorPublic, type CreatorPublic } from "@/lib/domain/views";
-import { withDb } from "./store";
+import { readDb } from "./store";
 
 /**
  * Every verified creator, online ones first and then by rating — the same order /api/creators
@@ -16,7 +16,7 @@ import { withDb } from "./store";
  */
 export async function publicCreators(): Promise<CreatorPublic[]> {
   try {
-    const { result } = await withDb((db) =>
+    const { result } = await readDb((db) =>
       db.creators
         .filter((c) => c.verification === "verified")
         .map(creatorPublic)

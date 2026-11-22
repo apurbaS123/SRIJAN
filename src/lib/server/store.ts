@@ -104,10 +104,49 @@ function ensureSchema() {
 async function withPostgres<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
   await ensureSchema();
   return client().begin(async (tx) => {
+    // Postgres waits for a lock forever by default, so one stuck transaction could hold a page
+    // open until the function itself timed out minutes later. Better to fail and say so than to
+    // leave somebody looking at a blank tab — nothing here waits 20 seconds honestly.
+    //
+    // Set here rather than on the connection: a startup parameter has to get past the provider's
+    // pooler, which is the same trap `client()` above already works around.
+    await tx`set local lock_timeout = 20000`;
     // Locks srijan.meta: every other request waits until this one commits.
     const { db, snapshot, meta } = await pgLoad(tx);
     return runAndSave(db, (next) => pgSave(tx, snapshot, next, meta), fn);
   }) as Promise<Outcome<T>>;
+}
+
+/**
+ * A read, without the lock every other request waits for.
+ *
+ * `withPostgres` locks `srijan.meta` for the length of the transaction, which is right for a
+ * change and ruinous for a read: the public directory, a profile, an avatar and the screens that
+ * poll every few seconds were all queueing behind one another and behind every booking, each one
+ * also rewriting whatever the tick had touched. One slow transaction and the queue behind it is
+ * everyone's page load.
+ *
+ * So: load without the lock, tick in memory, run `fn`. In the ordinary case nothing changed and
+ * there is nothing to write, so the read never blocks and never blocks anybody else. If the tick
+ * did fall due — an offer that has just expired, a booking that has timed out — the whole thing is
+ * run again through `withPostgres`, which takes the lock and saves properly. That keeps the tick
+ * running on reads, which this project depends on for want of a cron job, without making every
+ * read pay for the possibility.
+ *
+ * `fn` must therefore be safe to run twice and must not change `db`. A GET handler that does
+ * change something is still correct — the change is simply made by the second, locked run.
+ */
+async function readPostgres<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<Outcome<T>> {
+  await ensureSchema();
+  // `read only` is enforced by Postgres, so a stray write in here fails rather than quietly
+  // escaping the lock. The cast is the driver's: `begin` widens whatever the callback returns.
+  const { db } = (await client().begin("read only", (tx) => pgLoad(tx, false))) as unknown as { db: DB };
+  const now = Date.now();
+  const before = JSON.stringify(db);
+  const alerts = tickAll(db, now);
+  const result = await fn(db, now);
+  if (!alerts.length && JSON.stringify(db) === before) return { ok: true, result, now, alerts: [], pushes: [] };
+  return withPostgres(fn);
 }
 
 // ── JSON file ─────────────────────────────────────────────────────────────────
@@ -153,6 +192,20 @@ function sendInBackground(pushes: Push[]) {
   } catch {
     void sendPushes(pushes).catch((e) => console.error("Push failed", e));
   }
+}
+
+/**
+ * Reads without queueing: for a page render or a GET that only looks at data. See `readPostgres`.
+ *
+ * The JSON-file path is unchanged — it is one process on one disk, where a read costs nothing and
+ * there is no lock to avoid.
+ */
+export async function readDb<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<{ result: T; now: number }> {
+  const out = await (DATABASE_URL ? readPostgres(fn) : withFile(fn));
+  sendOpsAlerts(out.alerts);
+  sendInBackground(out.pushes);
+  if (!out.ok) throw out.error;
+  return { result: out.result, now: out.now };
 }
 
 export async function withDb<T>(fn: (db: DB, now: number) => T | Promise<T>): Promise<{ result: T; now: number }> {

@@ -7,6 +7,11 @@ import type { CreatorPublic } from "@/lib/domain/views";
 import { CreatorCard, LaunchSticker } from "@/components/ui";
 import { useMeta } from "@/components/useMeta";
 
+/** No filter touched, so the server's list stands. */
+function pristineOf(service: string, state: string, available: boolean, q: string) {
+  return !service && !state && !available && !q.trim();
+}
+
 /**
  * `initial` is the list the server already rendered into the HTML. `useData` starts with nothing,
  * so without it the first paint of this component — server and client alike — is the word
@@ -27,10 +32,13 @@ export function Browse({ initial }: { initial: CreatorPublic[] }) {
   if (state) qs.set("state", state);
   if (available) qs.set("available", "1");
   if (q.trim()) qs.set("q", q.trim());
-  const { data } = useData<CreatorPublic[]>(`/api/creators?${qs.toString()}`);
+  // Untouched filters mean the list the server already rendered is the right answer, so asking
+  // /api/creators for it again on every visit bought nothing and cost a round trip to the
+  // database — on the page most people arrive at first.
+  const { data } = useData<CreatorPublic[]>(pristineOf(service, state, available, q) ? null : `/api/creators?${qs.toString()}`);
   const title = meta?.services.find((s) => s.key === service)?.label ?? "All creators";
-  const pristine = !service && !state && !available && !q.trim();
-  const list = data ?? (pristine ? initial : undefined);
+  const pristine = pristineOf(service, state, available, q);
+  const list = pristine ? initial : data;
 
   /**
    * The states the directory can actually answer for, in the order `meta.states` gives them.

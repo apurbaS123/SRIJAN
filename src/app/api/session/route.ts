@@ -23,7 +23,7 @@ export async function GET() {
       creator: creator ? { ...creatorPublic(creator), payout: payoutSummary(creator), kyc: kycSummary(creator) } : null,
       creatorVerification,
     };
-  });
+  }, { read: true });
 }
 
 /**

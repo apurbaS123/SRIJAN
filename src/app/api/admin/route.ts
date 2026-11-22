@@ -50,7 +50,7 @@ export async function GET() {
           }),
       };
     },
-    { role: "ops" },
+    { role: "ops", read: true },
   );
 }
 

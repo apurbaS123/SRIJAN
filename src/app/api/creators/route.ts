@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       .filter((c) => !text || `${c.name} ${c.bio} ${c.services.map((s) => s.title).join(" ")}`.toLowerCase().includes(text))
       .map(creatorPublic)
       .sort((a, b) => Number(b.available) - Number(a.available) || (b.rating ?? 0) - (a.rating ?? 0)),
+    { read: true },
   );
 }
 

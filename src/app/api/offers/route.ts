@@ -9,6 +9,6 @@ export async function GET() {
         .filter((o) => o.creatorId === user!.creatorId && o.status === "pending")
         .sort((a, b) => a.expiresAt - b.expiresAt)
         .map((o) => offerView(db, o)),
-    { role: "creator" },
+    { role: "creator", read: true },
   );
 }
