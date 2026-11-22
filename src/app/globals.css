@@ -331,21 +331,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* The home hero's nav is printed to match the canvas, so its links are exactly as tall as their
-   own text — around 13px. Their boxes cannot move; their hit areas can. */
+   own text — around 13px. Their boxes cannot move; their hit areas can.
+   The height comes from the layout, which is the only thing that knows whether the links sit on
+   their own row and how much room is above them: see `Item.hit` in components/glass/layout.ts. */
 a.gh-item::after {
   content: "";
   position: absolute;
   left: -10px;
   right: -10px;
+  top: 50%;
+  height: var(--gh-hit, 44px);
+  transform: translateY(-50%);
 }
 /* The square mark is 19px across. It and the wordmark beside it both go to the home page, so
    letting their hit areas meet costs nothing. */
 a.gh-mark::after {
   left: -13px;
   right: -13px;
-  top: 50%;
-  height: 44px;
-  transform: translateY(-50%);
 }
 
 /* ── Small screens: the nav folds into a drawer behind a burger ── */

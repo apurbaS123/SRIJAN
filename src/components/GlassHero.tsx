@@ -176,6 +176,8 @@ export function GlassHero() {
       style.background = "var(--grad-primary)";
       style.borderRadius = it.w * 0.28;
     }
+    // A link's tap area is grown to `hit` by a `::after` in the stylesheet, which reads this.
+    if (it.hit) (style as Record<string, unknown>)["--gh-hit"] = `${it.hit}px`;
     // The full stop after the wordmark: a filled circle, not a glyph.
     if (!live && it.kind === "dot") {
       style.background = typeof it.fill === "string" ? it.fill : `linear-gradient(90deg, ${it.fill.stops.join(", ")})`;

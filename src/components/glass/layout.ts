@@ -36,6 +36,17 @@ export interface Item {
   hoverFill?: Fill;
   align: "left" | "right";
   href?: string;
+  /**
+   * Height of the link's tap area in px, centred on the text.
+   *
+   * These boxes are exactly as tall as their own glyphs — around 13px — because the canvas prints
+   * the same words at the same size and the two have to line up. A finger needs about 44px, so the
+   * hit area is grown instead of the box, by a `::after` that takes no space and moves nothing.
+   * It is set here rather than in CSS because only the layout knows how much room there is: when
+   * the links drop to a second row the two rows are only ~33px apart, and a flat 44px band would
+   * have the row below stealing taps from the account link above it.
+   */
+  hit?: number;
 }
 
 export interface Layout {
@@ -161,6 +172,10 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   const inline = inlineX + linkGap(inlineGap) < bw - navPad - accountW - px(32, 16);
   const navH = inline ? Math.max(bh * 0.108, 56) : Math.max(bh * 0.108, 56) + linkSize * 2.4;
   const navCy = inline ? navH / 2 : navH * 0.34;
+  // 44px where there is room for it. On a second row the gap between the two rows is the limit:
+  // bands that met would hand a tap to whichever link is painted last, not the one under the
+  // finger. See `Item.hit`.
+  const navHit = inline ? 44 : Math.min(44, Math.floor(navH * (0.72 - 0.34)) - 2);
   const panelY = navH + 14;
   const pw = bw;
   const ph = bh - panelY;
@@ -176,11 +191,11 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   // ── Nav slab ────────────────────────────────────────────
   items.push({
     id: "mark", kind: "mark", group: "nav", text: "", x: navPad, cy: navCy, w: markSize, h: markSize,
-    size: markSize, weight: 800, family: DISPLAY, tracking: 0, fill: "", align: "left", href: "/",
+    size: markSize, weight: 800, family: DISPLAY, tracking: 0, fill: "", align: "left", href: "/", hit: navHit,
   });
   text({
     id: "brand", kind: "link", group: "nav", text: "srijan", x: brandX, cy: navCy,
-    size: brandSize, weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/",
+    size: brandSize, weight: 800, family: DISPLAY, tracking: -0.03, fill: WHITE(0.96), href: "/", hit: navHit,
   });
   // Sits on the wordmark's baseline, like the full stop it is: the dot's bottom edge and the foot
   // of the "n" are the same line.
@@ -192,7 +207,7 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
   text({
     id: "account", kind: "link", group: "nav", text: content.account.label, x: bw - navPad, cy: navCy,
     size: accountSize, weight: 700, family: BODY, tracking: 0, fill: WHITE(0.92), hoverFill: "#ffffff",
-    href: content.account.href, align: "right",
+    href: content.account.href, align: "right", hit: navHit,
   });
   {
     // Second row: spread the links across the slab, centred.
@@ -202,7 +217,7 @@ export function computeLayout(W: number, H: number, content: Content): Layout {
     content.navLinks.forEach((l, i) => {
       text({
         id: `nav-${i}`, kind: "link", group: "nav", text: l.label, x, cy, size: linkSize, weight: 600, family: BODY,
-        tracking: 0, fill: WHITE(0.6), hoverFill: WHITE(1), href: l.href,
+        tracking: 0, fill: WHITE(0.6), hoverFill: WHITE(1), href: l.href, hit: navHit,
       });
       x += linkWs[i] + gap;
     });
